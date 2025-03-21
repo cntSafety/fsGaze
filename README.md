@@ -25,7 +25,7 @@ sGaze is a **Proof of Concept** to show how a domain specific tool can utilize t
 
 ## Architecture
 
-sGAze is built on a flexible graph database architecture that:
+sGaze is built on a flexible graph database architecture that:
 
 - Enables powerful relationship traversal and pattern matching for safety verification
 - Provides a scalable foundation for implementing verification algorithms
