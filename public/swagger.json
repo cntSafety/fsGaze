@@ -1,0 +1,327 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "SG2 API Documentation",
+    "description": "API documentation for SG2 application services",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "paths": {
+    "/api/kerml/analyze": {
+      "post": {
+        "summary": "Analyze KerML Content",
+        "description": "Uploads and analyzes KerML content, storing it in Neo4j for further analysis",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "KerML file to upload"
+                  }
+                }
+              }
+            },
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "content": {
+                    "type": "string",
+                    "description": "KerML content as text"
+                  },
+                  "fileName": {
+                    "type": "string",
+                    "description": "Optional filename for the content"
+                  }
+                },
+                "required": ["content"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Analysis completed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "enum": ["info", "warning", "error"],
+                            "description": "Type of message"
+                          },
+                          "message": {
+                            "type": "string",
+                            "description": "Analysis message"
+                          }
+                        }
+                      }
+                    },
+                    "neo4j": {
+                      "type": "object",
+                      "properties": {
+                        "success": {
+                          "type": "boolean",
+                          "description": "Whether the Neo4j upload was successful"
+                        },
+                        "nodeCount": {
+                          "type": "integer",
+                          "description": "Number of nodes created in Neo4j"
+                        },
+                        "relationshipCount": {
+                          "type": "integer",
+                          "description": "Number of relationships created in Neo4j"
+                        },
+                        "importTimestamp": {
+                          "type": "string",
+                          "format": "date-time",
+                          "description": "When the import happened"
+                        },
+                        "error": {
+                          "type": "string",
+                          "nullable": true,
+                          "description": "Error message if upload failed"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request - Missing content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method Not Allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported Media Type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cci/analyze": {
+      "get": {
+        "summary": "Analyze Common Cause Initiators",
+        "description": "Identifies actions that should be independent but share common input sources",
+        "responses": {
+          "200": {
+            "description": "Analysis completed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "description": "Whether the analysis was successful"
+                    },
+                    "cciResults": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "requirementName": {
+                            "type": "string",
+                            "description": "Name of the requirement"
+                          },
+                          "requirementId": {
+                            "type": "string",
+                            "description": "ID of the requirement"
+                          },
+                          "sphinxneedsID": {
+                            "type": "string",
+                            "nullable": true,
+                            "description": "External reference ID for the requirement"
+                          },
+                          "actions": {
+                            "type": "array",
+                            "description": "Actions that should be independent",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string",
+                                  "description": "Name of the action"
+                                },
+                                "id": {
+                                  "type": "string",
+                                  "description": "ID of the action"
+                                }
+                              }
+                            }
+                          },
+                          "commonSources": {
+                            "type": "array",
+                            "description": "Common input sources affecting multiple actions",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string",
+                                  "description": "Name of the source"
+                                },
+                                "pin": {
+                                  "type": "string",
+                                  "nullable": true,
+                                  "description": "Output pin of the source if available"
+                                },
+                                "id": {
+                                  "type": "string",
+                                  "description": "ID of the source"
+                                }
+                              }
+                            }
+                          },
+                          "timestamp": {
+                            "type": "string",
+                            "format": "date-time",
+                            "description": "When the analysis was performed"
+                          },
+                          "ASIL": {
+                            "type": "string",
+                            "description": "Safety integrity level"
+                          }
+                        }
+                      }
+                    },
+                    "affectedActionNames": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Names of all actions affected by common cause initiators"
+                    },
+                    "sourceActionIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "IDs of all actions that are common input sources"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No action data found in database",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method Not Allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

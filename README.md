@@ -1,43 +1,91 @@
-# safety Gaze (sGaze)
+# fsGaze - Functional Safety Visualization and Automation based on SysML-v2
 
-A SysML-v2 based Functional Safety Visualization and Verification Tool
+fsGaze is a Proof of Concept\* platform that demonstrates modelling tool-independent safety visualization and automated safety checks. By leveraging a graph database architecture, it provides a flexible foundation for implementing and extending safety verification capabilities.
 
-## Overview
+Project status: EARLY CONCEPT PHASE - do NOT use for production!
 
-You can add safety details—like failure modes, effects, and risk ratings—straight into the [SysML-v2](https://www.omg.org/spec/SysML/2.0/Beta2/About-SysML) model, and sGaze takes care of the rest with tailored visualizations and automation for functional safety work.
+## Prerequisites
 
-sGaze is a **Proof of Concept** to show how a domain specific tool can utilize the standardized SysML-v2 API and generate specific diagrams and execute domain specific checks.    
+Before you start, make sure you have the following installed:
 
+- [Node.js](https://nodejs.org/) (v18 or later)
+- [npm](https://www.npmjs.com/) (usually comes with Node.js)
+- [Docker](https://www.docker.com/get-started/) for running Neo4j
 
-<img src="img/sgintro.png" alt="Architecture Diagram" width="600" />
+## Installation
 
-## Key Features
+1. Clone the repository:
 
-- **Independence**: View safety aspects of your systems regardless of the original modeling tools 
-- **Automated Safety Checks**: Use the system and safety model (failure modes, safety requirements etc.) to automate certain checks (e.g. find shared input for actions requiring independence, complexness related checks, etc.) 
-- **SysML-v2 Integration**: Use the SysML-v2 API or file based exchange to import the integrated system safety model
-- **Customizable Verification Rules**: Define and implement domain-specific safety verification rules
-- **x-as-Code support**: Link Sphinx-Needs requirements to SysML-v2 elements and generate safety reports 
-- **safety-as-Code support**: You can model the safety aspects ether in graphical or textual SysML-v2 notation.  
-- **inspired by**: [OMG RAAML](https://www.omg.org/spec/RAAML/1.0/About-RAAML)
+   ```bash
+   git clone https://github.com/cntSafety/fsGaze.git
+   cd fsGaze
+   ```
 
-<img src="img/sGazeUsage.png" alt="Using sGaze" width="700" />
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
 
-## Architecture
+## Setting up the Database
 
-sGaze is built on a flexible graph database architecture that:
+fsGaze uses Neo4j as its graph database. Run it using Docker:
 
-- Enables powerful relationship traversal and pattern matching for safety verification
-- Provides a scalable foundation for implementing verification algorithms
-- Maintains model integrity while allowing for custom safety views
+```bash
+docker run -p7474:7474 -p7687:7687 -d --env NEO4J_AUTH=neo4j/testtest neo4j:latest
+```
 
-## Use Cases
+Verify that Neo4j is running by accessing the Neo4j Browser at:
+http://localhost:7474/browser/
 
-- Validating functional safety requirements against design and implementation
-- Identifying potential safety gaps in system designs
-- Tracing safety requirements through to implementation components
-- Automating certain compliance checks for safety standards
+Use the following credentials in the neo4j UI:
 
-## Status
+- Username: `neo4j`
+- Password: `testtest`
 
-This project is currently a Proof of Concept to demonstrate the capabilities of graph-based safety analysis and visualization in a SysML-v2 context.
+## Running the Application
+
+Start the development server:
+
+```bash
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) in your browser to access fsGaze.
+
+## Using fsGaze
+
+1. **Import Data**: Use either API-based or file-based import to load your safety models.
+
+   - Navigate to the Import section in the application
+   - Choose your preferred import method
+
+2. **Explore Safety Views**: Visualize different aspects of your safety models:
+
+   - Failure Modes
+   - Causal Chain Graphs
+   - Causal Chain Flow Diagrams
+
+3. **Safety Automation**: Utilize automated checks to verify safety properties:
+   - Find shared signals for CCA --> also avalable via API see /api-docs
+   - Identify inputs with integrity issues (TBD..)
+   - Discover decomposition issues (TBD..)
+   - Find missing requirement assignments (TBD..)
+   - And more...
+
+## Project Structure
+
+- `/app`: Contains the Next.js application pages and routes
+- `/demoProject`: SysML-v2 Demo Project (exploration assistent with tiger detection feature)
+- `/public`: Static assets
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+This project is licensed under the Mozilla Public License 2.0 - see the [LICENSE](LICENSE) file for details.
+FsGaze uses Neo4j Community Edition as its database, which runs as a separate service. Users will need to install and run Neo4j separately as described in the setup instructions.
+
+\*Do not use fsGaze for safety related product development.
+[Contact us](mailto:cntsafety@sarkic.de) for information.
