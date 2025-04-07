@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { HiHome, HiCloudDownload, HiChartBar, HiClipboardCheck, HiDocumentReport, HiMenuAlt2, HiChevronDown, HiLightningBolt, HiX } from "react-icons/hi";
 import { useState, useEffect } from "react";
 import { IconType } from "react-icons";
@@ -53,7 +54,7 @@ export function Navbar() {
             icon: HiHome,
             items: [
                 { label: 'Info Page', href: '/', isActive: true },
-                { label: 'API', href: '/api-docs', isActive: true }
+                { label: 'API fsGaze', href: '/api-docs', isActive: true }
             ]
         },
         {
@@ -75,7 +76,6 @@ export function Navbar() {
             items: [
                 { label: 'Causal Chain Graph', href: '/causal-chain', isActive: true },
                 { label: 'Causal Chain Flow', href: '/causal-chain-flow', isActive: true },
-                { label: 'Safety Req.', href: '/req', isActive: true },
                 { label: 'Add your own..', href: '/Analysis/detailed', isActive: false }
             ]
         },
@@ -119,12 +119,18 @@ export function Navbar() {
             <div className="hidden md:flex md:w-64 md:flex-col">
                 <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800">
                     {/* Logo area */}
-                    <div className="h-16 flex items-center px-4 border-b border-gray-200 dark:border-gray-800">
-                        <div className="flex items-center">
-                            <div className="mr-2 rounded-md bg-blue-500 p-1">
-                                <HiLightningBolt className="size-5 text-white" />
+                    <div className="h-16 flex items-center justify-center px-4 border-b border-gray-200 dark:border-gray-800">
+                        <div className="flex items-center justify-center w-full">
+                            <div className="w-[50%]">
+                                <Image 
+                                    src="/logoBlack.svg"
+                                    alt="fsGaze Logo"
+                                    width={150}
+                                    height={40}
+                                    className="w-full h-auto"
+                                    priority
+                                />
                             </div>
-                            <span className="text-lg font-medium text-gray-800 dark:text-gray-200">fsGaze</span>
                         </div>
                     </div>
 
@@ -218,7 +224,13 @@ export function Navbar() {
             <div className="fixed top-0 left-0 right-0 z-50 flex h-16 md:hidden items-center justify-between bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-4">
                 <div className="flex items-center">
                     <div className="mr-2 rounded-md bg-blue-500 p-1">
-                        <HiLightningBolt className="size-5 text-white" />
+                        <Image 
+                            src="/GazeIcon.png"
+                            alt="fsGaze Logo"
+                            width={20}
+                            height={20}
+                            className="size-5"
+                        />
                     </div>
                     <span className="text-lg font-medium text-gray-800 dark:text-gray-200">fsGaze</span>
                 </div>
@@ -240,7 +252,13 @@ export function Navbar() {
                 <div className="h-16 flex items-center justify-between px-4 border-b border-gray-200 dark:border-gray-800">
                     <div className="flex items-center">
                         <div className="mr-2 rounded-md bg-blue-500 p-1">
-                            <HiLightningBolt className="size-5 text-white" />
+                            <Image 
+                                src="/GazeIcon.png"
+                                alt="fsGaze Logo"
+                                width={20}
+                                height={20}
+                                className="size-5"
+                            />
                         </div>
                         <span className="text-lg font-medium text-gray-800 dark:text-gray-200">fsGaze</span>
                     </div>

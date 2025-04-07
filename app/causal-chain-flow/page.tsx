@@ -530,7 +530,7 @@ function FMPropagation() {
     return (
         <div className="w-full transition-colors duration-200">
             <h1 className="mb-4 border-b border-gray-200 pb-2 text-2xl font-bold text-gray-800 dark:border-gray-700 dark:text-gray-100">
-                Failure Mode Causal Chain Flow
+                Failure Mode Causal Chain 
             </h1>
             
             <div style={{

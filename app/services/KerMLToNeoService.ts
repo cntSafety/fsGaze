@@ -68,6 +68,18 @@ export const uploadKerMLToNeo4j = async (kermlContent: string, fileName: string 
       };
     } catch (error: any) {
       console.error("Failed to create nodes and relationships:", error);
+      
+      // Check if this is a connection error
+      if (isNeo4jConnectionError(error)) {
+        return {
+          success: false,
+          message: "Connection to the database not possible. Please make sure the Neo4j database is active before uploading the SysML-v2 model.",
+          nodeCount: 0,
+          relationshipCount: 0,
+          error: "Database connection error",
+        };
+      }
+      
       return {
         success: false,
         message: "Failed to create nodes and relationships",
@@ -121,6 +133,16 @@ export const executeNeo4jQuery = async (query: string, params = {}) => {
     };
   } catch (error: any) {
     console.error("Failed to execute Neo4j query:", error);
+    
+    // Check if this is a connection error
+    if (isNeo4jConnectionError(error)) {
+      return {
+        success: false,
+        results: [],
+        error: "Connection to the database not possible. Please make sure the Neo4j database is active and try uploading the SysML-v2 model again."
+      };
+    }
+    
     return {
       success: false,
       results: [],
@@ -131,9 +153,26 @@ export const executeNeo4jQuery = async (query: string, params = {}) => {
   }
 };
 
+// Helper function to determine if the error is a connection error
+function isNeo4jConnectionError(error: any): boolean {
+  if (!error) return false;
+  
+  const errorMessage = error.message || '';
+  
+  // Check for common Neo4j connection error patterns
+  return (
+    errorMessage.includes('Could not perform discovery') ||
+    errorMessage.includes('No routing servers available') ||
+    errorMessage.includes('Connection refused') ||
+    errorMessage.includes('Failed to establish connection') ||
+    errorMessage.includes('Connection terminated') ||
+    errorMessage.includes('Cannot acquire a session') ||
+    errorMessage.includes('Connection timed out')
+  );
+}
+
 const countNodes = (obj: any): number => {
   let count = 0;
-
   if (typeof obj === "object" && obj !== null) {
     count++;
     for (const key in obj) {
@@ -142,7 +181,6 @@ const countNodes = (obj: any): number => {
       }
     }
   }
-
   return count;
 };
 
@@ -171,10 +209,10 @@ async function createNodesAndRelationships(
   >();
   const excludedRelationshipTypes = new Set([]);
   const skippedRelationships: Record<string, number> = {};
+
   let nodeCounter = 0;
 
   const allNodeIds = new Set<string>();
-
   console.log("Processing JSON objects to collect nodes and relationships...");
   for (const obj of jsonObjects) {
     const nodeId = obj.identity["@id"];
@@ -358,7 +396,6 @@ async function createNodesAndRelationships(
 
   console.log("Merging relationships between the same node pairs...");
   const mergedRelationships = new Map<string, any>();
-
   for (const [relType, rels] of relationshipMap.entries()) {
     for (const rel of rels) {
       const sourceNeoId = nodeIdToNeoId.get(rel.sourceId);
@@ -380,7 +417,6 @@ async function createNodesAndRelationships(
       }
 
       const merged = mergedRelationships.get(pairKey);
-
       merged.types.push(rel.props.relationType);
 
       for (const [key, value] of Object.entries(rel.props)) {
@@ -405,7 +441,6 @@ async function createNodesAndRelationships(
   const mergedRelsArray = Array.from(mergedRelationships.values()).map(
     (rel) => {
       const props = { ...rel.props };
-
       rel.types.forEach((type: string) => {
         props[type] = true;
       });

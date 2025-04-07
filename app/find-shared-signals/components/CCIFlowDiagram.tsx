@@ -78,7 +78,7 @@ const CCIFlowDiagram = forwardRef<CCIFlowDiagramHandle, CCIFlowDiagramProps>(
                 </div>
 
                 {/* Export Button */}
-                <div className="mt-4 flex justify-end">
+{/*                 <div className="mt-4 flex justify-end">
                     <button
                         onClick={onExport}
                         disabled={layouting || nodes.length === 0}
@@ -89,7 +89,7 @@ const CCIFlowDiagram = forwardRef<CCIFlowDiagramHandle, CCIFlowDiagramProps>(
                         </svg>
                         Export as PNG
                     </button>
-                </div>
+                </div> */}
             </>
         );
     }

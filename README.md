@@ -4,6 +4,8 @@ fsGaze is a Proof of Concept\* platform that demonstrates modelling tool-indepen
 
 Project status: EARLY CONCEPT PHASE - do NOT use for production!
 
+![fsGaze Usage Overview](/img/sGazeUsage.png)
+
 ## Prerequisites
 
 Before you start, make sure you have the following installed:
@@ -60,8 +62,6 @@ Open [http://localhost:3000](http://localhost:3000) in your browser to access fs
    - Choose your preferred import method
 
 2. **Explore Safety Views**: Visualize different aspects of your safety models:
-
-   - Failure Modes
    - Causal Chain Graphs
    - Causal Chain Flow Diagrams
 
