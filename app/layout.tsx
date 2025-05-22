@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Navbar } from "./components/Navbar";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import 'antd/dist/reset.css';
+import '@ant-design/v5-patch-for-react-19';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

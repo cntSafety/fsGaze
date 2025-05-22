@@ -65,8 +65,15 @@ export function Navbar() {
                 { label: 'File Based', href: '/kerml-analyzer', isActive: true },
                 { label: 'API Based', href: '/Import/apibased', isActive: false },
                 { label: 'Sphinx-Needs', href: '/sphinx-needs-import', isActive: true }
-
-                
+            ]
+        },
+        {
+            type: 'dropdown',
+            label: 'ARXML',
+            icon: HiCloudDownload, // You can use a different icon if desired
+            items: [
+                { label: 'ARXML Importer', href: '/arxml-importer', isActive: true },
+                { label: 'SW Components', href: '/arxml-viewer', isActive: true }
             ]
         },
         {

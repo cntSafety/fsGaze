@@ -1,0 +1,97 @@
+.arxml-importer-container {
+  padding: 20px;
+}
+
+.arxml-importer-container .ant-card {
+  margin-bottom: 20px;
+}
+
+.arxml-files-table {
+  margin: 20px 0;
+}
+
+.arxml-files-table .ant-table-thead > tr > th {
+  background-color: #f5f5f5;
+}
+
+.arxml-files-table .ant-table-tbody > tr > td {
+  vertical-align: middle;
+}
+
+.arxml-files-table .ant-checkbox-wrapper {
+  margin-right: 0;
+}
+
+.arxml-files-table .ant-space {
+  display: flex;
+  align-items: center;
+}
+
+.arxml-files-table .anticon-file {
+  color: #1890ff;
+  margin-right: 8px;
+}
+
+/* Responsive styles */
+@media (max-width: 768px) {
+  .arxml-importer-container {
+    padding: 10px;
+  }
+
+  .arxml-files-table {
+    margin: 10px 0;
+  }
+
+  .arxml-files-table .ant-table {
+    font-size: 14px;
+  }
+}
+
+.ant-upload-drag-icon {
+  font-size: 48px;
+  color: #1677ff;
+}
+
+.ant-upload-text {
+  margin-top: 8px;
+  font-size: 16px;
+}
+
+.ant-upload-hint {
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.file-imported {
+  padding: 20px;
+}
+
+.file-success {
+  display: flex;
+  align-items: center;
+  background-color: #f6ffed;
+  border: 1px solid #b7eb8f;
+  border-radius: 4px;
+  padding: 16px;
+}
+
+.file-icon {
+  font-size: 32px;
+  color: #52c41a;
+  margin-right: 16px;
+}
+
+.file-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.file-name {
+  font-weight: 500;
+  font-size: 16px;
+}
+
+.file-status {
+  color: #52c41a;
+  font-size: 14px;
+}
