@@ -134,7 +134,10 @@ const ArxmlViewer: React.FC = () => {
         <SWCompDetails componentUuid={selectedComponentUuid} componentName={selectedComponentName || undefined} />
       )}
       {selectedComponentUuid && detailViewMode === 'tree' && (
-        <SWCompDetailsTree componentUuid={selectedComponentUuid} componentName={selectedComponentName || undefined} />
+        <SWCompDetailsTree 
+          componentUuid={selectedComponentUuid} 
+          componentName={selectedComponentName || undefined} 
+        />
       )}
     </div>
   );

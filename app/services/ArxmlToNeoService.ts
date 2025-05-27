@@ -6,6 +6,7 @@ This approach ensures that references are linked to the correct target nodes bas
  */
 import neo4j from "neo4j-driver";
 import { parseStringPromise } from "xml2js";
+import { QueryResult, RecordShape } from 'neo4j-driver';
 
 const URI = "neo4j://localhost";
 const USER = "neo4j";
@@ -741,7 +742,7 @@ export const getComponentRelations = async (uuid: string) => {
     const result = await session.run(
       `MATCH (n)
        WHERE n.uuid = $uuid
-       MATCH (n)-[r]-(m)
+       MATCH (n)-[r]->(m)
        RETURN
          type(r) AS relationshipType,
          startNode(r).name AS sourceName,
@@ -772,6 +773,69 @@ export const getComponentRelations = async (uuid: string) => {
       error: errorMessage,
       data: [],
     };
+  } finally {
+    await session.close();
+  }
+};
+
+// Updated interface to match the new query's return fields
+export interface AssemblyContextInfo extends RecordShape {
+  assemblySWConnectorName: string | null;
+  assemblySWConnectorUUID: string | null;
+  swComponentName: string | null;
+  swComponentUUID: string | null;
+  // swComponentType is no longer directly returned by this specific query,
+  // but we might need to fetch it separately or adjust if it's crucial.
+  // For now, let's assume we can get it from the swCompPro node if needed, or it's less critical for this view.
+}
+
+export const getAssemblyContextForPPort = async (pPortUuid: string): Promise<QueryResult<AssemblyContextInfo>> => {
+  // Corrected to use the global driver constant directly
+  const session = driver.session(); 
+  try {
+    // Using the new query provided by the user
+    const result = await session.run<AssemblyContextInfo>(
+      `
+      MATCH (pPortNode:P_PORT_PROTOTYPE {uuid: $pPortUuid})
+      //find the swConnector for this P_PORT
+      MATCH (pPortNode)<-[:\`TARGET-P-PORT-REF\`]-(swConnector:ASSEMBLY_SW_CONNECTOR)
+      //find the SW_COMPONENT_PROTOTYPEs which are connected to the swConnector
+      MATCH (swConnector)-[:\`CONTEXT-COMPONENT-REF\`]->(swCompPro)
+      WHERE swCompPro:SW_COMPONENT_PROTOTYPE OR swCompPro:VirtualArxmlRefTarget
+      RETURN DISTINCT 
+       swConnector.name as assemblySWConnectorName,
+       swConnector.uuid as assemblySWConnectorUUID,
+       swCompPro.name as swComponentName,
+       swCompPro.uuid as swComponentUUID
+      `,
+      { pPortUuid }
+    );
+    return result;
+  } finally {
+    await session.close();
+  }
+};
+
+export const getAssemblyContextForRPort = async (rPortUuid: string): Promise<QueryResult<AssemblyContextInfo>> => {
+  const session = driver.session();
+  try {
+    const result = await session.run<AssemblyContextInfo>(
+      `
+      MATCH (rPortNode:R_PORT_PROTOTYPE {uuid: $rPortUuid})
+      //find the swConnector for this R_PORT
+      MATCH (rPortNode)<-[:\`TARGET-R-PORT-REF\`]-(swConnector:ASSEMBLY_SW_CONNECTOR)
+      //find the SW_COMPONENT_PROTOTYPEs which are connected to the swConnector
+      MATCH (swConnector)-[:\`CONTEXT-COMPONENT-REF\`]->(swCompPro)
+      WHERE swCompPro:SW_COMPONENT_PROTOTYPE OR swCompPro:VirtualArxmlRefTarget
+      RETURN DISTINCT 
+       swConnector.name as assemblySWConnectorName,
+       swConnector.uuid as assemblySWConnectorUUID,
+       swCompPro.name as swComponentName,
+       swCompPro.uuid as swComponentUUID
+      `,
+      { rPortUuid }
+    );
+    return result;
   } finally {
     await session.close();
   }
