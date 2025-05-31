@@ -26,6 +26,7 @@ const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void
   const [searchText, setSearchText] = useState('');
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionProgress, setExtractionProgress] = useState(0);
+  const [progressPhase, setProgressPhase] = useState<string>('');
   const [messageApi, contextHolder] = message.useMessage();
 
   // Helper: Recursively scan directory for .arxml files
@@ -87,7 +88,11 @@ const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void
   };
 
   const handleSelectAll = (select: boolean) => {
-    const updatedFiles = files.map(file => ({ ...file, selected: select }));
+    // Only update the files that are currently visible (filtered)
+    const filteredFileIds = new Set(filteredFiles.map(file => file.id));
+    const updatedFiles = files.map(file => 
+      filteredFileIds.has(file.id) ? { ...file, selected: select } : file
+    );
     setFiles(updatedFiles);
     applyFilters(searchText, selectedFilter, updatedFiles);
   };
@@ -100,11 +105,22 @@ const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void
   const applyFilters = (searchValue: string, filter: FilterType, filesToFilter = files) => {
     let filtered = filesToFilter;
     if (searchValue) {
-      const searchLower = searchValue.toLowerCase();
-      filtered = filtered.filter(file =>
-        file.name.toLowerCase().includes(searchLower) ||
-        file.path.toLowerCase().includes(searchLower)
-      );
+      const searchTerms = searchValue
+        .split(',')
+        .map(term => term.trim().toLowerCase())
+        .filter(term => term.length > 0);
+      
+      if (searchTerms.length > 0) {
+        filtered = filtered.filter(file => {
+          const fileName = file.name.toLowerCase();
+          const filePath = file.path.toLowerCase();
+          
+          // Check if any of the search terms match the file name or path
+          return searchTerms.some(term => 
+            fileName.includes(term) || filePath.includes(term)
+          );
+        });
+      }
     }
     if (filter === 'selected') {
       filtered = filtered.filter(file => file.selected);
@@ -122,6 +138,7 @@ const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void
     }
 
     setExtractionProgress(0); // Reset for a new import
+    setProgressPhase('Initializing...');
     setIsExtracting(true);    // Show progress bar and disable buttons
     const messageKey = 'importingStatus'; // Use a consistent key for the message
     messageApi.loading({ content: 'Initializing import...', key: messageKey, duration: 0 }); // duration 0 makes it sticky
@@ -129,6 +146,7 @@ const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void
     // Optional: Give a slight delay for the UI to update and show 0% progress before moving
     await new Promise(resolve => setTimeout(resolve, 100));
     setExtractionProgress(10); // Indicate start of process
+    setProgressPhase('Preparing files...');
     messageApi.loading({ content: 'Preparing selected files (10%)...', key: messageKey, duration: 0 });
 
     let importSuccessful = false;
@@ -141,23 +159,33 @@ const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void
         })
       );
       setExtractionProgress(30); // Files prepared for upload
+      setProgressPhase('Sending to server...');
       messageApi.loading({ content: 'Files ready. Sending to server for processing (30%)...', key: messageKey, duration: 0 });
 
-      // Single call to the backend with all selected file contents
-      // The message above will persist while the backend is working.
-      const neoResult = await uploadArxmlToNeo4j(filesToUpload);
+      // Progress callback function to receive real-time updates from backend
+      const progressCallback = (progress: number, phase: string) => {
+        setExtractionProgress(Math.round(progress));
+        setProgressPhase(phase);
+        messageApi.loading({ 
+          content: `${phase} (${Math.round(progress)}%)...`, 
+          key: messageKey, 
+          duration: 0 
+        });
+      };
+
+      // Single call to the backend with progress callback
+      const neoResult = await uploadArxmlToNeo4j(filesToUpload, progressCallback);
       
       // Backend processing is finished, now update progress and message
-      setExtractionProgress(90); 
-      messageApi.loading({ content: 'Server processing complete. Finalizing import (90%)...', key: messageKey, duration: 0 });
-
+      setExtractionProgress(100); 
+      setProgressPhase('Import complete!');
+      
       if (neoResult.success) {
         messageApi.success({
-          content: `Successfully imported ${filesToUpload.length} file(s). ${neoResult.nodeCount} nodes, ${neoResult.relationshipCount} relationships created. Files: ${neoResult.fileNames?.join(', ')}`,
+          content: `Successfully imported ${filesToUpload.length} file(s). ${neoResult.nodeCount} nodes, ${neoResult.relationshipCount} relationships created.`,
           key: messageKey, // This will replace the loading message
           duration: 5,
         });
-        setExtractionProgress(100); // Done
         importSuccessful = true;
       } else {
         messageApi.error({
@@ -178,6 +206,7 @@ const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void
       setIsExtracting(false); // Hide progress bar controls, buttons re-enabled
       if (!importSuccessful) {
         setExtractionProgress(0); // Ensure progress is reset if import failed or was incomplete
+        setProgressPhase('');
         // If the error message didn't replace the loading message (e.g., due to an early crash not caught by try/catch),
         // ensure it's cleared. However, the above error handlers should cover this by using the same key.
       }
@@ -311,7 +340,7 @@ const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void
                 
               </Space>
               <Search
-                placeholder="Search by filename or path..."
+                placeholder="Search by filename or path... (use commas to separate multiple terms)"
                 allowClear
                 enterButton={<SearchOutlined />}
                 value={searchText}
@@ -323,10 +352,14 @@ const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void
               {/* Progress bar moved here, above the table */}
               {isExtracting && (
                 <div style={{ margin: '16px 0' }}>
+                  <div style={{ marginBottom: '8px', fontSize: '14px', color: '#666' }}>
+                    {progressPhase || 'Processing...'}
+                  </div>
                   <Progress 
                     percent={extractionProgress} 
                     status={extractionProgress === 100 ? "success" : "active"}
-                    showInfo={true} 
+                    showInfo={true}
+                    strokeColor={extractionProgress === 100 ? '#52c41a' : '#1890ff'}
                   />
                 </div>
               )}

@@ -98,3 +98,62 @@ MATCH (m)
 WHERE m.shortName = 'yyy'
 MATCH p = (n)-[*1..4]-(m)
 RETURN n, m, p
+
+//find the SW_COMPONENT_PROTOTYPE
+match (swcProto:SW_COMPONENT_PROTOTYPE) where swcProto.uuid="4B1C3AE1-911D-4A6D-874B-A8DC647536C5"
+//find all ASSEMBLY_SW_CONNECTORs
+MATCH (swcProto)<-[:`CONTEXT-COMPONENT-REF`]-(swConnector:ASSEMBLY_SW_CONNECTOR)
+//find all SW_COMPONENT_PROTOTYPE with a CONTEXT-COMPONENT-REF relation
+MATCH (swConnector)-[:`CONTEXT-COMPONENT-REF`]->(ProviderSwcProto:SW_COMPONENT_PROTOTYPE)
+RETURN swcProto, swConnector, ProviderSwcProto
+
+//find the SW Component in Scope
+MATCH (swcProtoInScope:SW_COMPONENT_PROTOTYPE) where swcProtoInScope.uuid="4B1C3AE1-911D-4A6D-874B-A8DC647536C5"
+//find the Application SW component of the SW Component in Scope
+MATCH (swcProtoInScope)-[:`TYPE-TREF`]->(swcAppInScope)
+//find all ASSEMBLY_SW_CONNECTORs
+MATCH (swcProtoInScope)<-[:`CONTEXT-COMPONENT-REF`]-(swConnector:ASSEMBLY_SW_CONNECTOR)
+//find all SW_COMPONENT_PROTOTYPE with a CONTEXT-COMPONENT-REF relation (this are the partners)
+MATCH (swConnector)-[:`CONTEXT-COMPONENT-REF`]->(PartnerSwcProto:SW_COMPONENT_PROTOTYPE)
+//find the Application SW component or COMPOSITION_SW_COMPONENT of the Provider SWC Prototype 
+MATCH (PartnerSwcProto)-[:`TYPE-TREF`]->(ProviderAppSWC)
+//find the Target Provider Port
+MATCH (swConnector)-[:`TARGET-P-PORT-REF`]->(TargetPPort)
+//find the Target Receiver Port
+MATCH (swConnector)-[:`TARGET-R-PORT-REF`]->(TargetRPort)
+//find the provided interface of the Provider P Port (optional to get the interfaces for the connection)
+MATCH (TargetPPort)-[:`PROVIDED-INTERFACE-TREF`]->(ProvideInterface)
+//some R-Ports do not have a connection to Assembly SW connectors so find them
+//they are R-PORTs which DO nat have a TARGET-R-PORT-REF to a ASSEMBLY_SW_CONNECTOR
+MATCH (swcAppInScope)-[:CONTAINS]->(RPortsWithoutSWConnector:R_PORT_PROTOTYPE)
+WHERE NOT EXISTS {
+    MATCH (swConnector)-[:`TARGET-R-PORT-REF`]->(RPortsWithoutSWConnector)
+}
+//for RPorts without SW connector find the Required Interface
+MATCH (RPortsWithoutSWConnector)-[:`REQUIRED-INTERFACE-TREF`]->(RPortsWithoutSWConnectorReqiredInterface)
+//for the additional R port interface find the souce (this is for example a certain interface type)
+//RPortsWithoutSWConnectorReqiredInterface short is RPortsWOswConReqInter
+MATCH (RPortsWithoutSWConnectorReqiredInterface)<-[:CONTAINS]-(RPortsWOswConReqInterGroup)
+//finaly get the partner
+MATCH (RPortsWOswConReqInterGroup)<-[:CONTAINS]-(PartnerForRPortsWOswCon) 
+//RETURN TargetRPort
+RETURN  swcProtoInScope, swConnector, PartnerSwcProto, TargetPPort, TargetRPort, swcAppInScope, ProviderAppSWC, ProvideInterface, RPortsWithoutSWConnector, RPortsWithoutSWConnectorReqiredInterface, RPortsWOswConReqInterGroup, PartnerForRPortsWOswCon
+
+
+//find the SW Component in Scope and all related partners and interfaces
+MATCH (swcProtoInScope:SW_COMPONENT_PROTOTYPE) where swcProtoInScope.uuid="4B1C3AE1-911D-4A6D-874B-A8DC647536C5"
+//find the Application SW component of the SW Component in Scope
+MATCH (swcProtoInScope)-[:`TYPE-TREF`]->(swcAppInScope)
+MATCH (swcAppInScope)-[:CONTAINS]->(swcAppInScopePPorts:P_PORT_PROTOTYPE)
+MATCH (swcAppInScope)-[:CONTAINS]->(swcAppInScopeRPorts:R_PORT_PROTOTYPE)
+OPTIONAL MATCH (swcAppInScopePPorts)<-[:`TARGET-P-PORT-REF`]-(swConnectorPPorts)
+OPTIONAL MATCH (swcAppInScopeRPorts)<-[:`TARGET-R-PORT-REF`]-(swConnectorRPorts)
+//find the partner ports
+OPTIONAL MATCH (swConnectorPPorts)-[:`TARGET-R-PORT-REF`]->(partnerRPort)
+OPTIONAL MATCH (swConnectorRPorts)-[:`TARGET-P-PORT-REF`]->(partnerPPort)
+//find the partner SWC 
+OPTIONAL MATCH (partnerRPort)<-[:CONTAINS]-(RPartner)
+OPTIONAL MATCH (partnerPPort)<-[:CONTAINS]-(PPartner)
+//find the swc protos of component in context and the partner
+//OPTIONAL MATCH (partnerPPort)-[:`CONTEXT-COMPONENT-REF`]->(swcProtos)
+RETURN swcProtoInScope, swcAppInScope, swcAppInScopePPorts, swcAppInScopeRPorts, swConnectorRPorts, swConnectorPPorts, partnerPPort, partnerRPort, RPartner, PPartner

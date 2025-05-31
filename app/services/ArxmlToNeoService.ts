@@ -8,6 +8,40 @@ import neo4j from "neo4j-driver";
 import { parseStringPromise } from "xml2js";
 import { QueryResult, RecordShape } from 'neo4j-driver';
 
+// Add type definitions
+interface ArxmlFileContent {
+  name: string;
+  content: string;
+}
+
+interface Neo4jNode {
+  uuid: string;
+  label: string;
+  props: Record<string, any>;
+}
+
+interface Neo4jRelationship {
+  from: string;
+  to: string;
+  type: string;
+  props?: Record<string, any>;
+}
+
+interface PendingReference {
+  from: string;
+  toPath: string;
+  type: string;
+  props?: Record<string, any>;
+}
+
+interface UnresolvedReference {
+  sourceUuid: string;
+  targetPath: string;
+  relationshipType: string;
+  destinationAttribute: string;
+  reason: string;
+}
+
 const URI = "neo4j://localhost";
 const USER = "neo4j";
 const PASSWORD = "testtest"; // Make sure to use environment variables for credentials in production
@@ -47,8 +81,6 @@ const SPECIFIC_NODE_LABELS = {
   VIRTUAL_REF_NODE_LABEL: "VirtualArxmlRefTarget", // Label for virtually created nodes from unresolved refs
   // Add other specific, non-XML-tag-derived labels here if needed
 };
-
-const GENERIC_NODE_LABEL = "ArxmlElement"; // All created nodes will have this label
 
 const RELATIONSHIP_TYPES = {
   CONTAINS: "CONTAINS", // Parent element contains child element
@@ -231,7 +263,7 @@ function recursiveExtractLogic(
                     refPath = refItem;
                 } else if (refItem && typeof refItem === 'object') {
                     // Case: <DATA-ELEMENT-REF DEST="TYPE">/path/to/it</DATA-ELEMENT-REF>
-                    // Text content might be in \'_\' or \'CONTENT\' (xml2js specific, depends on charkey).
+                    // Text content might be in \'_\' or \'CONTENT\' (xml2js specific, depends on
                     refPath = refItem._ || refItem.CONTENT;
                     // DEST attribute might be in \'$\' (if mergeAttrs caused collision) or directly.
                     refDest = (refItem.$ && refItem.$.DEST) || refItem.DEST;
@@ -418,8 +450,12 @@ function mergeParsedArxmlObjects(parsedObjects) {
 /**
  * Upload ARXML content from multiple files to Neo4j
  * @param {Array<{name: string, content: string}>} arxmlFileContents Array of objects, each with file name and XML string content
+ * @param {Function} progressCallback Optional callback function to report progress: (progress: number, phase: string) => void
  */
-export const uploadArxmlToNeo4j = async (arxmlFileContents) => {
+export const uploadArxmlToNeo4j = async (
+  arxmlFileContents: ArxmlFileContent[], 
+  progressCallback?: (progress: number, phase: string) => void
+) => {
   if (!arxmlFileContents || arxmlFileContents.length === 0) {
     // console.error("No ARXML file contents provided for upload."); // Removed
     return {
@@ -431,13 +467,24 @@ export const uploadArxmlToNeo4j = async (arxmlFileContents) => {
     };
   }
 
-  const parsedObjects = [];
-  const fileNames = [];
-  let extractionResult = { nodes: [], relationships: [], unresolvedReferences: [] }; // Initialize with empty extraction result
+  const parsedObjects: any[] = [];
+  const fileNames: string[] = [];
+  let extractionResult: { nodes: Neo4jNode[], relationships: Neo4jRelationship[], unresolvedReferences: UnresolvedReference[] } = { nodes: [], relationships: [], unresolvedReferences: [] }; // Initialize with empty extraction result
 
   try {
-    for (const fileContent of arxmlFileContents) {
+    // Report initial parsing progress
+    if (progressCallback) progressCallback(35, 'Starting ARXML file parsing');
+    
+    for (let i = 0; i < arxmlFileContents.length; i++) {
+      const fileContent = arxmlFileContents[i];
       fileNames.push(fileContent.name);
+      
+      // Report progress per file
+      if (progressCallback) {
+        const fileProgress = 35 + (i / arxmlFileContents.length) * 15; // 35% to 50%
+        progressCallback(fileProgress, `Parsing file ${i + 1}/${arxmlFileContents.length}: ${fileContent.name}`);
+      }
+      
       const parsed = await parseStringPromise(fileContent.content, {
         explicitArray: false,
         mergeAttrs: true,
@@ -447,6 +494,7 @@ export const uploadArxmlToNeo4j = async (arxmlFileContents) => {
       parsedObjects.push(parsed);
     }
 
+    if (progressCallback) progressCallback(50, 'Merging parsed ARXML data');
     const mergedParsedData = mergeParsedArxmlObjects(parsedObjects);
     if (!mergedParsedData) {
       // console.error("Failed to merge parsed ARXML data or no valid data found."); // Removed
@@ -459,10 +507,13 @@ export const uploadArxmlToNeo4j = async (arxmlFileContents) => {
       };
     }
 
+    if (progressCallback) progressCallback(55, 'Extracting nodes and relationships from merged data');
     // console.log("Extracting nodes and relationships from merged ARXML data..."); // Removed
     extractionResult = extractArxmlNodesAndRelationships(mergedParsedData);
     const { nodes, relationships, unresolvedReferences } = extractionResult;
     // console.log(`Extracted ${nodes.length} nodes and ${relationships.length} relationships from ${fileNames.join(', ')}.`); // Removed
+
+    if (progressCallback) progressCallback(60, `Extracted ${nodes.length} nodes and ${relationships.length} relationships`);
 
     if (nodes.length === 0 && relationships.length === 0 && unresolvedReferences.length === 0) {
       // console.warn("No significant nodes, relationships, or unresolved references extracted. Check ARXML structure or extraction logic."); // Removed
@@ -478,44 +529,83 @@ export const uploadArxmlToNeo4j = async (arxmlFileContents) => {
 
     const session = driver.session();
     try {
+      if (progressCallback) progressCallback(65, 'Clearing existing data from database');
       // Clear existing data BEFORE starting the transaction or creating indexes
       await session.run('MATCH (n) DETACH DELETE n');
 
-      // Index creation can remain outside the main transaction as it's idempotent and typically fast.
-      await session.run(`CREATE INDEX arxml_element_uuid IF NOT EXISTS FOR (n:${GENERIC_NODE_LABEL}) ON (n.uuid)`);
-      await session.run(`CREATE INDEX arxml_element_shortname IF NOT EXISTS FOR (n:${GENERIC_NODE_LABEL}) ON (n.shortName)`);
+      if (progressCallback) progressCallback(70, 'Creating database indexes for performance');
+      // PERFORMANCE FIX: Limit index creation to avoid slowdown
+      // Creating indexes for every unique label can result in hundreds of indexes for large ARXML files
+      // Only create indexes for the most commonly queried node types
+      const commonlyQueriedLabels = [
+        'SW_COMPONENT_PROTOTYPE',
+        'APPLICATION_SW_COMPONENT_TYPE', 
+        'P_PORT_PROTOTYPE',
+        'R_PORT_PROTOTYPE',
+        'AR_PACKAGE',
+        'ASSEMBLY_SW_CONNECTOR',
+        'DATA_ELEMENT'
+      ];
+      
+      const uniqueLabels = [...new Set(nodes.map(node => node.label))];
+      const labelsToIndex = commonlyQueriedLabels.filter(label => uniqueLabels.includes(label));
+      
+      // Create indexes only for commonly queried labels
+      for (let i = 0; i < labelsToIndex.length; i++) {
+        const label = labelsToIndex[i];
+        if (progressCallback) {
+          const indexProgress = 70 + (i / labelsToIndex.length) * 5; // 70% to 75%
+          progressCallback(indexProgress, `Creating index for ${label}`);
+        }
+        await session.run(`CREATE INDEX ${label.toLowerCase()}_uuid_index IF NOT EXISTS FOR (n:${label}) ON (n.uuid)`);
+        await session.run(`CREATE INDEX ${label.toLowerCase()}_shortname_index IF NOT EXISTS FOR (n:${label}) ON (n.shortName)`);
+      }
+      
+      if (progressCallback) progressCallback(75, 'Creating virtual node index');
+      // Index creation for virtual nodes
       await session.run(`CREATE INDEX arxml_virtual_ref_uuid IF NOT EXISTS FOR (n:${SPECIFIC_NODE_LABELS.VIRTUAL_REF_NODE_LABEL}) ON (n.uuid)`);
 
       const importTimestamp = new Date().toISOString();
 
+      if (progressCallback) progressCallback(77, 'Starting database transaction');
       // Use a single write transaction for all data modifications
       await session.writeTransaction(async txc => {
+        if (progressCallback) progressCallback(80, 'Uploading nodes to database');
         // Batch Node Creation
         // console.log("Creating/updating nodes in Neo4j..."); // Removed
-        const nodesByLabel = nodes.reduce((acc, node) => {
+        const nodesByLabel: Record<string, Array<{ uuid: string, props: Record<string, any> }>> = nodes.reduce((acc, node) => {
           acc[node.label] = acc[node.label] || [];
           acc[node.label].push({ uuid: node.uuid, props: node.props });
           return acc;
-        }, {});
+        }, {} as Record<string, Array<{ uuid: string, props: Record<string, any> }>>);
 
+        let processedNodeLabels = 0;
+        const totalNodeLabels = Object.keys(nodesByLabel).length;
+        
         for (const specificLabel in nodesByLabel) {
           const batch = nodesByLabel[specificLabel];
           if (batch.length > 0) {
+            if (progressCallback) {
+              const nodeProgress = 80 + (processedNodeLabels / totalNodeLabels) * 5; // 80% to 85%
+              progressCallback(nodeProgress, `Creating ${batch.length} ${specificLabel} nodes`);
+            }
             // console.log(`Processing batch of ${batch.length} nodes for label ${specificLabel}...`); // Removed
             await txc.run(
               `UNWIND $batchData AS item
-               MERGE (n:${GENERIC_NODE_LABEL}:${specificLabel} {uuid: item.uuid})
+               MERGE (n:${specificLabel} {uuid: item.uuid})
                ON CREATE SET n = item.props, n.uuid = item.uuid
                ON MATCH SET n += item.props`,
               { batchData: batch }
             );
+            processedNodeLabels++;
           }
         }
         // console.log(`Nodes processing complete. Total nodes: ${nodes.length}`); // Removed
 
+        if (progressCallback) progressCallback(85, 'Creating relationships');
         // Batch Relationship Creation
         // console.log("Creating/updating relationships in Neo4j..."); // Removed
-        const relsByType = relationships.reduce((acc, rel) => {
+        const relsByType: Record<string, Array<{ from: string, to: string, props: Record<string, any> }>> = relationships.reduce((acc, rel) => {
           const originalRelType = rel.type; // MODIFIED: Use rel.type directly
           acc[originalRelType] = acc[originalRelType] || [];
           acc[originalRelType].push({
@@ -524,42 +614,53 @@ export const uploadArxmlToNeo4j = async (arxmlFileContents) => {
             props: rel.props || {}
           });
           return acc;
-        }, {});
+        }, {} as Record<string, Array<{ from: string, to: string, props: Record<string, any> }>>);
+
+        let processedRelTypes = 0;
+        const totalRelTypes = Object.keys(relsByType).length;
 
         for (const originalRelType in relsByType) { // MODIFIED: Iterate using originalRelType
           const batch = relsByType[originalRelType];
           if (batch.length > 0) {
+            if (progressCallback) {
+              const relProgress = 85 + (processedRelTypes / totalRelTypes) * 3; // 85% to 88%
+              progressCallback(relProgress, `Creating ${batch.length} ${originalRelType} relationships`);
+            }
             // console.log(`Processing batch of ${batch.length} \'${originalRelType}\' relationships...`); // Removed
             await txc.run(
               `UNWIND $batchData AS item
-               MATCH (a:${GENERIC_NODE_LABEL} {uuid: item.from})
-               MATCH (b:${GENERIC_NODE_LABEL} {uuid: item.to})
+               MATCH (a {uuid: item.from})
+               MATCH (b {uuid: item.to})
                MERGE (a)-[r:\`${originalRelType}\`]->(b) // MODIFIED: Use originalRelType here
                ON CREATE SET r = item.props
                ON MATCH SET r += item.props`, // item.props is already defaulted to {}
               { batchData: batch }
             );
+            processedRelTypes++;
           }
         }
         // console.log(`Relationships processing complete. Total relationships: ${relationships.length}`); // Removed
 
         // Batch Virtual Node and Relationship Creation
         if (unresolvedReferences && unresolvedReferences.length > 0) {
+          if (progressCallback) progressCallback(88, `Processing ${unresolvedReferences.length} unresolved references`);
           // console.log(`\\\\nProcessing ${unresolvedReferences.length} unresolved references to create virtual nodes/links...`); // Removed
 
           const virtualNodeDataMap = new Map(); // Stores { uuidValue, shortNameValue, nameValue, arxmlPathValue }
-          const virtualContainsRels = []; // Stores { fromUuid, toUuid }
-          const finalVirtualRelsByType = {}; // Stores { fromUuid, toUuid, props } grouped by type
+          const virtualContainsRels: Array<{ fromUuid: string, toUuid: string }> = []; // Stores { fromUuid, toUuid }
+          const finalVirtualRelsByType: Record<string, Array<{ fromUuid: string, toUuid: string, props: Record<string, any> }>> = {}; // Stores { fromUuid, toUuid, props } grouped by type
 
           for (const unresolvedRef of unresolvedReferences) {
-            const { sourceUuid, targetPath, relationshipType, props: originalRelProps } = unresolvedRef;
+            const { sourceUuid, targetPath, relationshipType } = unresolvedRef;
+            // Note: UnresolvedReference doesn't have props, so we'll use empty object
+            const originalRelProps = {};
             if (!targetPath || !targetPath.startsWith('/')) {
               // console.warn(`Skipping unresolved reference from ${sourceUuid} with invalid targetPath: ${targetPath}`); // Removed
               continue;
             }
 
             const pathSegments = targetPath.substring(1).split('/');
-            let previousSegmentVirtualNodeUuid = null;
+            let previousSegmentVirtualNodeUuid: string | null = null;
             let currentCumulativePath = "";
 
             for (const segmentName of pathSegments) {
@@ -594,10 +695,11 @@ export const uploadArxmlToNeo4j = async (arxmlFileContents) => {
 
           const virtualNodesToCreate = Array.from(virtualNodeDataMap.values());
           if (virtualNodesToCreate.length > 0) {
+            if (progressCallback) progressCallback(89, `Creating ${virtualNodesToCreate.length} virtual nodes`);
             // console.log(`Processing batch of ${virtualNodesToCreate.length} virtual nodes...`); // Removed
             await txc.run(
               `UNWIND $batchData AS item
-               MERGE (n:${GENERIC_NODE_LABEL}:${SPECIFIC_NODE_LABELS.VIRTUAL_REF_NODE_LABEL} {uuid: item.uuidValue})
+               MERGE (n:${SPECIFIC_NODE_LABELS.VIRTUAL_REF_NODE_LABEL} {uuid: item.uuidValue})
                ON CREATE SET n.shortName = item.shortNameValue, n.name = item.nameValue, n.arxmlPath = item.arxmlPathValue, n.isVirtual = true, n.originalXmlTag = 'VirtualSegment'
                ON MATCH SET n.isVirtual = true, n.originalXmlTag = 'VirtualSegment'`,
               { batchData: virtualNodesToCreate }
@@ -606,6 +708,7 @@ export const uploadArxmlToNeo4j = async (arxmlFileContents) => {
           }
 
           if (virtualContainsRels.length > 0) {
+            if (progressCallback) progressCallback(90, `Creating ${virtualContainsRels.length} virtual relationships`);
             // console.log(`Processing batch of ${virtualContainsRels.length} virtual CONTAINS relationships...`); // Removed
             await txc.run(
               `UNWIND $batchData AS item
@@ -623,7 +726,7 @@ export const uploadArxmlToNeo4j = async (arxmlFileContents) => {
               // console.log(`Processing batch of ${batch.length} final virtual \'${safeRelType}\' relationships...`); // Removed
               await txc.run(
                 `UNWIND $batchData AS item
-                 MATCH (a:${GENERIC_NODE_LABEL} {uuid: item.fromUuid})
+                 MATCH (a {uuid: item.fromUuid})
                  MATCH (b:${SPECIFIC_NODE_LABELS.VIRTUAL_REF_NODE_LABEL} {uuid: item.toUuid})
                  MERGE (a)-[r:\`${safeRelType}\`]->(b) // MODIFIED: Use safeRelType (which is original tag)
                  ON CREATE SET r = item.props
@@ -636,6 +739,7 @@ export const uploadArxmlToNeo4j = async (arxmlFileContents) => {
           // console.log("Virtual nodes and relationships processing complete."); // Removed
         }
 
+        if (progressCallback) progressCallback(92, 'Creating import metadata');
         // Create ImportInfo node
         const importInfoNodeUuid = `IMPORT_INFO_${importTimestamp}`;
         const importInfoNodeProps = {
@@ -658,6 +762,7 @@ export const uploadArxmlToNeo4j = async (arxmlFileContents) => {
         );
         // console.log("ImportInfo node processed."); // Removed
 
+        if (progressCallback) progressCallback(95, 'Completing database transaction');
         // REMOVE THE FOLLOWING BLOCK TO KEEP VIRTUAL NODES
         // // Detach and delete virtual nodes
         // // console.log("Detaching and deleting virtual nodes from Neo4j..."); // Removed
@@ -670,6 +775,8 @@ export const uploadArxmlToNeo4j = async (arxmlFileContents) => {
         // console.log("Neo4j write transaction committed."); // Removed
       }); // End of writeTransaction
 
+      if (progressCallback) progressCallback(98, 'Import completed successfully');
+      
       return {
         success: true,
         message: `Successfully uploaded ARXML data from ${fileNames.join(', ')}.`,
@@ -677,7 +784,7 @@ export const uploadArxmlToNeo4j = async (arxmlFileContents) => {
         relationshipCount: relationships.length,
         unresolvedReferences: unresolvedReferences,
       };
-    } catch (error) {
+    } catch (error: any) {
       // console.error("Error during Neo4j session transaction:", error); // Removed
       return {
         success: false,
@@ -689,7 +796,7 @@ export const uploadArxmlToNeo4j = async (arxmlFileContents) => {
     } finally {
       await session.close();
     }
-  } catch (error) {
+  } catch (error: any) {
     // console.error("Error parsing or processing ARXML files:", error); // Removed
     return {
       success: false,
@@ -713,7 +820,12 @@ export const getApplicationSwComponents = async () => {
   const session = driver.session();
   try {
     const result = await session.run(
-      'MATCH (n:APPLICATION_SW_COMPONENT_TYPE) RETURN n.name AS name, n.uuid AS uuid, n.arxmlPath AS arxmlPath ORDER BY n.name'
+      `MATCH (n:APPLICATION_SW_COMPONENT_TYPE) 
+       RETURN n.name AS name, n.uuid AS uuid, n.arxmlPath AS arxmlPath, labels(n)[0] AS componentType
+       UNION
+       MATCH (n:SERVICE_SW_COMPONENT_TYPE) 
+       RETURN n.name AS name, n.uuid AS uuid, n.arxmlPath AS arxmlPath, labels(n)[0] AS componentType
+       ORDER BY name`
     );
     return {
       success: true,
@@ -721,13 +833,14 @@ export const getApplicationSwComponents = async () => {
         name: record.get('name'),
         uuid: record.get('uuid'),
         arxmlPath: record.get('arxmlPath'),
+        componentType: record.get('componentType'),
       })),
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return {
       success: false,
-      message: "Error fetching APPLICATION_SW_COMPONENT_TYPE nodes.",
+      message: "Error fetching APPLICATION_SW_COMPONENT_TYPE and SERVICE_SW_COMPONENT_TYPE nodes.",
       error: errorMessage,
       data: [],
     };
@@ -742,15 +855,15 @@ export const getComponentRelations = async (uuid: string) => {
     const result = await session.run(
       `MATCH (n)
        WHERE n.uuid = $uuid
-       MATCH (n)-[r]->(m)
+       MATCH (n)<-[r]->(m)
        RETURN
          type(r) AS relationshipType,
          startNode(r).name AS sourceName,
          startNode(r).uuid AS sourceUuid,
-         head([label IN labels(startNode(r)) WHERE label <> 'ArxmlElement']) AS sourceType,
+         labels(startNode(r))[0] AS sourceType,
          endNode(r).name AS targetName,
          endNode(r).uuid AS targetUuid,
-         head([label IN labels(endNode(r)) WHERE label <> 'ArxmlElement']) AS targetType`,
+         labels(endNode(r))[0] AS targetType`,
       { uuid }
     );
     return {
@@ -784,9 +897,7 @@ export interface AssemblyContextInfo extends RecordShape {
   assemblySWConnectorUUID: string | null;
   swComponentName: string | null;
   swComponentUUID: string | null;
-  // swComponentType is no longer directly returned by this specific query,
-  // but we might need to fetch it separately or adjust if it's crucial.
-  // For now, let's assume we can get it from the swCompPro node if needed, or it's less critical for this view.
+  swComponentType: string | null;
 }
 
 export const getAssemblyContextForPPort = async (pPortUuid: string): Promise<QueryResult<AssemblyContextInfo>> => {
@@ -802,11 +913,15 @@ export const getAssemblyContextForPPort = async (pPortUuid: string): Promise<Que
       //find the SW_COMPONENT_PROTOTYPEs which are connected to the swConnector
       MATCH (swConnector)-[:\`CONTEXT-COMPONENT-REF\`]->(swCompPro)
       WHERE swCompPro:SW_COMPONENT_PROTOTYPE OR swCompPro:VirtualArxmlRefTarget
+      //find the APPLICATION_SW_COMPONENT_TYPE which is connected for filtering out
+      MATCH (containingSwc:APPLICATION_SW_COMPONENT_TYPE) -[:CONTAINS]->(pPortNode)
+      WHERE swCompPro.name <> containingSwc.name
       RETURN DISTINCT 
        swConnector.name as assemblySWConnectorName,
        swConnector.uuid as assemblySWConnectorUUID,
        swCompPro.name as swComponentName,
-       swCompPro.uuid as swComponentUUID
+       swCompPro.uuid as swComponentUUID,
+       labels(swCompPro)[0] as swComponentType
       `,
       { pPortUuid }
     );
@@ -827,15 +942,326 @@ export const getAssemblyContextForRPort = async (rPortUuid: string): Promise<Que
       //find the SW_COMPONENT_PROTOTYPEs which are connected to the swConnector
       MATCH (swConnector)-[:\`CONTEXT-COMPONENT-REF\`]->(swCompPro)
       WHERE swCompPro:SW_COMPONENT_PROTOTYPE OR swCompPro:VirtualArxmlRefTarget
+      //find the APPLICATION_SW_COMPONENT_TYPE which is connected for filtering out
+      MATCH (containingSwc:APPLICATION_SW_COMPONENT_TYPE) -[:CONTAINS]->(rPortNode)
+      WHERE swCompPro.name <> containingSwc.name
       RETURN DISTINCT 
        swConnector.name as assemblySWConnectorName,
        swConnector.uuid as assemblySWConnectorUUID,
        swCompPro.name as swComponentName,
-       swCompPro.uuid as swComponentUUID
+       swCompPro.uuid as swComponentUUID,
+       labels(swCompPro)[0] as swComponentType
       `,
       { rPortUuid }
     );
     return result;
+  } finally {
+    await session.close();
+  }
+};
+
+export interface ComponentVisualizationNode {
+  id: string;
+  name: string;
+  type: string;
+  label: string;
+  properties: Record<string, any>;
+}
+
+export interface ComponentVisualizationRelationship {
+  id: string;
+  source: string;
+  target: string;
+  type: string;
+  properties: Record<string, any>;
+}
+
+export interface ComponentVisualizationResult {
+  nodes: ComponentVisualizationNode[];
+  relationships: ComponentVisualizationRelationship[];
+  metadata: {
+    totalNodes: number;
+    totalRelationships: number;
+    componentName: string;
+    centerComponentId: string;
+  };
+}
+
+export const getComponentDependencyGraph = async (swcProtoUuid: string): Promise<{
+  success: boolean;
+  data?: ComponentVisualizationResult;
+  message?: string;
+  error?: string;
+}> => {
+  const session = driver.session();
+  
+  try {
+    console.log(`🔍 Fetching component dependency graph for UUID: ${swcProtoUuid}`);
+    
+    const result = await session.run(
+      `// Find the SW Component in Scope
+       MATCH (swcProtoInScope:SW_COMPONENT_PROTOTYPE)
+       WHERE swcProtoInScope.uuid = $swcProtoUuid
+
+       // Find the Application SW component of the SW Component in Scope
+      OPTIONAL MATCH (swcProtoInScope)-[rel_type_tref1:\`TYPE-TREF\`]->(swcAppInScope)
+
+       // Find all ASSEMBLY_SW_CONNECTORS
+      OPTIONAL MATCH (swcProtoInScope)<-[rel_context_comp_ref1:\`CONTEXT-COMPONENT-REF\`]-(swConnector:ASSEMBLY_SW_CONNECTOR)
+
+       // Find all SW_COMPONENT_PROTOTYPE with a CONTEXT-COMPONENT-REF relation (these are the partners)
+      OPTIONAL MATCH (swConnector)-[rel_context_comp_ref2:\`CONTEXT-COMPONENT-REF\`]->(PartnerSwcProto:SW_COMPONENT_PROTOTYPE)
+
+       // Find the Application SW component or COMPOSITION_SW_COMPONENT of the Provider SWC Prototype
+      OPTIONAL MATCH (PartnerSwcProto)-[rel_type_tref2:\`TYPE-TREF\`]->(ProviderAppSWC)
+
+       // Find the Target Provider Port
+      OPTIONAL MATCH (swConnector)-[rel_target_p_port:\`TARGET-P-PORT-REF\`]->(TargetPPort)
+
+       // Find the Target Receiver Port
+      OPTIONAL MATCH (swConnector)-[rel_target_r_port:\`TARGET-R-PORT-REF\`]->(TargetRPort)
+
+       // Find the provided interface of the Provider P Port (optional to get the interfaces for the connection)
+      OPTIONAL MATCH (TargetPPort)-[rel_provided_interface:\`PROVIDED-INTERFACE-TREF\`]->(ProvideInterface)
+      
+       // extract all the CONTAINS relations of the ProviderAppSWC and swcAppInScope
+        OPTIONAL MATCH (TargetPPort)<-[rel_TargetPPortContainedBy:\`CONTAINS\`]-(containerNode)
+        WHERE containerNode IN [ProviderAppSWC, swcAppInScope]
+        OPTIONAL MATCH (TargetRPort)-[rel_TargetRPortContainedBy:\`CONTAINS\`]-(containerNodeB)
+        WHERE containerNodeB IN [ProviderAppSWC, swcAppInScope]
+
+       // Some R-Ports do not have a connection to Assembly SW connectors so find them
+       // They are R-PORTs which DO NOT have a TARGET-R-PORT-REF to an ASSEMBLY_SW_CONNECTOR
+       OPTIONAL MATCH (swcAppInScope)-[rel_contains_rport_no_swconn:\`CONTAINS\`]->(RPortsWithoutSWConnector:R_PORT_PROTOTYPE)
+       WHERE NOT EXISTS {
+           MATCH (swConnector)-[:\`TARGET-R-PORT-REF\`]->(RPortsWithoutSWConnector)
+       }
+
+       // For RPorts without SW connector find the Required Interface
+      OPTIONAL MATCH (RPortsWithoutSWConnector)-[rel_required_interface:\`REQUIRED-INTERFACE-TREF\`]->(RPortsWithoutSWConnectorReqiredInterface)
+
+       // For the additional R port interface find the source (this is for example a certain interface type)
+       // RPortsWithoutSWConnectorReqiredInterface short is RPortsWOswConReqInter
+      OPTIONAL MATCH (RPortsWithoutSWConnectorReqiredInterface)<-[rel_contains_interface_group:\`CONTAINS\`]-(RPortsWOswConReqInterGroup)
+
+       // Finally get the partner for these RPorts
+       OPTIONAL MATCH (RPortsWOswConReqInterGroup)<-[rel_contains_partner_for_rport:\`CONTAINS\`]-(PartnerForRPortsWOswCon)
+
+       RETURN DISTINCT
+         swcProtoInScope,
+         swcAppInScope,
+         swConnector,
+         PartnerSwcProto,
+         ProviderAppSWC,
+         TargetPPort,
+         TargetRPort,
+         ProvideInterface,
+         RPortsWithoutSWConnector,
+         RPortsWithoutSWConnectorReqiredInterface,
+         RPortsWOswConReqInterGroup,
+         PartnerForRPortsWOswCon,
+         // Now the relationships
+         rel_type_tref1,
+         rel_context_comp_ref1,
+         rel_context_comp_ref2,
+         rel_type_tref2,
+         rel_target_p_port,
+         rel_target_r_port,
+         rel_provided_interface,
+         rel_contains_rport_no_swconn,
+         rel_required_interface,
+         rel_contains_interface_group,
+         rel_contains_partner_for_rport,
+         rel_TargetPPortContainedBy,
+         rel_TargetRPortContainedBy`,
+      { swcProtoUuid }
+    );
+
+    if (result.records.length === 0) {
+      console.log(`❌ No component found for UUID: ${swcProtoUuid}`);
+      return {
+        success: false,
+        message: `No SW_COMPONENT_PROTOTYPE found with UUID: ${swcProtoUuid}`,
+      };
+    }
+
+    // Process nodes and relationships from the query result
+    const nodesMap = new Map<string, ComponentVisualizationNode>();
+    const relationshipsMap = new Map<string, ComponentVisualizationRelationship>();
+    const neo4jIdToUuidMap = new Map<string, string>(); // Map Neo4j internal ID to UUID
+    let centerComponentName = '';
+    let centerComponentId = '';
+    console.log(`🔍 RESULTS ----------:`, result);
+    result.records.forEach(record => {
+      // Extract nodes
+      const nodeFields = [
+        'swcProtoInScope',
+        'swcAppInScope', 
+        'swConnector',
+        'PartnerSwcProto',
+        'ProviderAppSWC',
+        'TargetPPort',
+        'TargetRPort',
+        'ProvideInterface',
+        'RPortsWithoutSWConnector',
+        'RPortsWithoutSWConnectorReqiredInterface',
+        'RPortsWOswConReqInterGroup',
+        'PartnerForRPortsWOswCon'
+      ];
+
+      nodeFields.forEach(field => {
+        const node = record.get(field);
+        if (node && node.properties) {
+          const nodeUuid = node.properties.uuid;
+          const neo4jInternalId = node.identity.low?.toString() || node.identity.toString();
+          
+          if (nodeUuid && !nodesMap.has(nodeUuid)) {
+            const nodeLabels = node.labels || [];
+            nodesMap.set(nodeUuid, {
+              id: nodeUuid,
+              name: node.properties.name || node.properties.shortName || 'Unnamed',
+              type: nodeLabels[0] || 'Unknown',
+              label: nodeLabels.join(':'),
+              properties: node.properties
+            });
+
+            // Map Neo4j internal ID to UUID for relationship processing
+            neo4jIdToUuidMap.set(neo4jInternalId, nodeUuid);
+
+            // Set center component info
+            if (field === 'swcAppInScope') {
+              centerComponentName = node.properties.name || node.properties.shortName || 'Unnamed';
+              centerComponentId = nodeUuid;
+            }
+          }
+        }
+      });
+
+      // Extract relationships
+      const relationshipFields = [
+        'rel_type_tref1',
+        'rel_context_comp_ref1',
+        'rel_context_comp_ref2',
+        'rel_type_tref2',
+        'rel_target_p_port',
+        'rel_target_r_port',
+        'rel_provided_interface',
+        'rel_contains_rport_no_swconn',
+        'rel_required_interface',
+        'rel_contains_interface_group',
+        'rel_contains_partner_for_rport',
+        'rel_TargetPPortContainedBy',
+        'rel_TargetRPortContainedBy'
+      ];
+
+      relationshipFields.forEach(field => {
+        const relationship = record.get(field);
+        if (relationship && relationship.start && relationship.end) {
+          const startNeo4jId = relationship.start.low?.toString() || relationship.start.toString();
+          const endNeo4jId = relationship.end.low?.toString() || relationship.end.toString();
+          const relationshipNeo4jId = relationship.identity?.low?.toString() || relationship.identity?.toString() || 'unknown';
+          
+          // Map Neo4j internal IDs to UUIDs
+          const sourceUuid = neo4jIdToUuidMap.get(startNeo4jId);
+          const targetUuid = neo4jIdToUuidMap.get(endNeo4jId);
+          
+          if (sourceUuid && targetUuid) {
+            const relId = `${relationshipNeo4jId}_${relationship.type}_${sourceUuid}_${targetUuid}`;
+            if (!relationshipsMap.has(relId)) {
+              relationshipsMap.set(relId, {
+                id: relId,
+                source: sourceUuid,
+                target: targetUuid,
+                type: relationship.type,
+                properties: relationship.properties || {}
+              });
+            }
+          }
+        }
+      });
+    });
+
+    const nodes = Array.from(nodesMap.values());
+    const relationships = Array.from(relationshipsMap.values());
+
+    const resultData = {
+      nodes,
+      relationships,
+      metadata: {
+        totalNodes: nodes.length,
+        totalRelationships: relationships.length,
+        componentName: centerComponentName,
+        centerComponentId: centerComponentId
+      }
+    };
+
+    console.log(`✅ Component dependency graph retrieved:`, {
+      componentName: centerComponentName,
+      totalNodes: nodes.length,
+      totalRelationships: relationships.length,
+      nodeTypes: [...new Set(nodes.map(n => n.type))],
+      relationshipTypes: [...new Set(relationships.map(r => r.type))]
+    });
+
+    return {
+      success: true,
+      data: resultData,
+    };
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error(`❌ Error fetching component dependency graph for UUID ${swcProtoUuid}:`, errorMessage);
+    
+    return {
+      success: false,
+      message: `Error fetching component dependency graph for UUID ${swcProtoUuid}.`,
+      error: errorMessage,
+    };
+  } finally {
+    await session.close();
+  }
+};
+
+export const getAllSwComponentPrototypes = async (): Promise<{
+  success: boolean;
+  data?: Array<{
+    uuid: string;
+    name: string;
+    shortName: string;
+    arxmlPath: string;
+  }>;
+  message?: string;
+  error?: string;
+}> => {
+  const session = driver.session();
+  try {
+    const result = await session.run(
+      `MATCH (swcPrototypes:SW_COMPONENT_PROTOTYPE)
+       RETURN swcPrototypes.uuid AS uuid,
+              swcPrototypes.name AS name,
+              swcPrototypes.shortName AS shortName,
+              swcPrototypes.arxmlPath AS arxmlPath
+       ORDER BY swcPrototypes.name`
+    );
+
+    const swcPrototypes = result.records.map(record => ({
+      uuid: record.get('uuid'),
+      name: record.get('name'),
+      shortName: record.get('shortName'),
+      arxmlPath: record.get('arxmlPath'),
+    }));
+
+    return {
+      success: true,
+      data: swcPrototypes,
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return {
+      success: false,
+      message: "Error fetching SW_COMPONENT_PROTOTYPE nodes.",
+      error: errorMessage,
+    };
   } finally {
     await session.close();
   }

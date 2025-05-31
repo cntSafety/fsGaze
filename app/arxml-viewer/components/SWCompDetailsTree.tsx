@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Tree, Input, Modal, Spin, Alert, Typography } from 'antd';
+import { Tree, Input, Modal, Spin, Alert, Typography, Table } from 'antd';
 import type { GetProps } from 'antd';
 import { DataNode as AntDataNode } from 'antd/es/tree';
 import { getComponentRelations, getAssemblyContextForPPort, getAssemblyContextForRPort, AssemblyContextInfo } from '@/app/services/ArxmlToNeoService';
@@ -9,15 +9,18 @@ import { getComponentRelations, getAssemblyContextForPPort, getAssemblyContextFo
 const { Search } = Input;
 const { Text, Title } = Typography;
 
-// Helper function to extract sortable string from ReactNode title
+// Helper function to extract string from ReactNode title
 const getSortableStringFromTitle = (titleNode: React.ReactNode): string => {
   if (typeof titleNode === 'string') {
     return titleNode;
   }
-  if (React.isValidElement(titleNode) && titleNode.type === React.Fragment && titleNode.props.children) {
-    const childrenArray = React.Children.toArray(titleNode.props.children);
-    if (childrenArray.length > 0 && typeof childrenArray[0] === 'string') {
-      return childrenArray[0];
+  if (React.isValidElement(titleNode) && titleNode.type === React.Fragment) {
+    const props = titleNode.props as { children?: React.ReactNode };
+    if (props.children) {
+      const childrenArray = React.Children.toArray(props.children);
+      if (childrenArray.length > 0 && typeof childrenArray[0] === 'string') {
+        return childrenArray[0];
+      }
     }
   }
   // Fallback for unexpected structures or if direct string extraction fails
@@ -36,8 +39,9 @@ interface RelationInfo {
 }
 
 interface CustomDataNode extends AntDataNode {
-  relationData?: RelationInfo | null;
+  title: React.ReactNode;
   children?: CustomDataNode[];
+  relationData?: RelationInfo | null;
 }
 
 interface SWCompDetailsTreeProps {
@@ -54,6 +58,8 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
   const [autoExpandParent, setAutoExpandParent] = useState(true);
   const [selectedNodeDetails, setSelectedNodeDetails] = useState<RelationInfo | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [modalLoading, setModalLoading] = useState(false);
+  const [modalRelations, setModalRelations] = useState<RelationInfo[]>([]);
 
   const buildTreeData = useCallback(async (relationsData: RelationInfo[]): Promise<CustomDataNode[]> => {
     const rootNode: CustomDataNode = {
@@ -151,7 +157,7 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
             : await getAssemblyContextForRPort(connectedElementUuid);
           
           const assemblyContextRecords = assemblyContextResult.records.map(r => r.toObject() as unknown as AssemblyContextInfo);
-
+          console.log('Assembly context records:', assemblyContextRecords); // For debugging
           if (assemblyContextRecords && assemblyContextRecords.length > 0) {
             const connectorsMap = new Map<string, CustomDataNode>();
             for (const record of assemblyContextRecords) {
@@ -160,6 +166,7 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
                 assemblySWConnectorUUID,
                 swComponentName: asmSwCompName, // Renamed to avoid conflict
                 swComponentUUID: asmSwCompUUID, // Renamed to avoid conflict
+                swComponentType: asmSwCompType, // Get the actual component type from the query
               } = record;
 
               if (!assemblySWConnectorUUID) continue;
@@ -200,7 +207,7 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
                       <>
                         {asmSwCompName || 'Unnamed SW Component'}
                         <Typography.Text type="secondary" style={{ marginLeft: '8px', fontStyle: 'italic', fontSize: '0.9em' }}>
-                          (SW_COMPONENT_PROTOTYPE) {/* Assuming this is the type, adjust if a more specific type is available */}
+                          ({asmSwCompType || 'UNKNOWN_TYPE'})
                         </Typography.Text>
                       </>
                     ),
@@ -209,7 +216,7 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
                     relationData: { 
                       relationshipType: 'ASSEMBLY_CONTEXT',
                       sourceName: assemblySWConnectorName, sourceUuid: assemblySWConnectorUUID, sourceType: 'ASSEMBLY_SW_CONNECTOR',
-                      targetName: asmSwCompName, targetUuid: asmSwCompUUID, targetType: 'SW_COMPONENT_PROTOTYPE' // Or actual type if available
+                      targetName: asmSwCompName, targetUuid: asmSwCompUUID, targetType: asmSwCompType || 'UNKNOWN_TYPE'
                     } as any, 
                   };
                   connectorNode.children!.push(asmComponentNode);
@@ -295,14 +302,64 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
     }
   }, [componentUuid, buildTreeData]); // Removed isIncoming
 
-  const onSelect: GetProps<typeof Tree>['onSelect'] = (selectedKeys, info) => {
+  const onSelect: GetProps<typeof Tree>['onSelect'] = async (selectedKeys, info) => {
     const selectedCustomNode = info.node as CustomDataNode;
-    if (selectedCustomNode.isLeaf && selectedCustomNode.relationData) {
-      setSelectedNodeDetails(selectedCustomNode.relationData);
-      setIsModalVisible(true);
+    
+    // Find the UUID from the relationData or try to extract from the node
+    let elementUuid: string | null = null;
+    let elementName: string = '';
+    
+    if (selectedCustomNode.relationData) {
+      // For nodes with relation data, determine which element to show relations for
+      const relation = selectedCustomNode.relationData;
+      const isSourceOfRelation = relation.sourceUuid === componentUuid;
+      elementUuid = isSourceOfRelation ? relation.targetUuid : relation.sourceUuid;
+      elementName = isSourceOfRelation ? relation.targetName || 'Unknown' : relation.sourceName || 'Unknown';
     } else {
-      setSelectedNodeDetails(null);
-      setIsModalVisible(false);
+      // For non-leaf nodes, try to extract UUID from the key or use the current component
+      if (selectedKeys.length > 0) {
+        const key = selectedKeys[0].toString();
+        // If this is the root node, use the current component
+        if (key === componentUuid) {
+          elementUuid = componentUuid;
+          elementName = componentName || 'Selected Component';
+        }
+      }
+    }
+    
+    if (elementUuid) {
+      setModalLoading(true);
+      setIsModalVisible(true);
+      setSelectedNodeDetails({ 
+        relationshipType: 'COMPONENT_RELATIONS', 
+        sourceName: elementName, 
+        sourceUuid: elementUuid, 
+        sourceType: 'Selected Element',
+        targetName: null, 
+        targetUuid: null, 
+        targetType: null 
+      });
+      
+      try {
+        const result = await getComponentRelations(elementUuid);
+        if (result.success && result.data) {
+          setModalRelations(result.data as RelationInfo[]);
+        } else {
+          setModalRelations([]);
+        }
+      } catch (error) {
+        console.error('Error fetching relations for modal:', error);
+        setModalRelations([]);
+      } finally {
+        setModalLoading(false);
+      }
+    } else {
+      // Fallback to old behavior for nodes without clear UUID
+      if (selectedCustomNode.isLeaf && selectedCustomNode.relationData) {
+        setSelectedNodeDetails(selectedCustomNode.relationData);
+        setIsModalVisible(true);
+        setModalRelations([]);
+      }
     }
   };
 
@@ -400,19 +457,81 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
       )}
       {selectedNodeDetails && (
         <Modal
-          title="Relation Details"
-          open={isModalVisible} // Changed from visible to open
+          title={`Relations for: ${selectedNodeDetails.sourceName}`}
+          open={isModalVisible}
           onOk={() => setIsModalVisible(false)}
           onCancel={() => setIsModalVisible(false)}
           footer={null}
+          width={1000}
         >
-          <p><strong>Relationship Type:</strong> {selectedNodeDetails.relationshipType}</p>
-          <p><strong>Source Name:</strong> {selectedNodeDetails.sourceName || 'N/A'}</p>
-          <p><strong>Source UUID:</strong> {selectedNodeDetails.sourceUuid || 'N/A'}</p>
-          <p><strong>Source Type:</strong> {selectedNodeDetails.sourceType || 'N/A'}</p>
-          <p><strong>Target Name:</strong> {selectedNodeDetails.targetName || 'N/A'}</p>
-          <p><strong>Target UUID:</strong> {selectedNodeDetails.targetUuid || 'N/A'}</p>
-          <p><strong>Target Type:</strong> {selectedNodeDetails.targetType || 'N/A'}</p>
+          {modalLoading ? (
+            <Spin tip="Loading relationships..." />
+          ) : modalRelations.length > 0 ? (
+            <Table
+              dataSource={modalRelations}
+              size="small"
+              pagination={false}
+              scroll={{ y: 400 }}
+              rowKey={(record) => `${record.relationshipType}-${record.sourceUuid}-${record.targetUuid}`}
+              columns={[
+                {
+                  title: 'Relationship',
+                  dataIndex: 'relationshipType',
+                  key: 'relationshipType',
+                  width: 150,
+                  sorter: (a, b) => a.relationshipType.localeCompare(b.relationshipType),
+                  filters: Array.from(new Set(modalRelations.map(r => r.relationshipType))).map(type => ({ text: type, value: type })),
+                  onFilter: (value, record) => record.relationshipType.includes(value as string),
+                },
+                {
+                  title: 'Target',
+                  key: 'target',
+                  width: 200,
+                  render: (_, record) => (
+                    <div>
+                      <div style={{ fontWeight: 'bold' }}>{record.targetName || 'N/A'}</div>
+                      <div style={{ fontSize: '0.85em', color: '#666' }}>
+                        {record.targetType}
+                      </div>
+                    </div>
+                  ),
+                  sorter: (a, b) => (a.targetName || '').localeCompare(b.targetName || ''),
+                },
+                {
+                  title: 'Target UUID',
+                  dataIndex: 'targetUuid',
+                  key: 'targetUuid',
+                  width: 120,
+                  render: (uuid) => (
+                    <Text copyable={{ text: uuid }} style={{ fontSize: '0.8em', fontFamily: 'monospace' }}>
+                      {uuid ? `${uuid.substring(0, 8)}...` : 'N/A'}
+                    </Text>
+                  ),
+                },
+              ]}
+            />
+          ) : (
+            <Alert 
+              message="No Relationships Found" 
+              description="This element has no direct relationships in the current dataset."
+              type="info" 
+              showIcon 
+            />
+          )}
+          
+          {/* Original relation details (if available and not showing table) */}
+          {selectedNodeDetails.relationshipType !== 'COMPONENT_RELATIONS' && modalRelations.length === 0 && (
+            <div style={{ marginTop: '20px' }}>
+              <Typography.Title level={5}>Relation Details</Typography.Title>
+              <p><strong>Relationship Type:</strong> {selectedNodeDetails.relationshipType}</p>
+              <p><strong>Source Name:</strong> {selectedNodeDetails.sourceName || 'N/A'}</p>
+              <p><strong>Source UUID:</strong> {selectedNodeDetails.sourceUuid || 'N/A'}</p>
+              <p><strong>Source Type:</strong> {selectedNodeDetails.sourceType || 'N/A'}</p>
+              <p><strong>Target Name:</strong> {selectedNodeDetails.targetName || 'N/A'}</p>
+              <p><strong>Target UUID:</strong> {selectedNodeDetails.targetUuid || 'N/A'}</p>
+              <p><strong>Target Type:</strong> {selectedNodeDetails.targetType || 'N/A'}</p>
+            </div>
+          )}
         </Modal>
       )}
     </div>
