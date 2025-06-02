@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Table, Spin, Alert, Button, Space, Input } from 'antd'; // Added Input
+import { Table, Spin, Alert, Button, Space, Input, Modal } from 'antd'; // Added Input and Modal
 import { getApplicationSwComponents } from '../../services/ArxmlToNeoService';
 import SWCompDetails from './SWCompDetails';
 import SWCompDetailsTree from './SWCompDetailsTree'; // Import the new Tree component
@@ -24,6 +24,10 @@ const ArxmlViewer: React.FC = () => {
   const [selectedComponentUuid, setSelectedComponentUuid] = useState<string | null>(null);
   const [selectedComponentName, setSelectedComponentName] = useState<string | null>(null);
   const [detailViewMode, setDetailViewMode] = useState<'table' | 'tree' | null>(null); // 'table', 'tree', or null
+  const [isTreeModalVisible, setIsTreeModalVisible] = useState<boolean>(false);
+  const [isTableModalVisible, setIsTableModalVisible] = useState<boolean>(false);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(15);
 
   const columns = [
     {
@@ -68,7 +72,7 @@ const ArxmlViewer: React.FC = () => {
               e.stopPropagation(); // Prevent row click event
               setSelectedComponentUuid(record.uuid);
               setSelectedComponentName(record.name);
-              setDetailViewMode('table');
+              setIsTableModalVisible(true);
             }}
             title="Show Table Details"
           />
@@ -80,7 +84,7 @@ const ArxmlViewer: React.FC = () => {
               e.stopPropagation(); // Prevent row click event
               setSelectedComponentUuid(record.uuid);
               setSelectedComponentName(record.name);
-              setDetailViewMode('tree');
+              setIsTreeModalVisible(true);
             }}
             title="Show Tree Details"
           />
@@ -176,6 +180,7 @@ const ArxmlViewer: React.FC = () => {
     setLoading(true);
     setError(null);
     setShowEmptyDbMessage(false); // Reset on new fetch
+    setCurrentPage(1); // Reset pagination
     try {
       const result = await getApplicationSwComponents();
       if (result.success && result.data) {
@@ -205,7 +210,8 @@ const ArxmlViewer: React.FC = () => {
       </Button>
       {loading && (
         <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-          <Spin tip="Loading components..." />
+          <Spin size="large" />
+          <div style={{ marginTop: '8px', color: '#666' }}>Loading components...</div>
         </div>
       )}
       {error && <Alert message="Error Fetching Components" description={error} type="error" showIcon style={{ marginBottom: '20px' }} />}
@@ -225,12 +231,25 @@ const ArxmlViewer: React.FC = () => {
           rowKey="uuid"
           bordered
           pagination={{ 
-            pageSize: 15,
+            current: currentPage,
+            pageSize: pageSize,
+            total: components.length,
             showSizeChanger: true,
             showQuickJumper: true,
             showTotal: (total, range) => 
               `${range[0]}-${range[1]} of ${total} components`,
             pageSizeOptions: ['10', '15', '20', '50', '100'],
+            onChange: (page, size) => {
+              setCurrentPage(page);
+              if (size !== pageSize) {
+                setPageSize(size);
+                setCurrentPage(1); // Reset to first page when page size changes
+              }
+            },
+            onShowSizeChange: (current, size) => {
+              setPageSize(size);
+              setCurrentPage(1); // Reset to first page when page size changes
+            },
           }}
           onRow={(record) => {
             return {
@@ -258,15 +277,61 @@ const ArxmlViewer: React.FC = () => {
         </div>
       )}
 
-      {selectedComponentUuid && detailViewMode === 'table' && (
-        <SWCompDetails componentUuid={selectedComponentUuid} componentName={selectedComponentName || undefined} />
-      )}
-      {selectedComponentUuid && detailViewMode === 'tree' && (
-        <SWCompDetailsTree 
-          componentUuid={selectedComponentUuid} 
-          componentName={selectedComponentName} 
-        />
-      )}
+      {/* Table Details Modal */}
+      <Modal
+        title={`Component Table Details: ${selectedComponentName || 'Unknown'}`}
+        open={isTableModalVisible}
+        onCancel={() => {
+          setIsTableModalVisible(false);
+          setSelectedComponentUuid(null);
+          setSelectedComponentName(null);
+        }}
+        footer={null}
+        width="90%"
+        style={{ top: 20 }}
+        styles={{ 
+          body: { 
+            height: '70vh', 
+            overflow: 'auto', 
+            padding: '16px' 
+          } 
+        }}
+      >
+        {selectedComponentUuid && isTableModalVisible && (
+          <SWCompDetails 
+            componentUuid={selectedComponentUuid} 
+            componentName={selectedComponentName || undefined} 
+          />
+        )}
+      </Modal>
+
+      {/* Tree Details Modal */}
+      <Modal
+        title={`Component Tree Details: ${selectedComponentName || 'Unknown'}`}
+        open={isTreeModalVisible}
+        onCancel={() => {
+          setIsTreeModalVisible(false);
+          setSelectedComponentUuid(null);
+          setSelectedComponentName(null);
+        }}
+        footer={null}
+        width="90%"
+        style={{ top: 20 }}
+        styles={{ 
+          body: { 
+            height: '70vh', 
+            overflow: 'auto', 
+            padding: '16px' 
+          } 
+        }}
+      >
+        {selectedComponentUuid && isTreeModalVisible && (
+          <SWCompDetailsTree 
+            componentUuid={selectedComponentUuid} 
+            componentName={selectedComponentName} 
+          />
+        )}
+      </Modal>
     </div>
   );
 };

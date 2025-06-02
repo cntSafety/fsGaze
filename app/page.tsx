@@ -1,9 +1,19 @@
+'use client';
+
 import Image from "next/image";
 import Link from "next/link";
 import { Navbar } from "./components/Navbar";
 import { FaGithub } from "react-icons/fa"; // Import GitHub icon from react-icons
+import { useEffect } from "react";
+import { useLoading } from "./components/LoadingProvider";
 
 export default function Home() {
+  const { hideLoading } = useLoading();
+
+  useEffect(() => {
+    // Hide loading once component is mounted
+    hideLoading();
+  }, [hideLoading]);
   return (
     <>
       <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 pt-24 gap-16 sm:p-20 sm:pt-28 font-[family-name:var(--font-geist-sans)]">

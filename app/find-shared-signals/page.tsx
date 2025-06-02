@@ -21,8 +21,11 @@ import { useCCIStore } from './store/cciStore';
 import { checkCommonCauseInitiators } from './services/cciAnalysisService';
 import { transformToFlowFormat } from './services/diagramLayoutService';
 import { captureDiagramAsPng } from './services/diagramCaptureService';
+import { useLoading } from '../components/LoadingProvider';
 
 export const CCIAnalysis: React.FC = () => {
+    const { hideLoading } = useLoading();
+    
     // Custom hook for data fetching
     // - actions: list of actions fetched from the backend
     // - mergedData: preprocessed action data with relationships
@@ -55,6 +58,13 @@ export const CCIAnalysis: React.FC = () => {
         console.log('affectedActionNames :', affectedActionNames);
         console.log('sourceActionIds:', sourceActionIds);
     }, [cciResults, affectedActionNames, sourceActionIds]);
+
+    // Hide global loading when component data is ready
+    useEffect(() => {
+        if (!loading && !error) {
+            hideLoading();
+        }
+    }, [loading, error, hideLoading]);
 
     // Flow diagram related state
     // - flowNodes: nodes representing actions and information in the diagram

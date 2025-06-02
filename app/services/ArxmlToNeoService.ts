@@ -1081,7 +1081,7 @@ export const getComponentDependencyGraph = async (swcProtoUuid: string): Promise
       console.log(`❌ No component found for UUID: ${swcProtoUuid}`);
       return {
         success: false,
-        message: `No SW_COMPONENT_PROTOTYPE found with UUID: ${swcProtoUuid}`,
+        message: `Defined query for SW_COMPONENT_PROTOTYPE with UUID: ${swcProtoUuid} did not return any results.`,
       };
     }
 
@@ -1198,6 +1198,7 @@ export const getComponentDependencyGraph = async (swcProtoUuid: string): Promise
     console.log(`✅ Component dependency graph retrieved:`, {
       componentName: centerComponentName,
       totalNodes: nodes.length,
+      resultData: resultData,
       totalRelationships: relationships.length,
       nodeTypes: [...new Set(nodes.map(n => n.type))],
       relationshipTypes: [...new Set(relationships.map(r => r.type))]

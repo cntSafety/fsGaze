@@ -438,7 +438,11 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
         Hierarchical Relations for: <Text strong>{componentName || componentUuid}</Text>
       </Title>
       <Search style={{ marginBottom: 8 }} placeholder="Search in tree" onChange={handleSearch} />
-      {loading && <Spin tip="Loading relations..." />}
+      {loading && (
+        <Spin tip="Loading relations...">
+          <div style={{ minHeight: 100 }} />
+        </Spin>
+      )}
       {error && <Alert message="Error" description={error} type="error" showIcon />}
       {!loading && !error && treeData.length === 0 && (
         <Alert message="No relations found for this component with the current filter." type="info" />

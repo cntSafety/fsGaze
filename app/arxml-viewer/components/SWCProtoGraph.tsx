@@ -18,12 +18,12 @@ interface SwcPrototype {
 interface D3Node extends d3.SimulationNodeDatum {
   id: string;
   name: string;
-  type: 'center' | 'partner' | 'port';
+  RenderingInfoType: 'center' | 'partner' | 'port';
   subtype?: 'P_PORT' | 'R_PORT' | 'INTERFACE' | 'UNKNOWN';
   parentId?: string;
   group: number;
   size: number;
-  shape?: 'circle' | 'rect';
+  shape?: 'circle' | 'rect' | 'half-circle' | 'triangle';
   nodeLabel?: string;
   // Additional metadata for enhanced tooltips
   prototype?: string;
@@ -55,6 +55,9 @@ const SWCProtoGraph: React.FC = () => {
     'SW_COMPONENT_PROTOTYPE',
     'APPLICATION_SW_COMPONENT_TYPE',
     'ASSEMBLY_SW_CONNECTOR',
+    'MODE_SWITCH_INTERFACE',
+    'SENDER_RECEIVER_INTERFACE',
+    'CLIENT_SERVER_INTERFACE',
     'P_PORT_PROTOTYPE',
     'R_PORT_PROTOTYPE',
     'VirtualArxmlRefTarget',
@@ -95,7 +98,7 @@ const SWCProtoGraph: React.FC = () => {
 
   // Function to create enhanced tooltip text
   const createTooltipText = (d: D3Node) => {
-    let tooltip = `Name: ${d.name}\nUUID: ${d.id}\nType: ${d.type}`;
+    let tooltip = `Name: ${d.name}\nUUID: ${d.id}\nRenderingInfoType: ${d.RenderingInfoType}`;
     
     if (d.subtype) {
       tooltip += `\nSubtype: ${d.subtype}`;
@@ -203,6 +206,39 @@ const SWCProtoGraph: React.FC = () => {
     });
   };
 
+  // Auto-update visibility sets when new graph data is loaded
+  useEffect(() => {
+    if (!graphData) return;
+
+    const availableNodeTypes = [...new Set(graphData.nodes.map(n => n.type || n.label))];
+    const availableRelationshipTypes = [...new Set(graphData.relationships.map(r => r.type))];
+    
+    // Add any missing types to visibility sets (only when graphData changes)
+    setVisibleNodeTypes(prev => {
+      const newSet = new Set(prev);
+      let hasChanges = false;
+      availableNodeTypes.forEach(type => {
+        if (!newSet.has(type)) {
+          newSet.add(type);
+          hasChanges = true;
+        }
+      });
+      return hasChanges ? newSet : prev; // Only return new set if there are actual changes
+    });
+    
+    setVisibleRelationshipTypes(prev => {
+      const newSet = new Set(prev);
+      let hasChanges = false;
+      availableRelationshipTypes.forEach(type => {
+        if (!newSet.has(type)) {
+          newSet.add(type);
+          hasChanges = true;
+        }
+      });
+      return hasChanges ? newSet : prev; // Only return new set if there are actual changes
+    });
+  }, [graphData]); // Only depend on graphData, not the visibility sets
+
   // Create D3 visualization when graph data or visibility changes
   useEffect(() => {
     if (!graphData || !svgRef.current) return;
@@ -218,6 +254,14 @@ const SWCProtoGraph: React.FC = () => {
     console.log('📊 Nodes count:', data.nodes?.length || 0);
     console.log('📊 Relationships count:', data.relationships?.length || 0);
     console.log('📊 Metadata:', data.metadata);
+    
+    // Log all available node types and relationship types
+    const availableNodeTypes = [...new Set(data.nodes.map(n => n.type || n.label))];
+    const availableRelationshipTypes = [...new Set(data.relationships.map(r => r.type))];
+    console.log('📊 Available Node Types:', availableNodeTypes);
+    console.log('📊 Visible Node Types:', Array.from(visibleNodeTypes));
+    console.log('📊 Available Relationship Types:', availableRelationshipTypes);
+    console.log('📊 Visible Relationship Types:', Array.from(visibleRelationshipTypes));
 
     // Clear previous visualization
     d3.select(svgRef.current).selectAll('*').remove();
@@ -254,11 +298,14 @@ const SWCProtoGraph: React.FC = () => {
     const links: D3Link[] = [];
 
     // Convert the simplified nodes to D3 nodes
+    let filteredNodeCount = 0;
     data.nodes.forEach((node, index) => {
       const nodeLabel = node.type || node.label;
       
       // Skip this node if it's not visible
       if (!visibleNodeTypes.has(nodeLabel)) {
+        filteredNodeCount++;
+        console.log('🚫 Filtered out node:', nodeLabel, 'for node:', node.name);
         return;
       }
       
@@ -268,7 +315,7 @@ const SWCProtoGraph: React.FC = () => {
       
       // Determine group and styling based on actual node label/type
       let group = 0;
-      let shape: 'circle' | 'rect' = 'circle'; // Properly typed
+      let shape: 'circle' | 'rect' | 'half-circle' | 'triangle' = 'circle'; // Properly typed
       let nodeSize = 15;
       
       switch (nodeLabel) {
@@ -286,6 +333,21 @@ const SWCProtoGraph: React.FC = () => {
           group = 3; // Dark brown
           shape = 'rect';
           nodeSize = 10;
+          break;
+        case 'MODE_SWITCH_INTERFACE':
+          group = 8; // Light brown
+          shape = 'half-circle';
+          nodeSize = 12;
+          break;
+        case 'SENDER_RECEIVER_INTERFACE':
+          group = 9; // Light orange
+          shape = 'triangle';
+          nodeSize = 12;
+          break;
+        case 'CLIENT_SERVER_INTERFACE':
+          group = 10; // Turquoise
+          shape = 'triangle';
+          nodeSize = 12;
           break;
         case 'P_PORT_PROTOTYPE':
           group = 4; // Green
@@ -316,7 +378,7 @@ const SWCProtoGraph: React.FC = () => {
       nodes.push({
         id: node.id,
         name: node.name,
-        type: nodeType,
+        RenderingInfoType: nodeType,
         subtype: node.type.includes('P_PORT') ? 'P_PORT' : 
                  node.type.includes('R_PORT') ? 'R_PORT' : undefined,
         group: group,
@@ -329,9 +391,13 @@ const SWCProtoGraph: React.FC = () => {
     });
 
     // Convert relationships to D3 links
+    let filteredRelTypeCount = 0;
+    let filteredNodeVisibilityCount = 0;
     data.relationships.forEach(relationship => {
       // Skip this relationship if it's not visible
       if (!visibleRelationshipTypes.has(relationship.type)) {
+        filteredRelTypeCount++;
+        console.log('🚫 Filtered out relationship type:', relationship.type);
         return;
       }
 
@@ -347,6 +413,10 @@ const SWCProtoGraph: React.FC = () => {
       const targetNodeLabel = targetNode.type || targetNode.label;
       
       if (!visibleNodeTypes.has(sourceNodeLabel) || !visibleNodeTypes.has(targetNodeLabel)) {
+        filteredNodeVisibilityCount++;
+        console.log('🚫 Filtered out relationship due to node visibility:', 
+          `${sourceNodeLabel} -> ${targetNodeLabel}`, 
+          `(${relationship.type})`);
         return;
       }
 
@@ -405,7 +475,16 @@ const SWCProtoGraph: React.FC = () => {
     });
 
     console.log('📊 D3 Graph Data:', { nodes: nodes.length, links: links.length });
-    console.log('📊 Nodes:', nodes.map(n => ({ id: n.id, name: n.name, type: n.type })));
+    console.log('📊 Filtering Summary:', {
+      originalNodes: data.nodes.length,
+      filteredNodes: nodes.length,
+      nodesFilteredOut: filteredNodeCount,
+      originalRelationships: data.relationships.length,
+      filteredRelationships: links.length,
+      relationshipsFilteredByType: filteredRelTypeCount,
+      relationshipsFilteredByNodeVisibility: filteredNodeVisibilityCount
+    });
+    console.log('📊 Nodes:', nodes.map(n => ({ id: n.id, name: n.name, RenderingInfoType: n.RenderingInfoType })));
     console.log('📊 Links:', links.map(l => ({ 
       source: typeof l.source === 'string' ? l.source : l.source.id, 
       target: typeof l.target === 'string' ? l.target : l.target.id, 
@@ -439,6 +518,12 @@ const SWCProtoGraph: React.FC = () => {
           return '#BBDEFB'; // Light Blue
         case 'ASSEMBLY_SW_CONNECTOR':
           return '#5D4037'; // Dark brown
+        case 'MODE_SWITCH_INTERFACE':
+          return '#D7CCC8'; // Light brown
+        case 'SENDER_RECEIVER_INTERFACE':
+          return '#FFE0B2'; // Light orange
+        case 'CLIENT_SERVER_INTERFACE':
+          return '#B2DFDB'; // Light turquoise
         case 'P_PORT_PROTOTYPE':
           return '#4CAF50'; // Green
         case 'R_PORT_PROTOTYPE':
@@ -460,6 +545,12 @@ const SWCProtoGraph: React.FC = () => {
           return 'none'; // No border
         case 'ASSEMBLY_SW_CONNECTOR':
           return '#3E2723'; // Dark brown border
+        case 'MODE_SWITCH_INTERFACE':
+          return '#8D6E63'; // Medium brown border
+        case 'SENDER_RECEIVER_INTERFACE':
+          return '#F57C00'; // Dark orange border
+        case 'CLIENT_SERVER_INTERFACE':
+          return '#00695C'; // Dark teal border
         case 'P_PORT_PROTOTYPE':
           return '#2E7D32'; // Dark green border
         case 'R_PORT_PROTOTYPE':
@@ -479,6 +570,12 @@ const SWCProtoGraph: React.FC = () => {
           return 2;
         case 'APPLICATION_SW_COMPONENT_TYPE':
           return 0; // No border
+        case 'MODE_SWITCH_INTERFACE':
+          return 2; // Medium border
+        case 'SENDER_RECEIVER_INTERFACE':
+          return 2; // Medium border
+        case 'CLIENT_SERVER_INTERFACE':
+          return 2; // Medium border
         case 'VirtualArxmlRefTarget':
           return 2; // Medium border
         case 'COMPOSITION_SW_COMPONENT_TYPE':
@@ -563,6 +660,41 @@ const SWCProtoGraph: React.FC = () => {
         .on('drag', dragged)
         .on('end', dragended));
 
+    // Create half-circles for half-circle nodes
+    const halfCircleNodes = nodeGroup.selectAll('path.half-circle')
+      .data(nodes.filter(d => d.shape === 'half-circle'))
+      .enter().append('path')
+      .attr('class', 'half-circle')
+      .attr('d', d => {
+        const r = d.size;
+        return `M ${-r} 0 A ${r} ${r} 0 0 1 ${r} 0 Z`;
+      })
+      .attr('fill', getNodeColor)
+      .attr('stroke', getNodeStroke)
+      .attr('stroke-width', getNodeStrokeWidth)
+      .call(d3.drag<SVGPathElement, any>()
+        .on('start', dragstarted)
+        .on('drag', dragged)
+        .on('end', dragended));
+
+    // Create triangles for triangle nodes
+    const triangleNodes = nodeGroup.selectAll('path.triangle')
+      .data(nodes.filter(d => d.shape === 'triangle'))
+      .enter().append('path')
+      .attr('class', 'triangle')
+      .attr('d', d => {
+        const r = d.size;
+        const height = r * Math.sqrt(3);
+        return `M 0 ${-height * 0.5} L ${r} ${height * 0.5} L ${-r} ${height * 0.5} Z`;
+      })
+      .attr('fill', getNodeColor)
+      .attr('stroke', getNodeStroke)
+      .attr('stroke-width', getNodeStrokeWidth)
+      .call(d3.drag<SVGPathElement, any>()
+        .on('start', dragstarted)
+        .on('drag', dragged)
+        .on('end', dragended));
+
     // Add text labels for port nodes (P and R)
     const portLabels = nodeGroup.selectAll('text.port-label')
       .data(nodes.filter(d => d.shape === 'rect' && (d.nodeLabel === 'P_PORT_PROTOTYPE' || d.nodeLabel === 'R_PORT_PROTOTYPE')))
@@ -576,18 +708,57 @@ const SWCProtoGraph: React.FC = () => {
       .attr('fill', 'white')
       .style('pointer-events', 'none');
 
-    // Combine all interactive nodes for unified behavior
-    const allNodes = nodeGroup.selectAll('circle, rect');
+    // Add text labels for MODE_SWITCH_INTERFACE nodes (M)
+    const modeLabels = nodeGroup.selectAll('text.mode-label')
+      .data(nodes.filter(d => d.shape === 'half-circle' && d.nodeLabel === 'MODE_SWITCH_INTERFACE'))
+      .enter().append('text')
+      .attr('class', 'mode-label')
+      .text('M')
+      .attr('font-size', '10px')
+      .attr('font-weight', 'bold')
+      .attr('text-anchor', 'middle')
+      .attr('dy', '0.3em')
+      .attr('fill', '#8D6E63')
+      .style('pointer-events', 'none');
 
-    // Add labels (add to zoom container)
+    // Add text labels for SENDER_RECEIVER_INTERFACE nodes (S)
+    const senderLabels = nodeGroup.selectAll('text.sender-label')
+      .data(nodes.filter(d => d.shape === 'triangle' && d.nodeLabel === 'SENDER_RECEIVER_INTERFACE'))
+      .enter().append('text')
+      .attr('class', 'sender-label')
+      .text('S')
+      .attr('font-size', '10px')
+      .attr('font-weight', 'bold')
+      .attr('text-anchor', 'middle')
+      .attr('dy', '0.3em')
+      .attr('fill', '#F57C00')
+      .style('pointer-events', 'none');
+
+    // Add text labels for CLIENT_SERVER_INTERFACE nodes (CS)
+    const clientServerLabels = nodeGroup.selectAll('text.client-server-label')
+      .data(nodes.filter(d => d.shape === 'triangle' && d.nodeLabel === 'CLIENT_SERVER_INTERFACE'))
+      .enter().append('text')
+      .attr('class', 'client-server-label')
+      .text('CS')
+      .attr('font-size', '8px')
+      .attr('font-weight', 'bold')
+      .attr('text-anchor', 'middle')
+      .attr('dy', '0.3em')
+      .attr('fill', '#00695C')
+      .style('pointer-events', 'none');
+
+    // Combine all interactive nodes for unified behavior
+    const allNodes = nodeGroup.selectAll('circle, rect, path.half-circle, path.triangle');
+
+    // Add labels (add to zoom container) - exclude ASSEMBLY_SW_CONNECTOR, MODE_SWITCH_INTERFACE, SENDER_RECEIVER_INTERFACE, and CLIENT_SERVER_INTERFACE nodes
     const label = container.append('g')
       .attr('class', 'labels')
       .selectAll('text')
-      .data(nodes)
+      .data(nodes.filter(d => d.nodeLabel !== 'ASSEMBLY_SW_CONNECTOR' && d.nodeLabel !== 'MODE_SWITCH_INTERFACE' && d.nodeLabel !== 'SENDER_RECEIVER_INTERFACE' && d.nodeLabel !== 'CLIENT_SERVER_INTERFACE'))
       .enter().append('text')
       .text(d => d.name)
-      .attr('font-size', d => d.type === 'center' ? '12px' : d.type === 'partner' ? '10px' : '8px')
-      .attr('font-weight', d => d.type === 'center' ? 'bold' : 'normal')
+      .attr('font-size', d => d.RenderingInfoType === 'center' ? '12px' : d.RenderingInfoType === 'partner' ? '10px' : '8px')
+      .attr('font-weight', d => d.RenderingInfoType === 'center' ? 'bold' : 'normal')
       .attr('text-anchor', 'middle')
       .attr('dy', d => d.size + 15)
       .attr('fill', '#333');
@@ -606,7 +777,7 @@ const SWCProtoGraph: React.FC = () => {
         // Core identification
         id: node.id,
         name: node.name,
-        type: node.type,
+        RenderingInfoType: node.RenderingInfoType,
         nodeLabel: node.nodeLabel,
         prototype: node.prototype,
         
@@ -664,7 +835,25 @@ const SWCProtoGraph: React.FC = () => {
         .attr('x', (d: any) => d.x - d.size)
         .attr('y', (d: any) => d.y - d.size);
 
+      halfCircleNodes
+        .attr('transform', (d: any) => `translate(${d.x}, ${d.y})`);
+
+      triangleNodes
+        .attr('transform', (d: any) => `translate(${d.x}, ${d.y})`);
+
       portLabels
+        .attr('x', (d: any) => d.x)
+        .attr('y', (d: any) => d.y);
+
+      modeLabels
+        .attr('x', (d: any) => d.x)
+        .attr('y', (d: any) => d.y);
+
+      senderLabels
+        .attr('x', (d: any) => d.x)
+        .attr('y', (d: any) => d.y);
+
+      clientServerLabels
         .attr('x', (d: any) => d.x)
         .attr('y', (d: any) => d.y);
 
@@ -824,6 +1013,24 @@ const SWCProtoGraph: React.FC = () => {
                   onChange={() => toggleNodeTypeVisibility('ASSEMBLY_SW_CONNECTOR')}
                 >
                   <span style={{ color: '#5D4037' }}>■ ASSEMBLY_SW_CONNECTOR</span>
+                </Checkbox>
+                <Checkbox
+                  checked={visibleNodeTypes.has('MODE_SWITCH_INTERFACE')}
+                  onChange={() => toggleNodeTypeVisibility('MODE_SWITCH_INTERFACE')}
+                >
+                  <span style={{ color: '#D7CCC8' }}>◗ MODE_SWITCH_INTERFACE</span>
+                </Checkbox>
+                <Checkbox
+                  checked={visibleNodeTypes.has('SENDER_RECEIVER_INTERFACE')}
+                  onChange={() => toggleNodeTypeVisibility('SENDER_RECEIVER_INTERFACE')}
+                >
+                  <span style={{ color: '#FFE0B2' }}>▲ SENDER_RECEIVER_INTERFACE</span>
+                </Checkbox>
+                <Checkbox
+                  checked={visibleNodeTypes.has('CLIENT_SERVER_INTERFACE')}
+                  onChange={() => toggleNodeTypeVisibility('CLIENT_SERVER_INTERFACE')}
+                >
+                  <span style={{ color: '#B2DFDB' }}>▲ CLIENT_SERVER_INTERFACE</span>
                 </Checkbox>
                 <Checkbox
                   checked={visibleNodeTypes.has('P_PORT_PROTOTYPE')}

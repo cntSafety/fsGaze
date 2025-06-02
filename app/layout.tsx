@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Navbar } from "./components/Navbar";
+import { LoadingProvider } from "./components/LoadingProvider";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import 'antd/dist/reset.css';
@@ -44,14 +45,16 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-100 dark:bg-gray-900 flex h-screen overflow-hidden`}
       >
-        <div className="flex w-full h-full">
-          <Navbar />
-          <main className="flex-1 overflow-auto bg-white dark:bg-gray-900 dark:text-white md:ml-10 md:pl-0 pl-0 pt-16 md:pt-0">
-            <div className="w-full h-full px-2 py-2 sm:px-4">
-              {children}
-            </div>
-          </main>
-        </div>
+        <LoadingProvider>
+          <div className="flex w-full h-full">
+            <Navbar />
+            <main className="flex-1 overflow-auto bg-white dark:bg-gray-900 dark:text-white md:ml-10 md:pl-0 pl-0 pt-16 md:pt-0">
+              <div className="w-full h-full px-2 py-2 sm:px-4">
+                {children}
+              </div>
+            </main>
+          </div>
+        </LoadingProvider>
       </body>
     </html>
   );

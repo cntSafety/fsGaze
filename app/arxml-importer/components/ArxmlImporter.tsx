@@ -1,9 +1,10 @@
 // Moved from app/arxml-importer/ArxmlImporter.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button, Card, Typography, Space, message, Table, Checkbox, Input, Select, Progress } from 'antd';
 import { FolderOpenOutlined, SearchOutlined, CheckSquareOutlined, BorderOutlined } from '@ant-design/icons';
 import '../ArxmlImporter.css';
 import { uploadArxmlToNeo4j } from '../../services/ArxmlToNeoService';
+import { useLoading } from '../../components/LoadingProvider';
 
 const { Title, Text } = Typography;
 const { Search } = Input;
@@ -56,10 +57,18 @@ const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void
       // @ts-ignore
       const newDirHandle = await window.showDirectoryPicker();
       setDirHandle(newDirHandle);
-      messageApi.loading({ content: 'Scanning directory...', key: 'scanning' });
+      messageApi.loading({ content: 'Scanning directory...', key: 'scanning', duration: 0 });
       const arxmlFiles = await scanDirectory(newDirHandle);
+      
+      // Show processing message while setting up the table
+      messageApi.loading({ content: 'Processing files and preparing table...', key: 'scanning', duration: 0 });
+      
+      // Small delay to ensure the processing message is visible
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       setFiles(arxmlFiles);
       setFilteredFiles(arxmlFiles);
+      
       messageApi.success({
         content: `Found ${arxmlFiles.length} ARXML files`,
         key: 'scanning',
@@ -253,7 +262,7 @@ const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void
       title: 'Select',
       dataIndex: 'selected',
       key: 'selected',
-      width: 60,
+      width: 80,
       render: (_: any, record: ArxmlFile) => (
         <Checkbox
           checked={record.selected}
@@ -266,7 +275,6 @@ const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void
       title: 'File Name',
       dataIndex: 'name',
       key: 'name',
-      width: 200,
       render: (text: string) => (
         <div style={{
           maxHeight: '50px',
@@ -282,7 +290,6 @@ const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void
       title: 'Path',
       dataIndex: 'path',
       key: 'path',
-      width: 300,
       render: (text: string) => (
         <div style={{
           maxHeight: '50px',
@@ -299,7 +306,7 @@ const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void
   return (
     <div className="arxml-importer-container">
       {contextHolder}
-      <Card size="small">
+      <Card size="small" style={{ width: '100%', margin: 0 }}>
         {files.length === 0 && (
           <div style={{ textAlign: 'center', margin: '32px 0 16px 0' }}>
             <FolderOpenOutlined style={{ fontSize: 64, color: '#1890ff', marginBottom: 16 }} />
@@ -371,8 +378,9 @@ const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void
                 pagination={false}
                 className="arxml-files-table"
                 size="small"
-                scroll={{ x: 'max-content', y: 'calc(100vh - 300px)' }} // Adjust y calculation if needed due to progress bar
+                scroll={{ y: 'calc(100vh - 300px)' }}
                 bordered
+                style={{ width: '100%' }}
               />
               {/* Button section remains after the table, Progress bar was removed from here */}
               <Button

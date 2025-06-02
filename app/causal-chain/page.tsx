@@ -23,6 +23,7 @@ import GraphView from './components/GraphView';
 import DetailView from './components/DetailView';
 import LoadingIndicator from './components/LoadingIndicator';
 import ErrorMessage from './components/ErrorMessage';
+import { useLoading } from '../components/LoadingProvider';
 
 // Cache for API responses to avoid redundant queries and improve performance
 const queryCache = new Map();
@@ -47,6 +48,8 @@ interface PartWithFailureModes {
 }
 
 export const FailureChain: React.FC = () => {
+    const { hideLoading } = useLoading();
+    
     // Main state for parts and their associated failure modes
     const [partsWithFailureModes, setPartsWithFailureModes] = useState<PartWithFailureModes[]>([]);
 
@@ -215,10 +218,12 @@ export const FailureChain: React.FC = () => {
                 queryCache.set(cacheKey, filteredData);
                 setPartsWithFailureModes(filteredData);
                 setLoading(false);
+                hideLoading();
                 setLoadProgress(100);
             } catch (err: any) {
                 setError(err.message || 'Failed to fetch parts and failure modes');
                 setLoading(false);
+                hideLoading();
                 console.error(err);
             }
         };

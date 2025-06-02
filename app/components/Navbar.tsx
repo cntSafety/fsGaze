@@ -3,9 +3,11 @@
 import React from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { HiHome, HiCloudDownload, HiChartBar, HiClipboardCheck, HiDocumentReport, HiMenuAlt2, HiChevronDown, HiLightningBolt, HiX } from "react-icons/hi";
+import { useRouter } from "next/navigation";
+import { HiHome, HiCloudDownload, HiChartBar, HiClipboardCheck, HiDocumentReport, HiMenuAlt2, HiChevronDown, HiLightningBolt, HiX, HiChevronLeft, HiChevronRight, HiOutlineDocumentReport, HiOutlineCode, HiFastForward    } from "react-icons/hi";
 import { useState, useEffect } from "react";
 import { IconType } from "react-icons";
+import { useLoading } from "./LoadingProvider";
 
 // Menu item types
 type MenuItem = SimpleMenuItem | DropdownMenuItem;
@@ -30,13 +32,21 @@ interface DropdownMenuItem {
 
 export function Navbar() {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
     const [mounted, setMounted] = useState(false);
     const [activeMenuItem, setActiveMenuItem] = useState<string>('/');
+    const router = useRouter();
+    const { showLoading, hideLoading } = useLoading();
 
     // Initialize client-side state
     useEffect(() => {
         setMounted(true);
+        // Restore sidebar collapsed state from localStorage
+        const savedCollapsedState = localStorage.getItem('fsGaze-sidebar-collapsed');
+        if (savedCollapsedState) {
+            setIsSidebarCollapsed(JSON.parse(savedCollapsedState));
+        }
     }, []);
 
     // Update active menu item based on URL
@@ -70,7 +80,7 @@ export function Navbar() {
         {
             type: 'dropdown',
             label: 'ARXML',
-            icon: HiCloudDownload, // You can use a different icon if desired
+            icon: HiOutlineCode , // You can use a different icon if desired
             items: [
                 { label: 'ARXML Importer', href: '/arxml-importer', isActive: true },
                 { label: 'SW Components', href: '/arxml-viewer', isActive: true }
@@ -89,7 +99,7 @@ export function Navbar() {
         {
             type: 'dropdown',
             label: 'Safety Automation',
-            icon: HiClipboardCheck,
+            icon: HiFastForward,
             items: [
                 { label: 'Find shared signals for CCA', href: '/find-shared-signals', isActive: true },
                 { label: 'Find inputs with too low integrity', href: '/fm/effects', isActive: false },
@@ -101,12 +111,37 @@ export function Navbar() {
             ]
         },
         {
-            type: 'link',
-            label: 'Report',
-            href: '/exports',
-            icon: HiDocumentReport
-        }
+            type: 'dropdown',
+            label: 'Reports',
+            icon: HiOutlineDocumentReport ,
+            items: [
+                { label: 'Statistic for TBC', href: '/find-shared-signals', isActive: true }
+            ]
+        },
     ];
+
+    // Handle navigation with loading state
+    const handleNavigation = (href: string, label: string) => {
+        if (href === '#') return; // Skip inactive links
+        
+        // If sidebar is collapsed, expand it when navigating
+        if (isSidebarCollapsed) {
+            setIsSidebarCollapsed(false);
+            localStorage.setItem('fsGaze-sidebar-collapsed', JSON.stringify(false));
+        }
+        
+        showLoading(`Loading ${label}...`);
+        setActiveMenuItem(href);
+        setIsMenuOpen(false);
+        
+        // Use router.push for navigation
+        router.push(href);
+        
+        // Hide loading after a short delay to account for compilation
+        setTimeout(() => {
+            hideLoading();
+        }, 500);
+    };
 
     const toggleGroup = (label: string) => {
         setExpandedGroups(prev => ({
@@ -123,22 +158,37 @@ export function Navbar() {
     return (
         <div className="flex h-screen">
             {/* Sidebar - Desktop */}
-            <div className="hidden md:flex md:w-64 md:flex-col">
+            <div className={`hidden md:flex md:flex-col transition-all duration-300 ${
+                isSidebarCollapsed ? 'md:w-16' : 'md:w-64'
+            }`}>
                 <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800">
                     {/* Logo area */}
                     <div className="h-16 flex items-center justify-center px-4 border-b border-gray-200 dark:border-gray-800">
-                        <div className="flex items-center justify-center w-full">
-                            <div className="w-[50%]">
+                        {isSidebarCollapsed ? (
+                            <div className="w-8 h-8 flex items-center justify-center">
                                 <Image 
-                                    src="/logoBlack.svg"
+                                    src="/GazeIcon.png"
                                     alt="fsGaze Logo"
-                                    width={150}
-                                    height={40}
+                                    width={20}
+                                    height={20}
                                     className="w-full h-auto"
                                     priority
                                 />
                             </div>
-                        </div>
+                        ) : (
+                            <div className="flex items-center justify-center w-full">
+                                <div className="w-[50%]">
+                                    <Image 
+                                        src="/LogoBlack.svg"
+                                        alt="fsGaze Logo"
+                                        width={150}
+                                        height={40}
+                                        className="w-full h-auto"
+                                        priority
+                                    />
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Menu items */}
@@ -151,67 +201,82 @@ export function Navbar() {
                             return (
                                 <div key={index} className="mb-2">
                                     {item.type === 'link' ? (
-                                        <Link
-                                            href={item.href}
-                                            className={`flex items-center px-4 py-2.5 text-sm rounded-lg transition-colors ${
+                                        <button
+                                            onClick={() => handleNavigation(item.href, item.label)}
+                                            className={`flex items-center px-4 py-2.5 text-sm rounded-lg transition-colors w-full text-left ${
                                                 isActive
                                                     ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
                                                     : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
-                                            }`}
-                                            onClick={() => setActiveMenuItem(item.href)}
+                                            } ${isSidebarCollapsed ? 'justify-center px-2' : ''}`}
+                                            title={isSidebarCollapsed ? item.label : undefined}
                                         >
-                                            <item.icon className="mr-3 size-5" />
-                                            {item.label}
-                                        </Link>
+                                            <item.icon 
+                                                className={`${isSidebarCollapsed ? 'size-6 mr-0' : 'size-5 mr-3'}`} 
+                                            />
+                                            {!isSidebarCollapsed && item.label}
+                                        </button>
                                     ) : (
                                         <div className="mb-1">
                                             <button
-                                                onClick={() => toggleGroup(item.label)}
-                                                className={`flex w-full items-center justify-between px-4 py-2.5 text-sm rounded-lg transition-colors ${
+                                                onClick={() => {
+                                                    if (isSidebarCollapsed) {
+                                                        // In collapsed mode, navigate to first active item
+                                                        const firstActiveItem = item.items.find(subitem => subitem.isActive !== false);
+                                                        if (firstActiveItem) {
+                                                            handleNavigation(firstActiveItem.href, firstActiveItem.label);
+                                                        }
+                                                    } else {
+                                                        toggleGroup(item.label);
+                                                    }
+                                                }}
+                                                className={`flex w-full items-center ${isSidebarCollapsed ? 'justify-center px-2' : 'justify-between px-4'} py-2.5 text-sm rounded-lg transition-colors ${
                                                     isActive 
                                                         ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
                                                         : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
                                                 }`}
+                                                title={isSidebarCollapsed ? item.label : undefined}
                                             >
                                                 <div className="flex items-center">
-                                                    <item.icon className="mr-3 size-5" />
-                                                    {item.label}
+                                                    <item.icon 
+                                                        className={`${isSidebarCollapsed ? 'size-6 mr-0' : 'size-5 mr-3'}`} 
+                                                    />
+                                                    {!isSidebarCollapsed && item.label}
                                                 </div>
-                                                <HiChevronDown 
-                                                    className={`size-4 transition-transform ${
-                                                        expandedGroups[item.label] ? 'rotate-180' : ''
-                                                    }`} 
-                                                />
+                                                {!isSidebarCollapsed && (
+                                                    <HiChevronDown 
+                                                        className={`size-4 transition-transform ${
+                                                            expandedGroups[item.label] ? 'rotate-180' : ''
+                                                        }`} 
+                                                    />
+                                                )}
                                             </button>
                                             
-                                            {expandedGroups[item.label] && (
+                                            {!isSidebarCollapsed && expandedGroups[item.label] && (
                                                 <div className="mt-1 ml-6 pl-4 border-l border-gray-200 dark:border-gray-700">
                                                     {item.items.map((subitem, subIndex) => {
                                                         const isSubitemActive = activeMenuItem === subitem.href;
                                                         return (
-                                                            <Link
+                                                            <button
                                                                 key={subIndex}
-                                                                href={subitem.isActive === false ? '#' : subitem.href}
-                                                                className={`flex items-center px-3 py-2 text-sm rounded-lg my-0.5 ${
+                                                                onClick={() => {
+                                                                    if (subitem.isActive !== false) {
+                                                                        handleNavigation(subitem.href, subitem.label);
+                                                                    }
+                                                                }}
+                                                                disabled={subitem.isActive === false}
+                                                                className={`flex items-center px-3 py-2 text-sm rounded-lg my-0.5 w-full text-left ${
                                                                     subitem.isActive === false
                                                                         ? 'text-gray-400 cursor-not-allowed'
                                                                         : isSubitemActive
                                                                             ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
                                                                             : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'
                                                                 }`}
-                                                                onClick={(e) => {
-                                                                    if (subitem.isActive === false) {
-                                                                        e.preventDefault();
-                                                                    } else {
-                                                                        setActiveMenuItem(subitem.href);
-                                                                    }
-                                                                }}
                                                             >
                                                                 {subitem.label}
                                                                 {subitem.isActive === false && (
                                                                     <span className="ml-2 text-xs text-gray-400">(soon)</span>
                                                                 )}
-                                                            </Link>
+                                                            </button>
                                                         );
                                                     })}
                                                 </div>
@@ -222,15 +287,38 @@ export function Navbar() {
                             );
                         })}
                     </div>
-                    
 
+                    {/* Collapse/Expand button */}
+                    <div className="border-t border-gray-200 dark:border-gray-800 p-3">
+                        <button
+                            onClick={() => {
+                                const newCollapsedState = !isSidebarCollapsed;
+                                setIsSidebarCollapsed(newCollapsedState);
+                                // Save to localStorage
+                                localStorage.setItem('fsGaze-sidebar-collapsed', JSON.stringify(newCollapsedState));
+                            }}
+                            className={`flex items-center justify-center w-full text-sm rounded-lg transition-colors text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 ${
+                                isSidebarCollapsed ? 'px-2 py-3' : 'px-4 py-2.5'
+                            }`}
+                            title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                        >
+                            {isSidebarCollapsed ? (
+                                <HiChevronRight className="size-10" />
+                            ) : (
+                                <>
+                                    <HiChevronLeft className="mr-3 size-5" />
+                                    Collapse
+                                </>
+                            )}
+                        </button>
+                    </div>
                 </div>
             </div>
 
             {/* Mobile menu button */}
             <div className="fixed top-0 left-0 right-0 z-50 flex h-16 md:hidden items-center justify-between bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-4">
                 <div className="flex items-center">
-                    <div className="mr-2 rounded-md bg-blue-500 p-1">
+                    <div className="mr-2">
                         <Image 
                             src="/GazeIcon.png"
                             alt="fsGaze Logo"
@@ -258,7 +346,7 @@ export function Navbar() {
                 {/* Mobile menu header */}
                 <div className="h-16 flex items-center justify-between px-4 border-b border-gray-200 dark:border-gray-800">
                     <div className="flex items-center">
-                        <div className="mr-2 rounded-md bg-blue-500 p-1">
+                        <div className="mr-2">
                             <Image 
                                 src="/GazeIcon.png"
                                 alt="fsGaze Logo"
@@ -287,21 +375,17 @@ export function Navbar() {
                         return (
                             <div key={index} className="mb-2">
                                 {item.type === 'link' ? (
-                                    <Link
-                                        href={item.href}
-                                        className={`flex items-center px-4 py-2.5 text-sm rounded-lg transition-colors ${
+                                    <button
+                                        onClick={() => handleNavigation(item.href, item.label)}
+                                        className={`flex items-center px-4 py-2.5 text-sm rounded-lg transition-colors w-full text-left ${
                                             isActive
                                                 ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
                                                 : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
                                         }`}
-                                        onClick={() => {
-                                            setActiveMenuItem(item.href);
-                                            setIsMenuOpen(false);
-                                        }}
                                     >
                                         <item.icon className="mr-3 size-5" />
                                         {item.label}
-                                    </Link>
+                                    </button>
                                 ) : (
                                     <div className="mb-1">
                                         <button
@@ -328,30 +412,27 @@ export function Navbar() {
                                                 {item.items.map((subitem, subIndex) => {
                                                     const isSubitemActive = activeMenuItem === subitem.href;
                                                     return (
-                                                        <Link
+                                                        <button
                                                             key={subIndex}
-                                                            href={subitem.isActive === false ? '#' : subitem.href}
-                                                            className={`flex items-center px-3 py-2 text-sm rounded-lg my-0.5 ${
+                                                            onClick={() => {
+                                                                if (subitem.isActive !== false) {
+                                                                    handleNavigation(subitem.href, subitem.label);
+                                                                }
+                                                            }}
+                                                            disabled={subitem.isActive === false}
+                                                            className={`flex items-center px-3 py-2 text-sm rounded-lg my-0.5 w-full text-left ${
                                                                 subitem.isActive === false
                                                                     ? 'text-gray-400 cursor-not-allowed'
                                                                     : isSubitemActive
                                                                         ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
                                                                         : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'
                                                             }`}
-                                                            onClick={(e) => {
-                                                                if (subitem.isActive === false) {
-                                                                    e.preventDefault();
-                                                                } else {
-                                                                    setActiveMenuItem(subitem.href);
-                                                                    setIsMenuOpen(false);
-                                                                }
-                                                            }}
                                                         >
                                                             {subitem.label}
                                                             {subitem.isActive === false && (
                                                                 <span className="ml-2 text-xs text-gray-400">(soon)</span>
                                                             )}
-                                                        </Link>
+                                                        </button>
                                                     );
                                                 })}
                                             </div>

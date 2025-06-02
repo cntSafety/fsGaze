@@ -13,10 +13,8 @@ const ArxmlImporterPage: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col items-center p-4">
-      <div className="w-full max-w-3xl">
-        <ArxmlImporter onFileImported={handleFileImported} />
-      </div>
+    <div className="w-full h-full">
+      <ArxmlImporter onFileImported={handleFileImported} />
     </div>
   );
 };

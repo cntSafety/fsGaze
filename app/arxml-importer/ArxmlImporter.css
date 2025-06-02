@@ -1,13 +1,53 @@
 .arxml-importer-container {
-  padding: 20px;
+  padding: 10px;
+  max-width: 100%;
+  width: 100%;
+  margin: 0;
 }
 
 .arxml-importer-container .ant-card {
   margin-bottom: 20px;
+  width: 100%;
+  max-width: none;
 }
 
 .arxml-files-table {
   margin: 20px 0;
+  width: 100%;
+}
+
+.arxml-files-table .ant-table {
+  width: 100%;
+  table-layout: auto;
+}
+
+.arxml-files-table .ant-table-container {
+  width: 100%;
+}
+
+.arxml-files-table .ant-table-content {
+  width: 100%;
+  overflow-x: visible;
+}
+
+.arxml-files-table .ant-table-body {
+  overflow-x: visible;
+}
+
+.arxml-files-table .ant-table-thead > tr > th:nth-child(1) {
+  width: 80px;
+  min-width: 80px;
+  max-width: 80px;
+}
+
+.arxml-files-table .ant-table-thead > tr > th:nth-child(2) {
+  width: 25%;
+  min-width: 200px;
+}
+
+.arxml-files-table .ant-table-thead > tr > th:nth-child(3) {
+  width: calc(75% - 80px);
+  min-width: 300px;
 }
 
 .arxml-files-table .ant-table-thead > tr > th {
