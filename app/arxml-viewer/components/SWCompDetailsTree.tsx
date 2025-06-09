@@ -1,10 +1,14 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Tree, Input, Modal, Spin, Alert, Typography, Table } from 'antd';
-import type { GetProps } from 'antd';
+import { Tree, Input, Modal, Spin, Alert, Typography, Table, Dropdown, Menu, Button } from 'antd';
+import type { GetProps, MenuProps } from 'antd';
 import { DataNode as AntDataNode } from 'antd/es/tree';
-import { getComponentRelations, getAssemblyContextForPPort, getAssemblyContextForRPort, AssemblyContextInfo } from '@/app/services/ArxmlToNeoService';
+import { PlusOutlined, DeleteOutlined, ExclamationCircleOutlined, ReloadOutlined } from '@ant-design/icons';
+import { getComponentRelations, getAssemblyContextForPPort, getAssemblyContextForRPort, AssemblyContextInfo, deleteFailureNode, getNodeLabels } from '@/app/services/ArxmlToNeoService';
+import { getFailuresForPorts } from '@/app/services/neo4j/queries/safety';
+import AddFM from '../../safety/components/AddFM';
+import CreateCausationModal from '../../safety/components/CreateCausationModal';
 
 const { Search } = Input;
 const { Text, Title } = Typography;
@@ -60,6 +64,27 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [modalLoading, setModalLoading] = useState(false);
   const [modalRelations, setModalRelations] = useState<RelationInfo[]>([]);
+  
+  // New state for failure mode functionality
+  const [isAddFMModalVisible, setIsAddFMModalVisible] = useState(false);
+  const [selectedElementForFM, setSelectedElementForFM] = useState<{
+    uuid: string;
+    name: string;
+    labels?: string[];
+  } | null>(null);
+  const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  
+  // State for causation creation
+  const [causationMode, setCausationMode] = useState<'none' | 'selectFirst' | 'selectSecond'>('none');
+  const [firstFailureForCausation, setFirstFailureForCausation] = useState<{
+    uuid: string;
+    name: string;
+  } | null>(null);
+  const [secondFailureForCausation, setSecondFailureForCausation] = useState<{
+    uuid: string;
+    name: string;
+  } | null>(null);
+  const [isCausationModalVisible, setIsCausationModalVisible] = useState(false);
 
   const buildTreeData = useCallback(async (relationsData: RelationInfo[]): Promise<CustomDataNode[]> => {
     const rootNode: CustomDataNode = {
@@ -158,6 +183,11 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
           
           const assemblyContextRecords = assemblyContextResult.records.map(r => r.toObject() as unknown as AssemblyContextInfo);
           console.log('Assembly context records:', assemblyContextRecords); // For debugging
+          
+          // Fetch failures for this port
+          const failuresResult = await getFailuresForPorts(connectedElementUuid);
+          const failures = failuresResult.success ? failuresResult.data || [] : [];
+          
           if (assemblyContextRecords && assemblyContextRecords.length > 0) {
             const connectorsMap = new Map<string, CustomDataNode>();
             for (const record of assemblyContextRecords) {
@@ -234,6 +264,37 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
               });
             }
           }
+          
+          // Add failure nodes if any exist
+          if (failures.length > 0) {
+            for (const failure of failures) {
+              const failureNodeKey = `${elementNodeKey}-failure-${failure.failureUuid}`;
+              const failureNode: CustomDataNode = {
+                key: failureNodeKey,
+                title: (
+                  <>
+                    <span style={{ color: '#ff4d4f', fontWeight: 'bold' }}>⚠️ </span>
+                    {failure.failureName || 'Unnamed Failure'}
+                    <Typography.Text type="danger" style={{ marginLeft: '8px', fontStyle: 'italic', fontSize: '0.9em' }}>
+                      ({failure.failureType})
+                    </Typography.Text>
+                  </>
+                ),
+                isLeaf: true,
+                relationData: {
+                  relationshipType: failure.relationshipType,
+                  sourceName: connectedElementName,
+                  sourceUuid: connectedElementUuid,
+                  sourceType: connectedElementType,
+                  targetName: failure.failureName,
+                  targetUuid: failure.failureUuid,
+                  targetType: failure.failureType,
+                },
+              };
+              elementNode.children!.push(failureNode);
+            }
+          }
+          
         } catch (e) {
           console.error(`Failed to fetch assembly context for ${connectedElementType} ${connectedElementUuid}:`, e);
           // Add an error child node? Or just log? For now, log.
@@ -304,6 +365,12 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
 
   const onSelect: GetProps<typeof Tree>['onSelect'] = async (selectedKeys, info) => {
     const selectedCustomNode = info.node as CustomDataNode;
+    
+    // Handle causation mode first
+    if (causationMode !== 'none') {
+      await handleNodeClickForCausation(selectedKeys, info);
+      return;
+    }
     
     // Find the UUID from the relationData or try to extract from the node
     let elementUuid: string | null = null;
@@ -416,6 +483,344 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
     }
   };
 
+  // Context menu functionality
+  const getElementFromNode = async (node: CustomDataNode): Promise<{ uuid: string; name: string; labels?: string[] } | null> => {
+    // Check if this is a failure node first (they have a specific key pattern)
+    const keyStr = String(node.key);
+    if (keyStr.includes('-failure-')) {
+      const parts = keyStr.split('-failure-');
+      if (parts.length > 1) {
+        const uuid = parts[1];
+        const title = getSortableStringFromTitle(node.title);
+        if (uuid && title) {
+          // Fetch labels for this element from Neo4j
+          const labels = await fetchNodeLabels(uuid);
+          return { uuid, name: title, labels };
+        }
+      }
+    }
+
+    // Try to get element info from relationData
+    if (node.relationData) {
+      const relation = node.relationData;
+      
+      // For failure nodes, use the target information (failure is usually the target)
+      if (relation.targetType?.includes('FAILURE') || relation.relationshipType === 'OCCURRENCE') {
+        if (relation.targetUuid && relation.targetName) {
+          const labels = await fetchNodeLabels(relation.targetUuid);
+          return { uuid: relation.targetUuid, name: relation.targetName, labels };
+        }
+      }
+      
+      // For other nodes, determine which element to use based on the current component
+      const isSourceOfRelation = relation.sourceUuid === componentUuid;
+      const elementUuid = isSourceOfRelation ? relation.targetUuid : relation.sourceUuid;
+      const elementName = isSourceOfRelation ? relation.targetName : relation.sourceName;
+      
+      if (elementUuid && elementName) {
+        // Fetch labels for this element from Neo4j
+        const labels = await fetchNodeLabels(elementUuid);
+        return { uuid: elementUuid, name: elementName, labels };
+      }
+    }
+    
+    // Try to extract from key for assembly context nodes
+    if (keyStr.includes('-comp-')) {
+      const parts = keyStr.split('-comp-');
+      if (parts.length > 1) {
+        const uuid = parts[1];
+        const title = getSortableStringFromTitle(node.title);
+        if (uuid && title) {
+          // Fetch labels for this element from Neo4j
+          const labels = await fetchNodeLabels(uuid);
+          return { uuid, name: title, labels };
+        }
+      }
+    }
+    
+    // Try to extract from key for assembly connector nodes
+    if (keyStr.includes('-asm-')) {
+      const parts = keyStr.split('-asm-');
+      if (parts.length > 1) {
+        const uuidPart = parts[1].split('-')[0]; // Get UUID before any additional suffixes
+        const title = getSortableStringFromTitle(node.title);
+        if (uuidPart && title) {
+          // Fetch labels for this element from Neo4j
+          const labels = await fetchNodeLabels(uuidPart);
+          return { uuid: uuidPart, name: title, labels };
+        }
+      }
+    }
+    
+    // Fallback: use the current component if nothing else matches
+    if (componentUuid && componentName) {
+      // Fetch labels for this element from Neo4j
+      const labels = await fetchNodeLabels(componentUuid);
+      return { uuid: componentUuid, name: componentName, labels };
+    }
+    
+    console.warn('Could not extract element from node:', { key: keyStr, title: getSortableStringFromTitle(node.title), relationData: node.relationData });
+    return null;
+  };
+
+  // Helper function to fetch node labels from Neo4j via service
+  const fetchNodeLabels = async (nodeUuid: string): Promise<string[]> => {
+    try {
+      const result = await getNodeLabels(nodeUuid);
+      if (result.success && result.data) {
+        return result.data;
+      }
+      return [];
+    } catch (error) {
+      console.error('Error fetching node labels:', error);
+      return [];
+    }
+  };
+
+  const handleContextMenu = async (info: { event: React.MouseEvent; node: CustomDataNode }) => {
+    info.event.preventDefault();
+    const element = await getElementFromNode(info.node);
+    
+    if (element) {
+      setSelectedElementForFM(element);
+      setContextMenuPosition({ x: info.event.clientX, y: info.event.clientY });
+    }
+  };
+
+  const handleAddFailureMode = () => {
+    setContextMenuPosition(null);
+    setIsAddFMModalVisible(true);
+  };
+
+  const handleDeleteFailureMode = () => {
+    setContextMenuPosition(null);
+    
+    if (!selectedElementForFM) {
+      Modal.error({
+        title: 'No Element Selected',
+        content: 'Please select an element first.',
+      });
+      return;
+    }
+
+    // Check if the selected element is actually a failure node
+    const element = selectedElementForFM;
+    const isFailureNode = element.uuid && element.labels?.includes('FAILURE');
+    
+    if (!isFailureNode) {
+      Modal.error({
+        title: 'Invalid Selection',
+        content: 'Please right-click on a failure node to delete it.',
+      });
+      return;
+    }
+
+    Modal.confirm({
+      title: 'Delete Failure Mode',
+      icon: <ExclamationCircleOutlined />,
+      content: `Are you sure you want to delete the failure mode "${element.name}"? This action cannot be undone.`,
+      okText: 'Delete',
+      okType: 'danger',
+      cancelText: 'Cancel',
+      onOk: async () => {
+        try {
+          const result = await deleteFailureNode(element.uuid);
+          
+          if (result.success) {
+            Modal.success({
+              title: 'Failure Mode Deleted',
+              content: `Successfully deleted failure mode "${element.name}"`,
+            });
+            
+            // Refresh the tree data
+            await handleRefresh();
+          } else {
+            Modal.error({
+              title: 'Delete Failed',
+              content: result.message || 'Failed to delete failure mode',
+            });
+          }
+        } catch (error) {
+          console.error('Error deleting failure mode:', error);
+          Modal.error({
+            title: 'Delete Failed',
+            content: 'An unexpected error occurred while deleting the failure mode',
+          });
+        }
+      },
+    });
+  };
+
+  const handleFailureModeSuccess = async (data: any) => {
+    Modal.success({
+      title: 'Failure Mode Created',
+      content: `Successfully created failure mode "${data.failureName}" for element ${selectedElementForFM?.name}`,
+    });
+    setIsAddFMModalVisible(false);
+    setSelectedElementForFM(null);
+    
+    // Refresh the tree data to show the new failure mode
+    await handleRefresh();
+  };
+
+  // Causation creation handlers
+  const handleCreateCausation = () => {
+    setCausationMode('selectFirst');
+    setFirstFailureForCausation(null);
+    setSecondFailureForCausation(null);
+    Modal.info({
+      title: 'Create Causation',
+      content: 'Please click on the FIRST failure mode (the cause). Look for nodes with the "FAILURE" label.',
+    });
+  };
+
+  const handleNodeClickForCausation = async (selectedKeys: React.Key[], info: any) => {
+    if (causationMode === 'none') return;
+
+    const element = await getElementFromNode(info.node);
+    
+    if (!element || !element.labels?.includes('FAILURE')) {
+      Modal.warning({
+        title: 'Invalid Selection',
+        content: 'Please select a failure node (nodes with "FAILURE" label).',
+      });
+      return;
+    }
+
+    if (causationMode === 'selectFirst') {
+      setFirstFailureForCausation({ uuid: element.uuid, name: element.name });
+      setCausationMode('selectSecond');
+      Modal.info({
+        title: 'First Failure Selected',
+        content: `Selected "${element.name}" as the FIRST failure (cause). Now click on the SECOND failure mode (the effect).`,
+      });
+    } else if (causationMode === 'selectSecond') {
+      if (element.uuid === firstFailureForCausation?.uuid) {
+        Modal.warning({
+          title: 'Same Failure Selected',
+          content: 'Please select a different failure mode for the second failure (effect).',
+        });
+        return;
+      }
+      
+      setSecondFailureForCausation({ uuid: element.uuid, name: element.name });
+      setCausationMode('none');
+      setIsCausationModalVisible(true);
+    }
+  };
+
+  const handleCausationSuccess = async () => {
+    // Reset state
+    setIsCausationModalVisible(false);
+    setFirstFailureForCausation(null);
+    setSecondFailureForCausation(null);
+    
+    // Refresh the tree to potentially show new relationships
+    await handleRefresh();
+  };
+
+  const handleCancelCausation = () => {
+    setCausationMode('none');
+    setFirstFailureForCausation(null);
+    setSecondFailureForCausation(null);
+    setIsCausationModalVisible(false);
+  };
+
+  const handleRefresh = async () => {
+    if (!componentUuid) return;
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const response = await getComponentRelations(componentUuid);
+      if (response.success && response.data) {
+        const rawRelations = response.data as unknown as RelationInfo[];
+        const processedTreeData = await buildTreeData(rawRelations);
+        setTreeData(processedTreeData);
+        // Expand the first level by default (Relationship Types)
+        if (processedTreeData.length > 0 && processedTreeData[0].children) {
+          setExpandedKeys([processedTreeData[0].key, ...processedTreeData[0].children.map(child => child.key)]);
+        } else if (processedTreeData.length > 0) {
+          setExpandedKeys([processedTreeData[0].key]);
+        }
+      } else {
+        setError(response.message || 'Failed to fetch relations.');
+        setTreeData([]);
+      }
+    } catch (error: any) {
+      console.error('Error refreshing tree data:', error);
+      setError(error.message || 'An unexpected error occurred.');
+      setTreeData([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const contextMenuItems: MenuProps['items'] = [
+    {
+      key: 'add-failure',
+      label: 'Add Failure Mode',
+      icon: <PlusOutlined />,
+      onClick: handleAddFailureMode,
+    },
+    {
+      key: 'delete-failure',
+      label: 'Delete Failure Mode',
+      icon: <DeleteOutlined />,
+      onClick: handleDeleteFailureMode,
+    },
+    {
+      type: 'divider',
+    },
+    {
+      key: 'causation-first',
+      label: 'Select as FIRST failure (cause)',
+      onClick: () => {
+        setContextMenuPosition(null);
+        if (selectedElementForFM?.labels?.includes('FAILURE')) {
+          setFirstFailureForCausation({ uuid: selectedElementForFM.uuid, name: selectedElementForFM.name });
+          setCausationMode('selectSecond');
+          Modal.info({
+            title: 'First Failure Selected',
+            content: `Selected "${selectedElementForFM.name}" as the FIRST failure (cause). Now select the SECOND failure mode (the effect) using the button or right-click menu.`,
+          });
+        } else {
+          Modal.warning({
+            title: 'Invalid Selection',
+            content: 'Please select a failure node (nodes with "FAILURE" label).',
+          });
+        }
+      },
+      disabled: !selectedElementForFM?.labels?.includes('FAILURE'),
+    },
+    {
+      key: 'causation-second',
+      label: 'Select as SECOND failure (effect)',
+      onClick: () => {
+        setContextMenuPosition(null);
+        if (selectedElementForFM?.labels?.includes('FAILURE')) {
+          if (selectedElementForFM.uuid === firstFailureForCausation?.uuid) {
+            Modal.warning({
+              title: 'Same Failure Selected',
+              content: 'Please select a different failure mode for the second failure (effect).',
+            });
+            return;
+          }
+          setSecondFailureForCausation({ uuid: selectedElementForFM.uuid, name: selectedElementForFM.name });
+          setCausationMode('none');
+          setIsCausationModalVisible(true);
+        } else {
+          Modal.warning({
+            title: 'Invalid Selection',
+            content: 'Please select a failure node (nodes with "FAILURE" label).',
+          });
+        }
+      },
+      disabled: !selectedElementForFM?.labels?.includes('FAILURE') || causationMode !== 'selectSecond',
+    },
+  ];
+
   const treeProps = {
     treeData,
     expandedKeys,
@@ -425,6 +830,7 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
       setAutoExpandParent(false);
     },
     onSelect,
+    onRightClick: handleContextMenu,
   };
 
   if (!componentUuid) {
@@ -433,31 +839,78 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
 
   return (
     <div>
-      <Title level={4}>
-        {/* Relations for: <Text strong>{componentName || componentUuid}</Text> */}
-        Hierarchical Relations for: <Text strong>{componentName || componentUuid}</Text>
-      </Title>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <Title level={4} style={{ margin: 0 }}>
+          Hierarchical Relations for: <Text strong>{componentName || componentUuid}</Text>
+        </Title>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <Button 
+            type={causationMode !== 'none' ? 'primary' : 'default'}
+            icon={<PlusOutlined />}
+            onClick={handleCreateCausation}
+            disabled={loading}
+          >
+            {causationMode === 'none' ? 'Create Causation' : 
+             causationMode === 'selectFirst' ? 'Select FIRST failure...' : 
+             'Select SECOND failure...'}
+          </Button>
+          <Button 
+            icon={<ReloadOutlined />} 
+            onClick={handleRefresh}
+            loading={loading}
+            type="default"
+            size="middle"
+          >
+            Refresh
+          </Button>
+        </div>
+      </div>
       <Search style={{ marginBottom: 8 }} placeholder="Search in tree" onChange={handleSearch} />
       {loading && (
-        <Spin tip="Loading relations...">
-          <div style={{ minHeight: 100 }} />
-        </Spin>
+        <div style={{ textAlign: 'center', padding: '50px 0' }}>
+          <Spin size="large" tip="Loading relations..." />
+        </div>
       )}
       {error && <Alert message="Error" description={error} type="error" showIcon />}
       {!loading && !error && treeData.length === 0 && (
         <Alert message="No relations found for this component with the current filter." type="info" />
       )}
       {!loading && !error && treeData.length > 0 && (
-        <Tree
-          showLine
-          {...treeProps}
-          filterTreeNode={(node) => {
-            if (!searchTerm) return true;
-            // const title = (node as CustomDataNode).title as string; // Old incorrect way
-            const title = getSortableStringFromTitle((node as CustomDataNode).title);
-            return title.toLowerCase().includes(searchTerm.toLowerCase());
-          }}
-        />
+        <>
+          <Tree
+            showLine
+            {...treeProps}
+            filterTreeNode={(node) => {
+              if (!searchTerm) return true;
+              // const title = (node as CustomDataNode).title as string; // Old incorrect way
+              const title = getSortableStringFromTitle((node as CustomDataNode).title);
+              return title.toLowerCase().includes(searchTerm.toLowerCase());
+            }}
+            onRightClick={handleContextMenu}
+          />
+          {contextMenuPosition && (
+            <Dropdown
+              menu={{ items: contextMenuItems }}
+              open={true}
+              onOpenChange={(open) => {
+                if (!open) {
+                  setContextMenuPosition(null);
+                }
+              }}
+            >
+              <div
+                style={{
+                  position: 'fixed',
+                  left: contextMenuPosition.x,
+                  top: contextMenuPosition.y,
+                  width: 1,
+                  height: 1,
+                  pointerEvents: 'none',
+                }}
+              />
+            </Dropdown>
+          )}
+        </>
       )}
       {selectedNodeDetails && (
         <Modal
@@ -469,7 +922,9 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
           width={1000}
         >
           {modalLoading ? (
-            <Spin tip="Loading relationships..." />
+            <div style={{ textAlign: 'center', padding: '50px 0' }}>
+              <Spin size="large" tip="Loading relationships..." />
+            </div>
           ) : modalRelations.length > 0 ? (
             <Table
               dataSource={modalRelations}
@@ -538,6 +993,34 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
           )}
         </Modal>
       )}
+      <Modal
+        title={`Add Failure Mode to: ${selectedElementForFM?.name || 'Unknown Element'}`}
+        open={isAddFMModalVisible}
+        onCancel={() => {
+          setIsAddFMModalVisible(false);
+          setSelectedElementForFM(null);
+        }}
+        footer={null}
+        width={600}
+      >
+        {selectedElementForFM && (
+          <AddFM 
+            existingElementUuid={selectedElementForFM.uuid}
+            existingElementName={selectedElementForFM.name}
+            onSuccess={handleFailureModeSuccess}
+            onCancel={() => setIsAddFMModalVisible(false)}
+        />
+        )}
+      </Modal>
+      
+      {/* Causation Creation Modal */}
+      <CreateCausationModal
+        open={isCausationModalVisible}
+        onCancel={handleCancelCausation}
+        onSuccess={handleCausationSuccess}
+        firstFailure={firstFailureForCausation}
+        secondFailure={secondFailureForCausation}
+      />
     </div>
   );
 };

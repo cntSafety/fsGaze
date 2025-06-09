@@ -141,12 +141,12 @@ const SWCompDetails: React.FC<SWCompDetailsProps> = ({ componentUuid, componentN
         allowClear
         enterButton
       />
-      {loading && <Spin tip="Loading relations..." style={{ display: 'block', marginTop: '20px' }} />}
-      {error && <Alert message="Error Fetching Relations" description={error} type="error" showIcon style={{ marginBottom: '20px' }} />}
-      {!loading && !error && relations.length === 0 && componentUuid && (
-        <Alert message="No relations found for this component." description="This component might not have any direct relationships defined in the imported ARXML data, or the relationships are not captured by the current query." type="info" showIcon />
-      )}
-      {!loading && !error && relations.length > 0 && (
+      <Spin spinning={loading} tip="Loading relations...">
+        {error && <Alert message="Error Fetching Relations" description={error} type="error" showIcon style={{ marginBottom: '20px' }} />}
+        {!loading && !error && relations.length === 0 && componentUuid && (
+          <Alert message="No relations found for this component." description="This component might not have any direct relationships defined in the imported ARXML data, or the relationships are not captured by the current query." type="info" showIcon />
+        )}
+        {!loading && !error && relations.length > 0 && (
         <Table
           columns={columns}
           dataSource={filteredRelations}
@@ -164,7 +164,8 @@ const SWCompDetails: React.FC<SWCompDetailsProps> = ({ componentUuid, componentN
           scroll={{ x: 'max-content' }}
           sticky // Makes header sticky if table scrolls vertically
         />
-      )}
+        )}
+      </Spin>
     </div>
   );
 };

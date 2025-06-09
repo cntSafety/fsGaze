@@ -6,7 +6,6 @@ import { getApplicationSwComponents } from '../../services/ArxmlToNeoService';
 import SWCompDetails from './SWCompDetails';
 import SWCompDetailsTree from './SWCompDetailsTree'; // Import the new Tree component
 import SWCProtoRelations from './SWCProtoRelations'; // Import the SW Component Relations component
-import SWCProtoGraph from './SWCProtoGraph'; // Import the SW Component Graph component
 import { InfoCircleOutlined, ApartmentOutlined } from '@ant-design/icons'; // Import icons
 
 interface SwComponent {
@@ -267,13 +266,6 @@ const ArxmlViewer: React.FC = () => {
       {!loading && !error && components.length > 0 && (
         <div style={{ marginTop: '40px' }}>
           <SWCProtoRelations />
-        </div>
-      )}
-
-      {/* SW Component Prototype Graph Section */}
-      {!loading && !error && components.length > 0 && (
-        <div style={{ marginTop: '40px' }}>
-          <SWCProtoGraph />
         </div>
       )}
 

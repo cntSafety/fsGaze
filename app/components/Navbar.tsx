@@ -79,11 +79,14 @@ export function Navbar() {
         },
         {
             type: 'dropdown',
-            label: 'ARXML',
+            label: 'Software',
             icon: HiOutlineCode , // You can use a different icon if desired
             items: [
                 { label: 'ARXML Importer', href: '/arxml-importer', isActive: true },
-                { label: 'SW Components', href: '/arxml-viewer', isActive: true }
+                { label: 'SW Table', href: '/arxml-viewer', isActive: true },
+                { label: 'SW Graph', href: '/arxml-graphViewer', isActive: true },
+                { label: 'SW Flow', href: '/arxml-flowViewer', isActive: true },
+                { label: 'SW Safety', href: '/arxml-safety', isActive: true }
             ]
         },
         {
