@@ -219,6 +219,7 @@ export default function ArxmlSafetyAnalysisTable() {
       dataIndex: 'swComponentName',
       editable: false,
       searchable: true,
+      minWidth: 200,
       render: (text: string, record: SafetyTableRow, index: number) => {
         // Only show component name on the first row for each component in table order
         const isFirstRowForComponent = index === 0 || 
@@ -242,6 +243,7 @@ export default function ArxmlSafetyAnalysisTable() {
       dataIndex: 'failureName',
       editable: true,
       searchable: true,
+      minWidth: 150,
       render: (text: string) => (
         <span style={{ color: text === 'No failures defined' ? '#999' : 'inherit' }}>
           {text}
@@ -254,6 +256,8 @@ export default function ArxmlSafetyAnalysisTable() {
       dataIndex: 'failureDescription',
       editable: true,
       searchable: true,
+      ellipsis: true,
+      minWidth: 250,
       render: (text: string) => (
         <span style={{ color: text === '-' ? '#999' : 'inherit' }}>
           {text}
@@ -266,6 +270,7 @@ export default function ArxmlSafetyAnalysisTable() {
       dataIndex: 'asil',
       editable: true,
       inputType: 'select',
+      width: 80,
       selectOptions: [
         { value: 'A', label: 'ASIL A' },
         { value: 'B', label: 'ASIL B' },

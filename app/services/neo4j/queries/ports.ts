@@ -1,6 +1,6 @@
 import { driver } from '../config';
 import { QueryResult } from 'neo4j-driver';
-import { AssemblyContextInfo, ProvidedInterfaceInfo } from '../types';
+import { AssemblyContextInfo, ProvidedInterfaceInfo, PortInfo } from '../types';
 
 /**
  * Get assembly context information for a P_PORT_PROTOTYPE
@@ -128,6 +128,69 @@ export const getInformationForPort = async (portUuid: string): Promise<{
     return {
       success: false,
       message: `Error fetching interface information for port UUID ${portUuid}.`,
+      error: errorMessage,
+    };
+  } finally {
+    await session.close();
+  }
+};
+
+/**
+ * Get provider ports (P_PORT_PROTOTYPE) for a given SW component UUID
+ */
+export const getProviderPortsForSWComponent = async (swComponentUuid: string): Promise<{
+  success: boolean;
+  data?: PortInfo[];
+  message?: string;
+  error?: string;
+}> => {
+  const session = driver.session();
+  
+  try {
+    console.log(`🔍 Fetching provider ports for SW component UUID: ${swComponentUuid}`);
+    
+    const result = await session.run(
+      `MATCH (SWcomponent) 
+       WHERE SWcomponent.uuid = $swComponentUuid 
+       MATCH (SWcomponent)-[r:CONTAINS]->(pPort:P_PORT_PROTOTYPE)
+       RETURN pPort`,
+      { swComponentUuid }
+    );
+
+    if (result.records.length === 0) {
+      console.log(`❌ No provider ports found for SW component UUID: ${swComponentUuid}`);
+      return {
+        success: true,
+        data: [],
+        message: `No provider ports found for SW component with UUID: ${swComponentUuid}`,
+      };
+    }
+
+    // Process the results
+    const providerPorts: PortInfo[] = result.records.map(record => {
+      const pPort = record.get('pPort');
+      
+      return {
+        name: pPort.properties.name || 'Unnamed Port',
+        uuid: pPort.properties.uuid || '',
+        type: pPort.labels && pPort.labels.length > 0 ? pPort.labels[0] : 'P_PORT_PROTOTYPE',
+      };
+    });
+
+    console.log(`✅ Found ${providerPorts.length} provider ports for SW component ${swComponentUuid}:`, providerPorts);
+
+    return {
+      success: true,
+      data: providerPorts,
+    };
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error(`❌ Error fetching provider ports for SW component UUID ${swComponentUuid}:`, errorMessage);
+    
+    return {
+      success: false,
+      message: `Error fetching provider ports for SW component UUID ${swComponentUuid}.`,
       error: errorMessage,
     };
   } finally {

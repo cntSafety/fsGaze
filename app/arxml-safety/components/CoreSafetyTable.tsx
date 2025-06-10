@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Table, Form, Input, Select, Typography, Popconfirm, Button, Space } from 'antd';
-import { SearchOutlined, DeleteOutlined } from '@ant-design/icons';
+import { SearchOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import type { TableProps, ColumnType } from 'antd/es/table';
 import type { FilterDropdownProps } from 'antd/es/table/interface';
 
@@ -30,6 +30,9 @@ export interface SafetyTableColumn {
   inputType?: 'text' | 'select';
   selectOptions?: Array<{ value: string; label: string }>;
   width?: string | number;
+  ellipsis?: boolean;
+  minWidth?: number;
+  maxWidth?: number;
 }
 
 interface EditableCellProps extends React.HTMLAttributes<HTMLElement> {
@@ -98,7 +101,7 @@ interface CoreSafetyTableProps {
   onAdd?: (swComponentUuid: string, swComponentName: string) => void;
   onDelete?: (record: SafetyTableRow) => Promise<void>;
   isSaving?: boolean;
-  pagination?: boolean | TableProps<SafetyTableRow>['pagination'];
+  pagination?: false | TableProps<SafetyTableRow>['pagination'];
   showComponentActions?: boolean;
   form?: any;
 }
@@ -177,8 +180,17 @@ export default function CoreSafetyTable({
       dataIndex: col.dataIndex,
       key: col.key,
       width: col.width,
+      minWidth: col.minWidth,
+      ellipsis: col.ellipsis || (col.dataIndex === 'failureDescription'), // Default ellipsis for description columns
       render: col.render,
     };
+
+    // Add tooltip for ellipsis columns
+    if (baseColumn.ellipsis && !col.render) {
+      baseColumn.ellipsis = {
+        showTitle: true,
+      };
+    }
 
     // Add search functionality if enabled
     if (col.searchable) {
@@ -237,38 +249,42 @@ export default function CoreSafetyTable({
       title: 'Actions',
       dataIndex: 'actions',
       key: 'actions',
+      width: 120, // Reduced width since we're using icons
       render: (_: any, record: SafetyTableRow, index: number) => {
         const editable = isEditing(record);
         const isFirstRowForComponent = showComponentActions && (index === 0 || 
           dataSource[index - 1]?.swComponentUuid !== record.swComponentUuid);
         
         return editable ? (
-          <span>
+          <Space size="small">
             {onSave && (
-              <Typography.Link 
+              <Button 
+                type="primary"
+                size="small"
                 onClick={() => onSave(record.key)} 
-                style={{ marginInlineEnd: 8 }}
+                loading={isSaving}
                 disabled={isSaving}
               >
                 {isSaving ? 'Saving...' : 'Save'}
-              </Typography.Link>
+              </Button>
             )}
             {onCancel && (
               <Popconfirm title="Sure to cancel?" onConfirm={onCancel}>
-                <Typography.Link disabled={isSaving}>Cancel</Typography.Link>
+                <Button size="small" disabled={isSaving}>Cancel</Button>
               </Popconfirm>
             )}
-          </span>
+          </Space>
         ) : (
-          <span>
+          <Space size="small">
             {onEdit && record.failureName !== 'No failures defined' && (
-              <Typography.Link 
+              <Button 
+                type="text"
+                size="small"
                 disabled={editingKey !== ''} 
                 onClick={() => onEdit(record)}
-                style={{ marginInlineEnd: 8 }}
-              >
-                Edit
-              </Typography.Link>
+                icon={<EditOutlined />}
+                title="Edit"
+              />
             )}
             {onDelete && record.failureName !== 'No failures defined' && !record.isNewRow && record.failureUuid && (
               <Popconfirm 
@@ -278,23 +294,27 @@ export default function CoreSafetyTable({
                 cancelText="Cancel"
                 okType="danger"
               >
-                <Typography.Link 
+                <Button 
+                  type="text"
+                  size="small"
                   disabled={editingKey !== ''} 
-                  style={{ marginInlineEnd: 8, color: '#ff4d4f' }}
-                >
-                  <DeleteOutlined /> Delete
-                </Typography.Link>
+                  icon={<DeleteOutlined />}
+                  danger
+                  title="Delete"
+                />
               </Popconfirm>
             )}
             {onAdd && isFirstRowForComponent && record.swComponentUuid && record.swComponentName && (
-              <Typography.Link 
+              <Button 
+                type="text"
+                size="small"
                 disabled={editingKey !== ''} 
                 onClick={() => onAdd(record.swComponentUuid!, record.swComponentName!)}
-              >
-                + Add Failure
-              </Typography.Link>
+                icon={<PlusOutlined />}
+                title="Add Failure"
+              />
             )}
-          </span>
+          </Space>
         );
       },
     });
@@ -325,7 +345,7 @@ export default function CoreSafetyTable({
         pagination={pagination}
         loading={loading}
         size="small"
-        scroll={{ x: 800 }}
+        scroll={{ x: 'max-content' }}
       />
     </Form>
   );

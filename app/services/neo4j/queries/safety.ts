@@ -340,6 +340,8 @@ export const getFailuresForPorts = async (portUuid: string): Promise<{
   data?: Array<{
     failureUuid: string;
     failureName: string | null;
+    failureDescription: string | null;
+    asil: string | null;
     failureType: string | null;
     relationshipType: string;
   }>;
@@ -358,6 +360,8 @@ export const getFailuresForPorts = async (portUuid: string): Promise<{
        RETURN 
          failure.uuid AS failureUuid,
          failure.name AS failureName,
+         failure.description AS failureDescription,
+         failure.asil AS asil,
          labels(failure) AS failureLabels,
          type(r) AS relationshipType
        ORDER BY failure.name`,
@@ -376,6 +380,8 @@ export const getFailuresForPorts = async (portUuid: string): Promise<{
     const failures = result.records.map(record => ({
       failureUuid: record.get('failureUuid'),
       failureName: record.get('failureName'),
+      failureDescription: record.get('failureDescription'),
+      asil: record.get('asil'),
       failureType: record.get('failureLabels')?.join(', ') || 'FAILURE',
       relationshipType: record.get('relationshipType'),
     }));

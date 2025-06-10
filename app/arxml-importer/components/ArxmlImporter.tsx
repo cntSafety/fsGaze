@@ -29,6 +29,14 @@ const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void
   const [extractionProgress, setExtractionProgress] = useState(0);
   const [progressPhase, setProgressPhase] = useState<string>('');
   const [messageApi, contextHolder] = message.useMessage();
+  const [importLabel, setImportLabel] = useState<string>('');
+  const [lastImportSummary, setLastImportSummary] = useState<{
+    files: string[];
+    startTime: number;
+    nodeCount?: number;
+    relationshipCount?: number;
+    importLabel?: string;
+  } | null>(null);
 
   // Helper: Recursively scan directory for .arxml files
   const scanDirectory = async (dirHandle: any, basePath = ''): Promise<ArxmlFile[]> => {
@@ -146,6 +154,7 @@ const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void
       return;
     }
 
+    const startTime = Date.now(); // Track import start time
     setExtractionProgress(0); // Reset for a new import
     setProgressPhase('Initializing...');
     setIsExtracting(true);    // Show progress bar and disable buttons
@@ -183,15 +192,27 @@ const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void
       };
 
       // Single call to the backend with progress callback
-      const neoResult = await uploadArxmlToNeo4j(filesToUpload, progressCallback);
+      const neoResult = await uploadArxmlToNeo4j(filesToUpload, progressCallback, importLabel);
       
       // Backend processing is finished, now update progress and message
       setExtractionProgress(100); 
       setProgressPhase('Import complete!');
       
       if (neoResult.success) {
+        // Generate import summary file
+        const importedFileNames = selectedFiles.map(file => file.name);
+        const summaryData = {
+          files: importedFileNames,
+          startTime,
+          nodeCount: neoResult.nodeCount,
+          relationshipCount: neoResult.relationshipCount,
+          importLabel: importLabel
+        };
+        setLastImportSummary(summaryData);
+        generateImportSummary(importedFileNames, startTime, neoResult.nodeCount, neoResult.relationshipCount, importLabel);
+        
         messageApi.success({
-          content: `Successfully imported ${filesToUpload.length} file(s). ${neoResult.nodeCount} nodes, ${neoResult.relationshipCount} relationships created.`,
+          content: `Successfully imported ${filesToUpload.length} file(s). ${neoResult.nodeCount} nodes, ${neoResult.relationshipCount} relationships created. Import summary downloaded.`,
           key: messageKey, // This will replace the loading message
           duration: 5,
         });
@@ -255,6 +276,49 @@ const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void
       }
     });
     return result;
+  };
+
+  // Generate and download import summary file
+  const generateImportSummary = (importedFiles: string[], startTime: number, nodeCount?: number, relationshipCount?: number, importLabelForSummary?: string) => {
+    const now = new Date();
+    const endTime = Date.now();
+    const processingTime = Math.round((endTime - startTime) / 1000); // Convert to seconds
+    
+    const importDate = now.toLocaleString('en-US', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+
+    const summaryContent = [
+      `ARXML Import Summary`,
+      `===================`,
+      ``,
+      `Import Date: ${importDate}`,
+      `Total Files Imported: ${importedFiles.length}`,
+      `Processing Time: ${processingTime} seconds`,
+      ...(nodeCount !== undefined ? [`Nodes Created: ${nodeCount}`] : []),
+      ...(relationshipCount !== undefined ? [`Relationships Created: ${relationshipCount}`] : []),
+      ...(importLabelForSummary ? [`Import Label: ${importLabelForSummary}`] : []),
+      ``,
+      `Imported Files:`,
+      importedFiles.join(', ')
+    ].join('\n');
+
+    // Create and download the file
+    const blob = new Blob([summaryContent], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `arxml-import-summary-${now.toISOString().slice(0, 19).replace(/[:.]/g, '-')}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const columns = [
@@ -356,6 +420,23 @@ const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void
                 disabled={isExtracting}
               />
 
+              {/* Import Label Input */}
+              <div style={{ marginBottom: 16 }}>
+                <Text strong style={{ marginBottom: 8, display: 'block' }}>
+                  Import Label (optional):
+                </Text>
+                <Input
+                  placeholder="Enter import label (e.g., V3.33, Release_2024-01, etc.)"
+                  value={importLabel}
+                  onChange={e => setImportLabel(e.target.value)}
+                  disabled={isExtracting}
+                  style={{ maxWidth: 400 }}
+                />
+                <div style={{ fontSize: '12px', color: '#666', marginTop: 4 }}>
+                  This label will be stored with each imported model element along with a timestamp.
+                </div>
+              </div>
+
               {/* Progress bar moved here, above the table */}
               {isExtracting && (
                 <div style={{ margin: '16px 0' }}>
@@ -383,15 +464,33 @@ const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void
                 style={{ width: '100%' }}
               />
               {/* Button section remains after the table, Progress bar was removed from here */}
-              <Button
-                type="primary"
-                onClick={handleImportSelected}
-                disabled={!files.some(file => file.selected) || isExtracting}
-                size="small"
-                loading={isExtracting}
-              >
-                Import Selected to Neo4j
-              </Button>
+              <Space>
+                <Button
+                  type="primary"
+                  onClick={handleImportSelected}
+                  disabled={!files.some(file => file.selected) || isExtracting}
+                  size="small"
+                  loading={isExtracting}
+                >
+                  Import Selected to Neo4j
+                </Button>
+                {lastImportSummary && (
+                  <Button
+                    type="default"
+                    onClick={() => generateImportSummary(
+                      lastImportSummary.files,
+                      lastImportSummary.startTime,
+                      lastImportSummary.nodeCount,
+                      lastImportSummary.relationshipCount,
+                      lastImportSummary.importLabel
+                    )}
+                    size="small"
+                    disabled={isExtracting}
+                  >
+                    Download Last Import Summary
+                  </Button>
+                )}
+              </Space>
             </>
           )}
         </Space>
