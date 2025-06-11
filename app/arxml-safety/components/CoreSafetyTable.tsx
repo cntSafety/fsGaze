@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Table, Form, Input, Select, Typography, Popconfirm, Button, Space } from 'antd';
-import { SearchOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
+import { Table, Form, Input, Select, Typography, Popconfirm, Button, Space, Tooltip } from 'antd';
+import { SearchOutlined, DeleteOutlined, EditOutlined, PlusOutlined, LinkOutlined } from '@ant-design/icons';
 import type { TableProps, ColumnType } from 'antd/es/table';
 import type { FilterDropdownProps } from 'antd/es/table/interface';
 import { Resizable } from 'react-resizable';
@@ -133,6 +133,12 @@ interface CoreSafetyTableProps {
   pagination?: false | TableProps<SafetyTableRow>['pagination'];
   showComponentActions?: boolean;
   form?: any;
+  // New props for failure linking
+  onFailureSelect?: (failure: { uuid: string; name: string }) => void;
+  selectedFailures?: {
+    first: { uuid: string; name: string } | null;
+    second: { uuid: string; name: string } | null;
+  };
 }
 
 const getColumnSearchProps = (dataIndex: string): ColumnType<SafetyTableRow> => ({
@@ -189,9 +195,34 @@ export default function CoreSafetyTable({
   pagination = { pageSize: 10 },
   showComponentActions = false,
   form,
+  onFailureSelect,
+  selectedFailures,
 }: CoreSafetyTableProps) {
   const isEditing = (record: SafetyTableRow) => record.key === editingKey;
   
+  // Helper function to check if a failure is selected
+  const isFailureSelected = (failureUuid: string) => {
+    return selectedFailures?.first?.uuid === failureUuid || 
+           selectedFailures?.second?.uuid === failureUuid;
+  };
+
+  // Helper function to get selection state for visual feedback
+  const getFailureSelectionState = (failureUuid: string) => {
+    if (selectedFailures?.first?.uuid === failureUuid) return 'first';
+    if (selectedFailures?.second?.uuid === failureUuid) return 'second';
+    return null;
+  };
+
+  // Helper function to handle link click
+  const handleLinkClick = (record: SafetyTableRow) => {
+    if (!record.failureUuid || !onFailureSelect) return;
+    
+    onFailureSelect({
+      uuid: record.failureUuid,
+      name: record.failureName
+    });
+  };
+
   // State for managing column widths
   const [columnWidths, setColumnWidths] = useState<{ [key: string]: number }>(() => {
     // Initialize with default widths from column configuration
@@ -320,20 +351,27 @@ export default function CoreSafetyTable({
   });
 
   // Add actions column if handlers are provided
-  if (onEdit || onSave || onCancel || onAdd || onDelete) {
+  if (onEdit || onSave || onCancel || onAdd || onDelete || onFailureSelect) {
     tableColumns.push({
       title: 'Actions',
       dataIndex: 'actions',
       key: 'actions',
-      width: columnWidths['actions'] || 120, // Use resizable width
+      width: columnWidths['actions'] || (onFailureSelect ? 160 : 120), // Wider if link icon is present
       onHeaderCell: () => ({
-        width: columnWidths['actions'] || 120,
+        width: columnWidths['actions'] || (onFailureSelect ? 160 : 120),
         onResize: handleResize(columns.length, 'actions'),
       } as any),
       render: (_: any, record: SafetyTableRow, index: number) => {
         const editable = isEditing(record);
         const isFirstRowForComponent = showComponentActions && (index === 0 || 
           dataSource[index - 1]?.swComponentUuid !== record.swComponentUuid);
+        
+        // Don't show link icon for placeholder rows or rows without failure UUID
+        const canLink = record.failureName !== 'No failures defined' && 
+                       record.failureUuid && 
+                       onFailureSelect;
+        
+        const selectionState = canLink ? getFailureSelectionState(record.failureUuid!) : null;
         
         return editable ? (
           <Space size="small">
@@ -356,6 +394,33 @@ export default function CoreSafetyTable({
           </Space>
         ) : (
           <Space size="small">
+            {/* Link Icon for Causation Creation */}
+            {canLink && (
+              <Tooltip 
+                title={
+                  selectionState === 'first' ? 'Selected as Cause - Click another to set Effect' :
+                  selectionState === 'second' ? 'Selected as Effect' :
+                  selectedFailures?.first ? 'Click to set as Effect' :
+                  'Click to set as Cause'
+                }
+              >
+                <Button 
+                  type={selectionState ? "primary" : "text"}
+                  size="small"
+                  disabled={editingKey !== ''} 
+                  onClick={() => handleLinkClick(record)}
+                  icon={<LinkOutlined />}
+                  style={{
+                    backgroundColor: selectionState === 'first' ? '#1890ff' : 
+                                   selectionState === 'second' ? '#ff7875' : undefined,
+                    borderColor: selectionState === 'first' ? '#1890ff' : 
+                               selectionState === 'second' ? '#ff7875' : undefined,
+                    color: selectionState ? '#fff' : undefined
+                  }}
+                />
+              </Tooltip>
+            )}
+            
             {onEdit && record.failureName !== 'No failures defined' && (
               <Button 
                 type="text"
@@ -424,11 +489,25 @@ export default function CoreSafetyTable({
         bordered
         dataSource={dataSource}
         columns={mergedColumns}
-        rowClassName="editable-row"
+        rowClassName={(record) => {
+          // Add visual feedback for selected rows
+          const isSelected = record.failureUuid && isFailureSelected(record.failureUuid);
+          return `editable-row ${isSelected ? 'selected-failure-row' : ''}`;
+        }}
         pagination={pagination}
         loading={loading}
         size="small"
       />
+      
+      {/* Add CSS for selected row styling */}
+      <style jsx>{`
+        :global(.selected-failure-row) {
+          background-color: #f0f8ff !important;
+        }
+        :global(.selected-failure-row:hover) {
+          background-color: #e6f3ff !important;
+        }
+      `}</style>
     </Form>
   );
 }

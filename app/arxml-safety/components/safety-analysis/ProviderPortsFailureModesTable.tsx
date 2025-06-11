@@ -10,12 +10,20 @@ interface ProviderPortsFailureModesTableProps {
   providerPorts: ProviderPort[];
   portFailures: {[portUuid: string]: PortFailure[]};
   setPortFailures: (portFailures: {[portUuid: string]: PortFailure[]}) => void;
+  // Add linking props
+  onFailureSelect?: (failure: { uuid: string; name: string }) => void;
+  selectedFailures?: {
+    first: { uuid: string; name: string } | null;
+    second: { uuid: string; name: string } | null;
+  };
 }
 
 export default function ProviderPortsFailureModesTable({
   providerPorts,
   portFailures,
   setPortFailures,
+  onFailureSelect,
+  selectedFailures,
 }: ProviderPortsFailureModesTableProps) {
   const {
     form,
@@ -107,7 +115,7 @@ export default function ProviderPortsFailureModesTable({
       {portTableData.length > 0 ? (
         <CoreSafetyTable
           dataSource={portTableData}
-          columns={portColumns} // Use the port-specific columns
+          columns={portColumns}
           loading={false}
           editingKey={editingPortKey}
           onEdit={handleEditPort}
@@ -116,8 +124,10 @@ export default function ProviderPortsFailureModesTable({
           onAdd={handleAddPortFailure}
           onDelete={handleDeletePort}
           isSaving={isSavingPort}
-          showComponentActions={true} // Enable the "Add Failure" action for each port
+          showComponentActions={true}
           form={form}
+          onFailureSelect={onFailureSelect}
+          selectedFailures={selectedFailures}
           pagination={{
             current: portCurrentPage,
             pageSize: portPageSize,

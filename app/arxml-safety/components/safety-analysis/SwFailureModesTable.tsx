@@ -12,6 +12,12 @@ interface SwFailureModesTableProps {
   swComponent: SwComponent;
   failures: Failure[];
   setFailures: (failures: Failure[]) => void;
+  // Add linking props
+  onFailureSelect?: (failure: { uuid: string; name: string }) => void;
+  selectedFailures?: {
+    first: { uuid: string; name: string } | null;
+    second: { uuid: string; name: string } | null;
+  };
 }
 
 export default function SwFailureModesTable({
@@ -19,6 +25,8 @@ export default function SwFailureModesTable({
   swComponent,
   failures,
   setFailures,
+  onFailureSelect,
+  selectedFailures,
 }: SwFailureModesTableProps) {
   const {
     form,
@@ -102,6 +110,8 @@ export default function SwFailureModesTable({
           onDelete={handleDelete}
           isSaving={isSaving}
           form={form}
+          onFailureSelect={onFailureSelect}
+          selectedFailures={selectedFailures}
           pagination={{
             current: currentPage,
             pageSize: pageSize,
