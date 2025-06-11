@@ -197,3 +197,66 @@ export const getProviderPortsForSWComponent = async (swComponentUuid: string): P
     await session.close();
   }
 };
+
+/**
+ * Get receiver ports (R_PORT_PROTOTYPE) for a given SW component UUID
+ */
+export const getReceiverPortsForSWComponent = async (swComponentUuid: string): Promise<{
+  success: boolean;
+  data?: PortInfo[];
+  message?: string;
+  error?: string;
+}> => {
+  const session = driver.session();
+  
+  try {
+    console.log(`🔍 Fetching receiver ports for SW component UUID: ${swComponentUuid}`);
+    
+    const result = await session.run(
+      `MATCH (SWcomponent) 
+       WHERE SWcomponent.uuid = $swComponentUuid 
+       MATCH (SWcomponent)-[r:CONTAINS]->(rPort:R_PORT_PROTOTYPE)
+       RETURN rPort`,
+      { swComponentUuid }
+    );
+
+    if (result.records.length === 0) {
+      console.log(`❌ No receiver ports found for SW component UUID: ${swComponentUuid}`);
+      return {
+        success: true,
+        data: [],
+        message: `No receiver ports found for SW component with UUID: ${swComponentUuid}`,
+      };
+    }
+
+    // Process the results
+    const receiverPorts: PortInfo[] = result.records.map(record => {
+      const rPort = record.get('rPort');
+      
+      return {
+        name: rPort.properties.name || 'Unnamed Port',
+        uuid: rPort.properties.uuid || '',
+        type: rPort.labels && rPort.labels.length > 0 ? rPort.labels[0] : 'R_PORT_PROTOTYPE',
+      };
+    });
+
+    console.log(`✅ Found ${receiverPorts.length} receiver ports for SW component ${swComponentUuid}:`, receiverPorts);
+
+    return {
+      success: true,
+      data: receiverPorts,
+    };
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error(`❌ Error fetching receiver ports for SW component UUID ${swComponentUuid}:`, errorMessage);
+    
+    return {
+      success: false,
+      message: `Error fetching receiver ports for SW component UUID ${swComponentUuid}.`,
+      error: errorMessage,
+    };
+  } finally {
+    await session.close();
+  }
+};

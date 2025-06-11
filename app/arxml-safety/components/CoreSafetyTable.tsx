@@ -397,12 +397,14 @@ export default function CoreSafetyTable({
             {/* Link Icon for Causation Creation */}
             {canLink && (
               <Tooltip 
+                key={`tooltip-${record.failureUuid}-${selectionState || 'none'}`}
                 title={
                   selectionState === 'first' ? 'Selected as Cause - Click another to set Effect' :
                   selectionState === 'second' ? 'Selected as Effect' :
                   selectedFailures?.first ? 'Click to set as Effect' :
                   'Click to set as Cause'
                 }
+                open={editingKey === '' ? undefined : false}
               >
                 <Button 
                   type={selectionState ? "primary" : "text"}

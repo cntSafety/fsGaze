@@ -212,16 +212,10 @@ export const deleteFailureNode = async (
  * Create a causation relationship between two failure nodes
  * @param sourceFailureUuid UUID of the source failure (cause)
  * @param targetFailureUuid UUID of the target failure (effect)
- * @param causationType Type of causation (e.g., "direct", "indirect", "conditional")
- * @param probability Optional probability of causation (0.0 to 1.0)
- * @param description Optional description of the causation relationship
  */
 export const createCausationBetweenFailures = async (
   sourceFailureUuid: string,
-  targetFailureUuid: string,
-  causationType: string = "direct",
-  probability?: number,
-  description?: string
+  targetFailureUuid: string
 ): Promise<{
   success: boolean;
   message: string;
@@ -275,10 +269,7 @@ export const createCausationBetweenFailures = async (
        CREATE (causation:CAUSATION {
            name: $causationName,
            uuid: $causationUuid,
-           type: $causationType,
            createdAt: $createdAt
-           ${probability !== undefined ? ', probability: $probability' : ''}
-           ${description ? ', description: $description' : ''}
        })
        CREATE (causation)-[:FIRST]->(causationFirst)
        CREATE (causation)-[:THEN]->(causationThen)
@@ -288,10 +279,7 @@ export const createCausationBetweenFailures = async (
         thenFailureUuid: targetFailureUuid,
         causationName,
         causationUuid,
-        causationType,
-        createdAt: new Date().toISOString(),
-        ...(probability !== undefined && { probability }),
-        ...(description && { description })
+        createdAt: new Date().toISOString()
       }
     );
 
@@ -306,15 +294,12 @@ export const createCausationBetweenFailures = async (
       causationUuid: createdCausationUuid,
       causationName: createdCausationName,
       source: sourceName,
-      target: targetName,
-      causationType,
-      probability,
-      description
+      target: targetName
     });
 
     return {
       success: true,
-      message: `Causation relationship created: "${sourceName}" causes "${targetName}" (${causationType}).`,
+      message: `Causation relationship created: "${sourceName}" causes "${targetName}".`,
       causationUuid: createdCausationUuid,
     };
 

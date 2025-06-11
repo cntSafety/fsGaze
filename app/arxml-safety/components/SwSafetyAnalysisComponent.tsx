@@ -1,14 +1,15 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Button, Spin, Card, Typography } from 'antd';
+import { Button, Spin, Card, Typography, Modal } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import { useSwSafetyData } from './safety-analysis/hooks/useSwSafetyData';
 import SwComponentInfo from './safety-analysis/SwComponentInfo';
 import SwFailureModesTable from './safety-analysis/SwFailureModesTable';
 import ProviderPortsFailureModesTable from './safety-analysis/ProviderPortsFailureModesTable';
-import CreateCausationModal from '@/app/safety/components/CreateCausationModal';
+import ReceiverPortsFailureModesTable from './safety-analysis/ReceiverPortsFailureModesTable';
+import { createCausationBetweenFailures } from '@/app/services/ArxmlToNeoService';
 import { SwSafetyAnalysisProps } from './safety-analysis/types';
 
 const { Text } = Typography;
@@ -22,42 +23,69 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
     setFailures, 
     providerPorts, 
     portFailures, 
-    setPortFailures 
+    setPortFailures,
+    receiverPorts,
+    receiverPortFailures,
+    setReceiverPortFailures
   } = useSwSafetyData(swComponentUuid);
 
-  // Causation modal state
-  const [causationModalOpen, setCausationModalOpen] = useState(false);
+  // Causation selection state
   const [selectedFailures, setSelectedFailures] = useState<{
     first: { uuid: string; name: string } | null;
     second: { uuid: string; name: string } | null;
   }>({ first: null, second: null });
+  const [creatingCausation, setCreatingCausation] = useState(false);
 
   const handleBackClick = () => {
     router.push('/arxml-safety');
   };
 
-  const handleFailureSelection = (failure: { uuid: string; name: string }) => {
-    setSelectedFailures(prev => {
-      if (!prev.first) {
-        return { ...prev, first: failure };
-      } else if (!prev.second) {
-        // Both failures selected, automatically open modal
-        setTimeout(() => setCausationModalOpen(true), 100);
-        return { ...prev, second: failure };
-      } else {
-        // Reset and start over
-        return { first: failure, second: null };
+  const handleFailureSelection = async (failure: { uuid: string; name: string }) => {
+    // Prevent multiple simultaneous causation creations
+    if (creatingCausation) return;
+
+    const currentSelection = selectedFailures;
+    
+    if (!currentSelection.first) {
+      // First failure selection
+      setSelectedFailures({ first: failure, second: null });
+    } else if (!currentSelection.second && currentSelection.first.uuid !== failure.uuid) {
+      // Second failure selection - create causation immediately
+      setCreatingCausation(true);
+      setSelectedFailures({ first: currentSelection.first, second: failure });
+      
+      try {
+        const result = await createCausationBetweenFailures(
+          currentSelection.first.uuid,
+          failure.uuid
+        );
+
+        if (result.success) {
+          Modal.success({
+            title: 'Causation Created',
+            content: `Successfully created causation between "${currentSelection.first.name}" → "${failure.name}"`,
+          });
+        } else {
+          Modal.error({
+            title: 'Causation Creation Failed',
+            content: result.message || 'Failed to create causation between failure modes',
+          });
+        }
+      } catch (error) {
+        console.error('Error creating causation:', error);
+        Modal.error({
+          title: 'Causation Creation Failed',
+          content: 'An unexpected error occurred while creating the causation',
+        });
+      } finally {
+        // Reset selection and loading state
+        setSelectedFailures({ first: null, second: null });
+        setCreatingCausation(false);
       }
-    });
-  };
-
-  const handleCausationModalClose = () => {
-    setCausationModalOpen(false);
-  };
-
-  const handleCausationModalSuccess = () => {
-    setCausationModalOpen(false);
-    setSelectedFailures({ first: null, second: null });
+    } else {
+      // Reset and start over (either clicking same failure or third click)
+      setSelectedFailures({ first: failure, second: null });
+    }
   };
 
   if (loading) {
@@ -107,10 +135,11 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
           style={{ marginBottom: '16px', backgroundColor: '#f6f6f6' }}
           title={
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span>Creating Causation Link</span>
+              <span>{creatingCausation ? 'Creating Causation...' : 'Creating Causation Link'}</span>
               <div>
                 <Button 
                   size="small"
+                  disabled={creatingCausation}
                   onClick={() => setSelectedFailures({ first: null, second: null })}
                 >
                   Cancel Linking
@@ -168,12 +197,12 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
         selectedFailures={selectedFailures}
       />
 
-      <CreateCausationModal
-        open={causationModalOpen}
-        onCancel={handleCausationModalClose}
-        onSuccess={handleCausationModalSuccess}
-        firstFailure={selectedFailures.first}
-        secondFailure={selectedFailures.second}
+      <ReceiverPortsFailureModesTable 
+        receiverPorts={receiverPorts}
+        portFailures={receiverPortFailures}
+        setPortFailures={setReceiverPortFailures}
+        onFailureSelect={handleFailureSelection}
+        selectedFailures={selectedFailures}
       />
     </div>
   );

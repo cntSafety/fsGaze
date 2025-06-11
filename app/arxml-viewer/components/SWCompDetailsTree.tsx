@@ -6,9 +6,8 @@ import type { GetProps, MenuProps } from 'antd';
 import { DataNode as AntDataNode } from 'antd/es/tree';
 import { PlusOutlined, DeleteOutlined, ExclamationCircleOutlined, ReloadOutlined } from '@ant-design/icons';
 import { getComponentRelations, getAssemblyContextForPPort, getAssemblyContextForRPort, AssemblyContextInfo, deleteFailureNode, getNodeLabels } from '@/app/services/ArxmlToNeoService';
-import { getFailuresForPorts } from '@/app/services/neo4j/queries/safety';
+import { getFailuresForPorts, createCausationBetweenFailures } from '@/app/services/neo4j/queries/safety';
 import AddFM from '../../safety/components/AddFM';
-import CreateCausationModal from '../../safety/components/CreateCausationModal';
 
 const { Search } = Input;
 const { Text, Title } = Typography;
@@ -84,7 +83,6 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
     uuid: string;
     name: string;
   } | null>(null);
-  const [isCausationModalVisible, setIsCausationModalVisible] = useState(false);
 
   const buildTreeData = useCallback(async (relationsData: RelationInfo[]): Promise<CustomDataNode[]> => {
     const rootNode: CustomDataNode = {
@@ -705,13 +703,21 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
       
       setSecondFailureForCausation({ uuid: element.uuid, name: element.name });
       setCausationMode('none');
-      setIsCausationModalVisible(true);
+      
+      // Automatically create causation when both failures are selected
+      if (firstFailureForCausation) {
+        await createCausationAutomatically(
+          firstFailureForCausation.uuid,
+          element.uuid,
+          firstFailureForCausation.name,
+          element.name
+        );
+      }
     }
   };
 
   const handleCausationSuccess = async () => {
     // Reset state
-    setIsCausationModalVisible(false);
     setFirstFailureForCausation(null);
     setSecondFailureForCausation(null);
     
@@ -723,7 +729,28 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
     setCausationMode('none');
     setFirstFailureForCausation(null);
     setSecondFailureForCausation(null);
-    setIsCausationModalVisible(false);
+  };
+
+  const createCausationAutomatically = async (sourceFailureUuid: string, targetFailureUuid: string, sourceName: string, targetName: string) => {
+    try {
+      await createCausationBetweenFailures(sourceFailureUuid, targetFailureUuid);
+      
+      Modal.success({
+        title: 'Causation Created Successfully',
+        content: `Causation relationship created between "${sourceName}" and "${targetName}".`,
+      });
+      
+      // Reset state and refresh
+      await handleCausationSuccess();
+    } catch (error) {
+      Modal.error({
+        title: 'Failed to Create Causation',
+        content: error instanceof Error ? error.message : 'An unexpected error occurred while creating the causation.',
+      });
+      
+      // Reset state on error
+      handleCancelCausation();
+    }
   };
 
   const handleRefresh = async () => {
@@ -809,7 +836,16 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
           }
           setSecondFailureForCausation({ uuid: selectedElementForFM.uuid, name: selectedElementForFM.name });
           setCausationMode('none');
-          setIsCausationModalVisible(true);
+          
+          // Automatically create causation when both failures are selected
+          if (firstFailureForCausation) {
+            createCausationAutomatically(
+              firstFailureForCausation.uuid,
+              selectedElementForFM.uuid,
+              firstFailureForCausation.name,
+              selectedElementForFM.name
+            );
+          }
         } else {
           Modal.warning({
             title: 'Invalid Selection',
@@ -1012,15 +1048,6 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
         />
         )}
       </Modal>
-      
-      {/* Causation Creation Modal */}
-      <CreateCausationModal
-        open={isCausationModalVisible}
-        onCancel={handleCancelCausation}
-        onSuccess={handleCausationSuccess}
-        firstFailure={firstFailureForCausation}
-        secondFailure={secondFailureForCausation}
-      />
     </div>
   );
 };

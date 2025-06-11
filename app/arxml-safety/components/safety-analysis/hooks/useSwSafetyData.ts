@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { message } from 'antd';
 import { getInfoForAppSWComp } from '../../../../services/neo4j/queries/components';
 import { getFailuresForSwComponents, getFailuresForPorts } from '../../../../services/neo4j/queries/safety';
-import { getProviderPortsForSWComponent } from '../../../../services/neo4j/queries/ports';
+import { getProviderPortsForSWComponent, getReceiverPortsForSWComponent } from '../../../../services/neo4j/queries/ports';
 import { SwComponent, Failure, PortFailure, ProviderPort } from '../types';
 import { SafetyTableRow } from '../../CoreSafetyTable';
 
@@ -12,43 +12,86 @@ export const useSwSafetyData = (swComponentUuid: string) => {
   const [failures, setFailures] = useState<Failure[]>([]);
   const [providerPorts, setProviderPorts] = useState<ProviderPort[]>([]);
   const [portFailures, setPortFailures] = useState<{[portUuid: string]: PortFailure[]}>({});
+  const [receiverPorts, setReceiverPorts] = useState<ProviderPort[]>([]);
+  const [receiverPortFailures, setReceiverPortFailures] = useState<{[portUuid: string]: PortFailure[]}>({});
 
-  const loadComponentData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       
-      // Get SW component details using the new efficient query
-      const swComponentResult = await getInfoForAppSWComp(swComponentUuid);
+      // Get SW component details and failures in parallel
+      const [swComponentResult, failuresResult, providerPortsResult, receiverPortsResult] = await Promise.all([
+        getInfoForAppSWComp(swComponentUuid),
+        getFailuresForSwComponents(swComponentUuid),
+        getProviderPortsForSWComponent(swComponentUuid),
+        getReceiverPortsForSWComponent(swComponentUuid)
+      ]);
+
+      // Handle SW component
       if (swComponentResult.success && swComponentResult.data) {
         setSwComponent(swComponentResult.data);
         console.log('SW Component:', swComponentResult.data);
+      } else {
+        message.error(swComponentResult.message || 'SW Component not found');
+      }
+
+      // Handle SW component failures
+      if (failuresResult.success && failuresResult.data) {
+        setFailures(failuresResult.data);
+        console.log('SW Component Failures:', failuresResult.data);
+      }
+      
+      // Handle provider ports
+      if (providerPortsResult.success && providerPortsResult.data) {
+        setProviderPorts(providerPortsResult.data);
+        console.log('Provider Ports:', providerPortsResult.data);
         
-        // Get failures for this component
-        const failuresResult = await getFailuresForSwComponents(swComponentUuid);
-        if (failuresResult.success && failuresResult.data) {
-          setFailures(failuresResult.data);
-        }
-        
-        // Get provider ports for this component
-        const providerPortsResult = await getProviderPortsForSWComponent(swComponentUuid);
-        if (providerPortsResult.success && providerPortsResult.data) {
-          setProviderPorts(providerPortsResult.data);
-          console.log('Provider Ports:', providerPortsResult.data);
-          
-          // Get failures for each provider port
+        // Get failures for provider ports - call function for each port individually
+        if (providerPortsResult.data.length > 0) {
           const portFailuresMap: {[portUuid: string]: PortFailure[]} = {};
           
           for (const port of providerPortsResult.data) {
             const portFailuresResult = await getFailuresForPorts(port.uuid);
+            
             if (portFailuresResult.success && portFailuresResult.data) {
               portFailuresMap[port.uuid] = portFailuresResult.data;
+            } else {
+              portFailuresMap[port.uuid] = [];
             }
           }
           
           setPortFailures(portFailuresMap);
+          console.log('Provider Port Failures:', portFailuresMap);
         }
-      } else {
-        message.error(swComponentResult.message || 'SW Component not found');
+      }
+
+      // Handle receiver ports
+      if (receiverPortsResult.success && receiverPortsResult.data) {
+        const receiverPortsData = receiverPortsResult.data.map(port => ({
+          name: port.name,
+          uuid: port.uuid,
+          type: port.type,
+        }));
+        setReceiverPorts(receiverPortsData);
+        console.log('Receiver Ports:', receiverPortsData);
+
+        // Get failures for receiver ports - call function for each port individually
+        if (receiverPortsData.length > 0) {
+          const receiverPortFailuresMap: {[portUuid: string]: PortFailure[]} = {};
+          
+          for (const port of receiverPortsData) {
+            const receiverPortFailuresResult = await getFailuresForPorts(port.uuid);
+            
+            if (receiverPortFailuresResult.success && receiverPortFailuresResult.data) {
+              receiverPortFailuresMap[port.uuid] = receiverPortFailuresResult.data;
+            } else {
+              receiverPortFailuresMap[port.uuid] = [];
+            }
+          }
+          
+          setReceiverPortFailures(receiverPortFailuresMap);
+          console.log('Receiver Port Failures:', receiverPortFailuresMap);
+        }
       }
     } catch (error) {
       console.error('Error loading component data:', error);
@@ -56,11 +99,11 @@ export const useSwSafetyData = (swComponentUuid: string) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [swComponentUuid]);
 
   useEffect(() => {
-    loadComponentData();
-  }, [swComponentUuid]);
+    loadData();
+  }, [loadData]);
 
   return {
     loading,
@@ -70,6 +113,8 @@ export const useSwSafetyData = (swComponentUuid: string) => {
     providerPorts,
     portFailures,
     setPortFailures,
-    loadComponentData
+    receiverPorts,
+    receiverPortFailures,
+    setReceiverPortFailures,
   };
 };
