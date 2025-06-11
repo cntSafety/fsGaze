@@ -86,7 +86,8 @@ export function Navbar() {
                 { label: 'SW Table', href: '/arxml-viewer', isActive: true },
                 { label: 'SW Graph', href: '/arxml-graphViewer', isActive: true },
                 { label: 'SW Flow', href: '/arxml-flowViewer', isActive: true },
-                { label: 'SW Safety', href: '/arxml-safety', isActive: true }
+                { label: 'SW Safety', href: '/arxml-safety', isActive: true },
+                 { label: 'store / load', href: '/arxml-safetyDataExchange', isActive: true }
             ]
         },
         {

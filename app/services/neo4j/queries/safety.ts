@@ -1,5 +1,369 @@
-import { driver } from '../config';
-import { generateUUID } from '../utils';
+import neo4j from 'neo4j-driver';
+import { driver } from '@/app/services/neo4j/config'; // Import the shared driver
+import { generateUUID } from '../utils'; // Assuming path app/services/neo4j/utils.ts
+
+// Define the structure of the data to be imported/exported
+interface SafetyGraphNode {
+    uuid: string;
+    properties: Record<string, any>;
+}
+
+interface OccurrenceLink {
+    failureUuid: string;
+    failureName: string; // For logging/verification, not directly stored in relationship
+    occuranceSourceUuid: string;
+    occuranceSourceName: string; // For logging/verification
+    // Optional: any properties for the OCCURRENCE relationship itself
+}
+
+interface CausationLinkInfo {
+    causationUuid: string;
+    causationName: string; // For logging/verification
+    causeFailureUuid: string;
+    causeFailureName: string; // For logging/verification
+    effectFailureUuid: string;
+    effectFailureName: string; // For logging/verification
+}
+
+interface SafetyGraphData {
+    failures: SafetyGraphNode[];
+    causations: SafetyGraphNode[];
+    occurrences: OccurrenceLink[];
+    causationLinks: CausationLinkInfo[];
+}
+
+export async function getSafetyGraph(): Promise<{
+    success: boolean;
+    data?: SafetyGraphData;
+    message?: string;
+}> {
+    const session = driver.session();
+    try {
+        // 1. Get all FAILURE nodes and their properties
+        const failuresResult = await session.run(
+            'MATCH (f:FAILURE) RETURN f.uuid AS uuid, properties(f) AS properties'
+        );
+        const failures = failuresResult.records.map(record => ({
+            uuid: record.get('uuid'),
+            properties: record.get('properties'),
+        }));
+
+        // 2. Get all CAUSATION nodes and their properties
+        const causationsResult = await session.run(
+            'MATCH (c:CAUSATION) RETURN c.uuid AS uuid, properties(c) AS properties'
+        );
+        const causations = causationsResult.records.map(record => ({
+            uuid: record.get('uuid'),
+            properties: record.get('properties'),
+        }));
+
+        // 3. Get all OCCURRENCE relationships and related node details
+        // Updated to fetch extended properties from the source ARXML element
+        const occurrencesResult = await session.run(`
+            MATCH (f:FAILURE)-[o:OCCURRENCE]->(src)
+            RETURN f.uuid AS failureUuid, f.name AS failureName, 
+                   src.uuid AS occuranceSourceUuid, src.name AS occuranceSourceName, 
+                   src.arxmlPath AS occuranceSourceArxmlPath, 
+                   src.importLabel AS occuranceSourceimportLabel, 
+                   src.importTimestamp AS occuranceSourceimportTimestamp, 
+                   src.originalXmlTag AS occuranceSourceoriginalXmlTag
+        `);
+        const occurrences = occurrencesResult.records.map(record => ({
+            failureUuid: record.get('failureUuid'),
+            failureName: record.get('failureName'),
+            occuranceSourceUuid: record.get('occuranceSourceUuid'),
+            occuranceSourceName: record.get('occuranceSourceName'),
+            occuranceSourceArxmlPath: record.get('occuranceSourceArxmlPath'),
+            occuranceSourceimportLabel: record.get('occuranceSourceimportLabel'),
+            occuranceSourceimportTimestamp: record.get('occuranceSourceimportTimestamp'),
+            occuranceSourceoriginalXmlTag: record.get('occuranceSourceoriginalXmlTag'),
+        }));
+
+        // 4. Get all CAUSATION links (FIRST and THEN relationships)
+        const causationLinksResult = await session.run(`
+            MATCH (cause:FAILURE)<-[:FIRST]-(c:CAUSATION)-[:THEN]->(effect:FAILURE)
+            RETURN c.uuid AS causationUuid, c.name AS causationName, 
+                   cause.uuid AS causeFailureUuid, cause.name AS causeFailureName, 
+                   effect.uuid AS effectFailureUuid, effect.name AS effectFailureName
+        `);
+        const causationLinks = causationLinksResult.records.map(record => ({
+            causationUuid: record.get('causationUuid'),
+            causationName: record.get('causationName'),
+            causeFailureUuid: record.get('causeFailureUuid'),
+            causeFailureName: record.get('causeFailureName'),
+            effectFailureUuid: record.get('effectFailureUuid'),
+            effectFailureName: record.get('effectFailureName'),
+        }));
+
+        return {
+            success: true,
+            data: {
+                failures,
+                causations,
+                occurrences,
+                causationLinks,
+            },
+        };
+    } catch (error: any) {
+        console.error("Error fetching safety graph:", error);
+        return { success: false, message: error.message };
+    } finally {
+        await session.close();
+    }
+}
+
+
+export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
+    success: boolean;
+    logs: string[];
+    message?: string;
+}> {
+    const session = driver.session();
+    const tx = session.beginTransaction();
+    const logs: string[] = [];
+
+    const convertNeo4jTimestampToNumber = (value: any): number | null => {
+        if (value === null || typeof value === 'undefined') return null;
+        if (typeof value === 'number') return value; // Already a JS number
+        if (value && typeof value.toNumber === 'function') { // Check for neo4j.int or similar BigInt objects
+            try {
+                return value.toNumber();
+            } catch (e) { // toNumber() can fail if the number is too large for JS standard number
+                //logs.push(`[WARNING] Failed to convert Neo4j Integer to JS number (possibly too large): ${value.toString()}. Treating as an invalid timestamp for comparison.`);
+                return null;
+            }
+        }
+        // Log if it's an unexpected type that wasn't handled above
+        //logs.push(`[WARNING] Unexpected timestamp type encountered: ${JSON.stringify(value)}. Cannot convert to number.`);
+        return null;
+    };
+
+    try {
+        // Import/Update FAILURES
+        const failureNodeType = "FAILURE";
+        for (const failure of data.failures) {
+            if (!failure.uuid || !failure.properties || !failure.properties.name) {
+                logs.push(`[ERROR] Skipping ${failureNodeType} due to missing uuid or name: ${JSON.stringify(failure)}`);
+                continue;
+            }
+            const { uuid, properties: rawProperties } = failure;
+            const propsToSet = { ...rawProperties };
+            delete propsToSet.uuid;       // Handled by MERGE key
+            delete propsToSet.createdAt;  // We set this explicitly
+            delete propsToSet.updatedAt;  // We set this explicitly
+
+            const result = await tx.run(
+                'MERGE (f:FAILURE {uuid: $uuid}) ' +
+                'ON CREATE SET f = $propsToSet, f.uuid = $uuid, f.createdAt = timestamp(), f.updatedAt = f.createdAt ' +
+                'ON MATCH SET f += $propsToSet, f.updatedAt = CASE WHEN f.createdAt IS NULL THEN f.updatedAt ELSE timestamp() END ' +
+                'RETURN f.name AS name, f.createdAt AS createdAt, f.updatedAt AS updatedAt',
+                { uuid, propsToSet }
+            );
+            const record = result.records[0];
+            if (record) {
+                const name = record.get('name');
+                const createdAtRaw = record.get('createdAt');
+                const updatedAtRaw = record.get('updatedAt');
+                let action = 'processed';
+
+                const createdAtNum = convertNeo4jTimestampToNumber(createdAtRaw);
+                const updatedAtNum = convertNeo4jTimestampToNumber(updatedAtRaw);
+
+                if (createdAtNum !== null && updatedAtNum !== null) {
+                    if (createdAtNum === updatedAtNum) { // Both are current timestamp()
+                        action = 'created';
+                    } else { // createdAt is old, updatedAt is current timestamp()
+                        action = 'updated (timestamps refreshed)';
+                    }
+                } else if (createdAtNum === null) {
+                    // Original createdAt was missing. updatedAt was NOT refreshed to timestamp().
+                    // It has its old value (which could be null or a number).
+                    if (updatedAtNum !== null) {
+                        //action = 'properties applied (original createdAt missing; existing updatedAt preserved)';
+                    } else {
+                        // action = 'properties applied (original createdAt and updatedAt missing)';
+                    }
+                } else { // createdAtNum is not null, but updatedAtNum is null. Should be rare.
+                    // action = 'state_inconsistent (createdAt present, updatedAt missing after operation)';
+                }
+                logs.push(`[SUCCESS] ${failureNodeType} node '${name || uuid}' (uuid: ${uuid}) ${action}.`);
+            } else {
+                logs.push(`[WARNING] No information returned for ${failureNodeType} node merge (uuid: ${uuid}).`);
+            }
+        }
+
+        // Import/Update CAUSATIONS
+        const causationNodeType = "CAUSATION";
+        for (const causation of data.causations) {
+            if (!causation.uuid || !causation.properties || !causation.properties.name) {
+                logs.push(`[ERROR] Skipping ${causationNodeType} due to missing uuid or name: ${JSON.stringify(causation)}`);
+                continue;
+            }
+            const { uuid, properties: rawProperties } = causation;
+            const propsToSet = { ...rawProperties };
+            delete propsToSet.uuid;
+            delete propsToSet.createdAt;
+            delete propsToSet.updatedAt;
+
+            const result = await tx.run(
+                'MERGE (c:CAUSATION {uuid: $uuid}) ' +
+                'ON CREATE SET c = $propsToSet, c.uuid = $uuid, c.createdAt = timestamp(), c.updatedAt = c.createdAt ' +
+                'ON MATCH SET c += $propsToSet, c.updatedAt = CASE WHEN c.createdAt IS NULL THEN c.updatedAt ELSE timestamp() END ' +
+                'RETURN c.name AS name, c.createdAt AS createdAt, c.updatedAt AS updatedAt',
+                { uuid, propsToSet }
+            );
+            const record = result.records[0];
+            if (record) {
+                const name = record.get('name');
+                const createdAtRaw = record.get('createdAt');
+                const updatedAtRaw = record.get('updatedAt');
+                let action = 'processed';
+
+                const createdAtNum = convertNeo4jTimestampToNumber(createdAtRaw);
+                const updatedAtNum = convertNeo4jTimestampToNumber(updatedAtRaw);
+
+                if (createdAtNum !== null && updatedAtNum !== null) {
+                    if (createdAtNum === updatedAtNum) { // Both are current timestamp()
+                        action = 'created';
+                    } else { // createdAt is old, updatedAt is current timestamp()
+                        action = 'updated (timestamps refreshed)';
+                    }
+                } else if (createdAtNum === null) {
+                    // Original createdAt was missing. updatedAt was NOT refreshed to timestamp().
+                    // It has its old value (which could be null or a number).
+                    if (updatedAtNum !== null) {
+                        //action = 'properties applied (original createdAt missing; existing updatedAt preserved)';
+                    } else {
+                       // action = 'properties applied (original createdAt and updatedAt missing)';
+                    }
+                } else { // createdAtNum is not null, but updatedAtNum is null. Should be rare.
+                    // action = 'state_inconsistent (createdAt present, updatedAt missing after operation)';
+                }
+                logs.push(`[SUCCESS] ${causationNodeType} node '${name || uuid}' (uuid: ${uuid}) ${action}.`);
+            } else {
+                logs.push(`[WARNING] No information returned for ${causationNodeType} node merge (uuid: ${uuid}).`);
+            }
+        }
+
+        // Import OCCURRENCE relationships
+        for (const occ of data.occurrences) {
+            if (!occ.failureUuid || !occ.occuranceSourceUuid) {
+                logs.push(`[ERROR] Skipping OCCURRENCE link due to missing failureUuid or occuranceSourceUuid: ${JSON.stringify(occ)}`);
+                continue;
+            }
+            // Check if the source ARXML_ELEMENT (or other type) exists
+            const sourceCheck = await tx.run(
+                'MATCH (src {uuid: $sourceUuid}) RETURN src.uuid AS uuid, labels(src) as lbls', 
+                { sourceUuid: occ.occuranceSourceUuid }
+            );
+            if (sourceCheck.records.length === 0) {
+                logs.push(`[ERROR] Source element with UUID ${occ.occuranceSourceUuid} for OCCURRENCE not found. Skipping link to FAILURE ${occ.failureName || occ.failureUuid}.`);
+                continue;
+            }
+            const sourceNode = sourceCheck.records[0];
+            const sourceLabels = sourceNode.get('lbls').join(':');
+
+            // Check if the target FAILURE exists (it should have been created above)
+            const failureCheck = await tx.run(
+                'MATCH (f:FAILURE {uuid: $failureUuid}) RETURN f.uuid', 
+                { failureUuid: occ.failureUuid }
+            );
+            if (failureCheck.records.length === 0) {
+                logs.push(`[ERROR] Target FAILURE with UUID ${occ.failureUuid} for OCCURRENCE not found. Skipping link from ${sourceLabels} ${occ.occuranceSourceName || occ.occuranceSourceUuid}.`);
+                continue;
+            }
+
+            await tx.run(
+                'MATCH (f:FAILURE {uuid: $failureUuid}) ' +
+                'MATCH (src {uuid: $occuranceSourceUuid}) ' +
+                'MERGE (f)-[r:OCCURRENCE]->(src) ' +
+                'ON CREATE SET r.createdAt = timestamp() ' +
+                'ON MATCH SET r.updatedAt = timestamp() ' +
+                'RETURN type(r) AS relType', // We can return something to confirm creation/match
+                { failureUuid: occ.failureUuid, occuranceSourceUuid: occ.occuranceSourceUuid }
+            );
+            logs.push(`[SUCCESS] OCCURRENCE relationship linked: (FAILURE ${occ.failureName || occ.failureUuid})-[OCCURRENCE]->(${sourceLabels} ${occ.occuranceSourceName || occ.occuranceSourceUuid}).`);
+        }
+
+        // Import CAUSATION links (FIRST, THEN)
+        for (const link of data.causationLinks) {
+            if (!link.causeFailureUuid || !link.causationUuid || !link.effectFailureUuid) {
+                logs.push(`[ERROR] Skipping CAUSATION link due to missing UUIDs: ${JSON.stringify(link)}`);
+                continue;
+            }
+
+            // Check if CAUSE FAILURE exists
+            const causeFailureCheck = await tx.run('MATCH (f:FAILURE {uuid: $uuid}) RETURN f.uuid', { uuid: link.causeFailureUuid });
+            if (causeFailureCheck.records.length === 0) {
+                logs.push(`[ERROR] CAUSE FAILURE ${link.causeFailureName || link.causeFailureUuid} not found for causation link. Skipping.`);
+                continue;
+            }
+
+            // Check if CAUSATION node exists
+            const causationNodeCheck = await tx.run('MATCH (c:CAUSATION {uuid: $uuid}) RETURN c.uuid', { uuid: link.causationUuid });
+            if (causationNodeCheck.records.length === 0) {
+                logs.push(`[ERROR] CAUSATION node ${link.causationName || link.causationUuid} not found for causation link. Skipping.`);
+                continue;
+            }
+
+            // Check if EFFECT FAILURE exists
+            const effectFailureCheck = await tx.run('MATCH (f:FAILURE {uuid: $uuid}) RETURN f.uuid', { uuid: link.effectFailureUuid });
+            if (effectFailureCheck.records.length === 0) {
+                logs.push(`[ERROR] EFFECT FAILURE ${link.effectFailureName || link.effectFailureUuid} not found for causation link. Skipping.`);
+                continue;
+            }
+
+            // Link CAUSE_FAILURE -> CAUSATION
+            await tx.run(
+                'MATCH (cause:FAILURE {uuid: $causeFailureUuid}) ' +
+                'MATCH (c:CAUSATION {uuid: $causationUuid}) ' +
+                'MERGE (cause)-[r:FIRST]->(c) ' +
+                'ON CREATE SET r.createdAt = timestamp() ' +
+                'ON MATCH SET r.updatedAt = timestamp() ',
+                { causeFailureUuid: link.causeFailureUuid, causationUuid: link.causationUuid }
+            );
+            logs.push(`[SUCCESS] FIRST relationship linked: (FAILURE ${link.causeFailureName || link.causeFailureUuid})-[FIRST]->(CAUSATION ${link.causationName || link.causationUuid}).`);
+
+            // Link CAUSATION -> EFFECT_FAILURE
+            await tx.run(
+                'MATCH (c:CAUSATION {uuid: $causationUuid}) ' +
+                'MATCH (effect:FAILURE {uuid: $effectFailureUuid}) ' +
+                'MERGE (c)-[r:THEN]->(effect) ' +
+                'ON CREATE SET r.createdAt = timestamp() ' +
+                'ON MATCH SET r.updatedAt = timestamp() ',
+                { causationUuid: link.causationUuid, effectFailureUuid: link.effectFailureUuid }
+            );
+            logs.push(`[SUCCESS] THEN relationship linked: (CAUSATION ${link.causationName || link.causationUuid})-[THEN]->(FAILURE ${link.effectFailureName || link.effectFailureUuid}).`);
+        }
+
+        await tx.commit();
+        logs.push("[INFO] Transaction committed successfully.");
+        return { success: true, logs };
+
+    } catch (error: any) {
+        logs.push(`[FATAL] Transaction failed: ${error.message}`);
+        if (tx) {
+            try {
+                await tx.rollback();
+                logs.push("[INFO] Transaction rolled back.");
+            } catch (rollbackError: any) {
+                logs.push(`[FATAL] Failed to rollback transaction: ${rollbackError.message}`);
+            }
+        }
+        console.error("Error importing safety graph data:", error);
+        return { success: false, logs, message: error.message };
+    } finally {
+        await session.close();
+    }
+}
+
+// Added functions start here
+// Assuming path app/services/neo4j/utils.ts for generateUUID
+// If generateUUID is in a different location, this path needs to be adjusted.
+// For example, if utils.ts is in the same directory (queries/utils.ts):
+// import { generateUUID } from './utils'; 
+// Or if it's in services/utils.ts:
+// import { generateUUID } from '../utils'; // This is the duplicate import
 
 /**
  * Create a failure node and link it to an existing element via an "OCCURRENCE" relationship
