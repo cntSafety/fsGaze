@@ -5,8 +5,37 @@ import { Table, Form, Input, Select, Typography, Popconfirm, Button, Space } fro
 import { SearchOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import type { TableProps, ColumnType } from 'antd/es/table';
 import type { FilterDropdownProps } from 'antd/es/table/interface';
+import { Resizable } from 'react-resizable';
 
 const { Option } = Select;
+
+// Resizable column title component
+const ResizableTitle = (props: any) => {
+  const { onResize, width, ...restProps } = props;
+
+  if (!width) {
+    return <th {...restProps} />;
+  }
+
+  return (
+    <Resizable
+      width={width}
+      height={0}
+      handle={
+        <span
+          className="react-resizable-handle"
+          onClick={(e) => {
+            e.stopPropagation();
+          }}
+        />
+      }
+      onResize={onResize}
+      draggableOpts={{ enableUserSelectHack: false }}
+    >
+      <th {...restProps} />
+    </Resizable>
+  );
+};
 
 export interface SafetyTableRow {
   key: string;
@@ -162,6 +191,49 @@ export default function CoreSafetyTable({
   form,
 }: CoreSafetyTableProps) {
   const isEditing = (record: SafetyTableRow) => record.key === editingKey;
+  
+  // State for managing column widths
+  const [columnWidths, setColumnWidths] = useState<{ [key: string]: number }>(() => {
+    // Initialize with default widths from column configuration
+    const initialWidths: { [key: string]: number } = {};
+    columns.forEach(col => {
+      if (col.width && typeof col.width === 'number') {
+        initialWidths[col.key] = col.width;
+      } else if (col.minWidth) {
+        initialWidths[col.key] = col.minWidth;
+      } else {
+        // Default widths based on column type
+        switch (col.dataIndex) {
+          case 'swComponentName':
+          case 'portName':
+            initialWidths[col.key] = 200;
+            break;
+          case 'failureName':
+            initialWidths[col.key] = 150;
+            break;
+          case 'failureDescription':
+            initialWidths[col.key] = 250;
+            break;
+          case 'asil':
+            initialWidths[col.key] = 80;
+            break;
+          default:
+            initialWidths[col.key] = 120;
+        }
+      }
+    });
+    // Add actions column width
+    initialWidths['actions'] = 120;
+    return initialWidths;
+  });
+
+  // Handle column resize
+  const handleResize = (index: number, columnKey: string) => (e: any, { size }: any) => {
+    setColumnWidths(prev => ({
+      ...prev,
+      [columnKey]: size.width,
+    }));
+  };
 
   const getAsilColor = (level: string) => {
     switch (level) {
@@ -174,15 +246,19 @@ export default function CoreSafetyTable({
   };
 
   // Build table columns from configuration
-  const tableColumns: ColumnType<SafetyTableRow>[] = columns.map((col) => {
+  const tableColumns: ColumnType<SafetyTableRow>[] = columns.map((col, index) => {
     const baseColumn: ColumnType<SafetyTableRow> = {
       title: col.title,
       dataIndex: col.dataIndex,
       key: col.key,
-      width: col.width,
+      width: columnWidths[col.key] || col.width,
       minWidth: col.minWidth,
       ellipsis: col.ellipsis || (col.dataIndex === 'failureDescription'), // Default ellipsis for description columns
       render: col.render,
+      onHeaderCell: () => ({
+        width: columnWidths[col.key] || col.width,
+        onResize: handleResize(index, col.key),
+      } as any),
     };
 
     // Add tooltip for ellipsis columns
@@ -249,7 +325,11 @@ export default function CoreSafetyTable({
       title: 'Actions',
       dataIndex: 'actions',
       key: 'actions',
-      width: 120, // Reduced width since we're using icons
+      width: columnWidths['actions'] || 120, // Use resizable width
+      onHeaderCell: () => ({
+        width: columnWidths['actions'] || 120,
+        onResize: handleResize(columns.length, 'actions'),
+      } as any),
       render: (_: any, record: SafetyTableRow, index: number) => {
         const editable = isEditing(record);
         const isFirstRowForComponent = showComponentActions && (index === 0 || 
@@ -334,6 +414,9 @@ export default function CoreSafetyTable({
     <Form form={form} component={false}>
       <Table<SafetyTableRow>
         components={{
+          header: {
+            cell: ResizableTitle,
+          },
           body: {
             cell: EditableCell,
           },
@@ -345,7 +428,6 @@ export default function CoreSafetyTable({
         pagination={pagination}
         loading={loading}
         size="small"
-        scroll={{ x: 'max-content' }}
       />
     </Form>
   );

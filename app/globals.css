@@ -24,3 +24,20 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Resizable table column styles */
+.react-resizable-handle {
+  position: absolute;
+  right: -5px;
+  bottom: 0;
+  top: 0;
+  width: 10px;
+  cursor: col-resize;
+  background: transparent;
+  border: none;
+}
+
+.react-resizable-handle:hover {
+  background-color: #1890ff;
+  opacity: 0.3;
+}
