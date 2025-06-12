@@ -260,3 +260,75 @@ export const getReceiverPortsForSWComponent = async (swComponentUuid: string): P
     await session.close();
   }
 };
+
+/**
+ * Find communication partners for R-Ports that don't have a connection to ASSEMBLY_SW_CONNECTOR 
+ * via the TARGET-R-PORT-REF relationship. This function traces through the required interface
+ * to find partner components that provide the same interface.
+ */
+export const getCommunicationPartnersForRPortWithoutConnector = async (rPortUuid: string): Promise<{
+  success: boolean;
+  data?: Array<{
+    partnerName: string;
+    partnerUUID: string;
+    partnerPath: string;
+  }>;
+  message?: string;
+  error?: string;
+}> => {
+  const session = driver.session();
+  
+  try {
+    console.log(`🔍 Finding communication partners for R-Port without SW connector. UUID: ${rPortUuid}`);
+    
+    const result = await session.run(
+      `MATCH (RPortsWithoutSWConnector) WHERE RPortsWithoutSWConnector.uuid = $rPortUuid
+       //for RPorts without SW connector find the Required Interface
+       MATCH (RPortsWithoutSWConnector)-[:\`REQUIRED-INTERFACE-TREF\`]->(RPortsWithoutSWConnectorReqiredInterface)
+       //for the additional R port interface find the source (this is for example a certain interface type)
+       //RPortsWithoutSWConnectorReqiredInterface short is RPortsWOswConReqInter
+       MATCH (RPortsWithoutSWConnectorReqiredInterface)<-[:CONTAINS]-(RPortsWOswConReqInterGroup)
+       //finally get the partner
+       MATCH (RPortsWOswConReqInterGroup)<-[:CONTAINS]-(PartnerForRPortsWOswCon)
+       RETURN PartnerForRPortsWOswCon.name as partnerName, 
+              PartnerForRPortsWOswCon.uuid as partnerUUID, 
+              PartnerForRPortsWOswCon.arxmlPath as partnerPath`,
+      { rPortUuid }
+    );
+
+    if (result.records.length === 0) {
+      console.log(`❌ No communication partners found for R-Port UUID: ${rPortUuid}`);
+      return {
+        success: true,
+        data: [],
+        message: `No communication partners found for R-Port with UUID: ${rPortUuid}`,
+      };
+    }
+
+    // Process the results
+    const partners = result.records.map(record => ({
+      partnerName: record.get('partnerName') || 'Unnamed Partner',
+      partnerUUID: record.get('partnerUUID') || '',
+      partnerPath: record.get('partnerPath') || '',
+    }));
+
+    console.log(`✅ Found ${partners.length} communication partners for R-Port ${rPortUuid}:`, partners);
+
+    return {
+      success: true,
+      data: partners,
+    };
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error(`❌ Error finding communication partners for R-Port UUID ${rPortUuid}:`, errorMessage);
+    
+    return {
+      success: false,
+      message: `Error finding communication partners for R-Port UUID ${rPortUuid}.`,
+      error: errorMessage,
+    };
+  } finally {
+    await session.close();
+  }
+};
