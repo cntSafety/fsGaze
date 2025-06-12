@@ -826,3 +826,131 @@ export const getFailuresForSwComponents = async (swComponentUuid: string): Promi
     await session.close();
   }
 };
+
+/**
+ * Update an existing failure node's properties
+ * @param failureUuid UUID of the failure node to update
+ * @param failureName New name of the failure
+ * @param failureDescription New description of the failure
+ * @param asil New ASIL (Automotive Safety Integrity Level) rating
+ * @param progressCallback Optional callback for progress updates
+ */
+export const updateFailureNode = async (
+  failureUuid: string,
+  failureName: string,
+  failureDescription: string,
+  asil: string,
+  progressCallback?: (progress: number, message: string) => void
+): Promise<{
+  success: boolean;
+  message: string;
+  error?: string;
+}> => {
+  const session = driver.session();
+  
+  try {
+    if (progressCallback) progressCallback(10, 'Validating failure node');
+    
+    console.log('🔍 Updating failure node with params:', {
+      failureUuid,
+      failureName,
+      failureDescription,
+      asil
+    });
+
+    // First, verify that the failure node exists
+    const existingFailureResult = await session.run(
+      `MATCH (failure:FAILURE) 
+       WHERE failure.uuid = $failureUuid 
+       RETURN failure.name AS currentName, failure.description AS currentDescription, failure.asil AS currentAsil`,
+      { failureUuid }
+    );
+
+    if (existingFailureResult.records.length === 0) {
+      console.log('❌ No failure node found with UUID:', failureUuid);
+      return {
+        success: false,
+        message: `No failure node found with UUID: ${failureUuid}`,
+      };
+    }
+
+    const currentRecord = existingFailureResult.records[0];
+    const currentName = currentRecord.get('currentName');
+    const currentDescription = currentRecord.get('currentDescription');
+    const currentAsil = currentRecord.get('currentAsil');
+
+    console.log('✅ Found existing failure node:', { 
+      currentName, 
+      currentDescription, 
+      currentAsil,
+      updating_to: { failureName, failureDescription, asil }
+    });
+
+    if (progressCallback) progressCallback(50, 'Updating failure node properties');
+    
+    const currentTimestamp = new Date().toISOString();
+    
+    // Update the failure node properties
+    const updateResult = await session.run(
+      `MATCH (failure:FAILURE) 
+       WHERE failure.uuid = $failureUuid
+       SET failure.name = $failureName,
+           failure.description = $failureDescription,
+           failure.asil = $asil,
+           failure.updatedAt = $updatedAt
+       RETURN failure.uuid AS updatedFailureUuid, failure.name AS updatedFailureName`,
+      {
+        failureUuid,
+        failureName,
+        failureDescription,
+        asil,
+        updatedAt: currentTimestamp
+      }
+    );
+
+    if (progressCallback) progressCallback(90, 'Finalizing failure node update');
+
+    if (updateResult.records.length === 0) {
+      throw new Error('No records returned from UPDATE query');
+    }
+
+    const updatedFailureUuid = updateResult.records[0].get('updatedFailureUuid');
+    const updatedFailureName = updateResult.records[0].get('updatedFailureName');
+
+    if (progressCallback) progressCallback(100, 'Failure node updated successfully');
+
+    console.log(`✅ Failure node updated successfully:`, {
+      failureUuid: updatedFailureUuid,
+      failureName: updatedFailureName,
+      changes: {
+        name: currentName !== failureName ? `"${currentName}" → "${failureName}"` : 'unchanged',
+        description: currentDescription !== failureDescription ? `"${currentDescription}" → "${failureDescription}"` : 'unchanged',
+        asil: currentAsil !== asil ? `"${currentAsil}" → "${asil}"` : 'unchanged'
+      }
+    });
+
+    return {
+      success: true,
+      message: `Failure "${updatedFailureName}" updated successfully.`,
+    };
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error(`❌ Error updating failure node:`, error);
+    
+    console.error(`❌ Error details:`, {
+      message: errorMessage,
+      stack: error instanceof Error ? error.stack : 'No stack trace',
+      failureUuid,
+      failureName,
+    });
+    
+    return {
+      success: false,
+      message: "Error updating failure node.",
+      error: errorMessage,
+    };
+  } finally {
+    await session.close();
+  }
+};

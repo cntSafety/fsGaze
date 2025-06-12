@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Form, message } from 'antd';
-import { createFailureNode, deleteFailureNode } from '../../../../services/neo4j/queries/safety';
+import { createFailureNode, deleteFailureNode, updateFailureNode } from '../../../../services/neo4j/queries/safety';
 import { ProviderPort, PortFailure } from '../types';
 import { SafetyTableRow } from '../../CoreSafetyTable';
 
@@ -31,7 +31,7 @@ export const useProviderPortFailures = (
             swComponentName: `${port.name} (${port.type})`,
             failureName: failure.failureName || '',
             failureDescription: failure.failureDescription || '', // Use failureDescription from the failure data
-            asil: failure.asil || 'A', // Use actual ASIL from database
+            asil: failure.asil || 'TBC', // Use actual ASIL from database
             failureUuid: failure.failureUuid
           });
         });
@@ -129,18 +129,53 @@ export const useProviderPortFailures = (
           message.error(`Error: ${result.message}`);
         }
       } else {
-        // Update existing failure (placeholder for future implementation)
-        const newData = [...portTableData];
-        const index = newData.findIndex(item => key === item.key);
-        if (index > -1) {
-          const item = newData[index];
-          newData.splice(index, 1, {
-            ...item,
-            ...row,
-          });
-          setPortTableData(newData);
+        // Update existing failure - call Neo4j update service
+        if (!record.failureUuid) {
+          message.error('Cannot update failure: No failure UUID found');
+          return;
+        }
+
+        const result = await updateFailureNode(
+          record.failureUuid,
+          row.failureName,
+          row.failureDescription || '',
+          row.asil
+        );
+
+        if (result.success) {
+          // Update local port failures map
+          const portUuid = record.swComponentUuid!;
+          const updatedPortFailures = {
+            ...portFailures,
+            [portUuid]: portFailures[portUuid]?.map(failure => 
+              failure.failureUuid === record.failureUuid 
+                ? {
+                    ...failure,
+                    failureName: row.failureName,
+                    failureDescription: row.failureDescription || '',
+                    asil: row.asil
+                  }
+                : failure
+            ) || []
+          };
+          setPortFailures(updatedPortFailures);
+
+          // Update table data
+          const newData = [...portTableData];
+          const index = newData.findIndex(item => key === item.key);
+          if (index > -1) {
+            const item = newData[index];
+            newData.splice(index, 1, {
+              ...item,
+              ...row,
+            });
+            setPortTableData(newData);
+          }
+          
           setEditingPortKey('');
           message.success('Port failure mode updated successfully!');
+        } else {
+          message.error(`Error updating failure: ${result.message}`);
         }
       }
     } catch (errInfo) {
@@ -244,7 +279,7 @@ export const useProviderPortFailures = (
     form.setFieldsValue({
       failureName: '',
       failureDescription: '',
-      asil: 'A'
+      asil: 'TBC'
     });
     setEditingPortKey(newKey);
     
@@ -255,7 +290,7 @@ export const useProviderPortFailures = (
       swComponentName: portName,
       failureName: '',
       failureDescription: '',
-      asil: 'A',
+      asil: 'TBC',
       isNewRow: true
     };
     

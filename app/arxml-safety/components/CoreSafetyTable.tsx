@@ -6,6 +6,7 @@ import { SearchOutlined, DeleteOutlined, EditOutlined, PlusOutlined, LinkOutline
 import type { TableProps, ColumnType } from 'antd/es/table';
 import type { FilterDropdownProps } from 'antd/es/table/interface';
 import { Resizable } from 'react-resizable';
+import ElementDetailsModal, { ElementDetails } from './ElementDetailsModal';
 
 const { Option } = Select;
 
@@ -139,6 +140,8 @@ interface CoreSafetyTableProps {
     first: { uuid: string; name: string } | null;
     second: { uuid: string; name: string } | null;
   };
+  // New prop for element click callback
+  onElementClick?: (element: ElementDetails) => void;
 }
 
 const getColumnSearchProps = (dataIndex: string): ColumnType<SafetyTableRow> => ({
@@ -197,8 +200,13 @@ export default function CoreSafetyTable({
   form,
   onFailureSelect,
   selectedFailures,
+  onElementClick,
 }: CoreSafetyTableProps) {
   const isEditing = (record: SafetyTableRow) => record.key === editingKey;
+  
+  // Modal state management
+  const [isModalVisible, setIsModalVisible] = useState(false);
+  const [selectedElement, setSelectedElement] = useState<ElementDetails | null>(null);
   
   // Helper function to check if a failure is selected
   const isFailureSelected = (failureUuid: string) => {
@@ -211,6 +219,24 @@ export default function CoreSafetyTable({
     if (selectedFailures?.first?.uuid === failureUuid) return 'first';
     if (selectedFailures?.second?.uuid === failureUuid) return 'second';
     return null;
+  };
+
+  // Helper function to handle element click for modal
+  const handleElementClick = (element: ElementDetails) => {
+    if (onElementClick) {
+      // Use external callback if provided
+      onElementClick(element);
+    } else {
+      // Use internal modal
+      setSelectedElement(element);
+      setIsModalVisible(true);
+    }
+  };
+
+  // Helper function to close modal
+  const handleModalClose = () => {
+    setIsModalVisible(false);
+    setSelectedElement(null);
   };
 
   // Helper function to handle link click
@@ -323,15 +349,195 @@ export default function CoreSafetyTable({
       };
     }
 
+    // Special rendering for failure name column - make it clickable
+    if (col.dataIndex === 'failureName' && !col.render) {
+      baseColumn.render = (text: string, record: SafetyTableRow) => {
+        if (!text || text === '-' || text === 'No failures defined') {
+          return <span style={{ color: '#999' }}>{text || '-'}</span>;
+        }
+        
+        return (
+          <Button
+            type="link"
+            style={{ 
+              padding: 0, 
+              height: 'auto', 
+              fontSize: 'inherit',
+              textAlign: 'left',
+              whiteSpace: 'normal',
+              wordBreak: 'break-word'
+            }}
+            onClick={() => handleElementClick({
+              uuid: record.failureUuid || record.key,
+              name: text,
+              type: 'failure',
+              additionalInfo: {
+                description: record.failureDescription,
+                asil: record.asil,
+                component: record.swComponentName
+              }
+            })}
+          >
+            {text}
+          </Button>
+        );
+      };
+    }
+
+    // Special rendering for component name column - make it clickable
+    if (col.dataIndex === 'swComponentName' && !col.render) {
+      baseColumn.render = (text: string, record: SafetyTableRow, index: number) => {
+        if (!text || text === '-') {
+          return <span style={{ color: '#999' }}>{text || '-'}</span>;
+        }
+        
+        // Check if this is a port column by looking at the column key
+        const isPortColumn = col.key === 'portName';
+        
+        if (isPortColumn) {
+          // Handle port column grouping - only show port name on first row for each port
+          const isFirstRowForPort = index === 0 || 
+            dataSource[index - 1]?.swComponentUuid !== record.swComponentUuid;
+          
+          if (!isFirstRowForPort) {
+            return null; // Return blank space for subsequent rows of the same port
+          }
+          
+          // Extract port name from the format "PortName (P_PORT_PROTOTYPE)"
+          const match = text.match(/^(.+)\s+\(.*\)$/);
+          const portName = match ? match[1] : text;
+          
+          return (
+            <Button
+              type="link"
+              style={{ 
+                padding: 0, 
+                height: 'auto', 
+                fontSize: 'inherit',
+                textAlign: 'left',
+                whiteSpace: 'normal',
+                wordBreak: 'break-word',
+                fontWeight: 'bold',
+                color: '#1890ff'
+              }}
+              onClick={() => handleElementClick({
+                uuid: record.swComponentUuid || record.key,
+                name: portName,
+                type: 'port',
+                additionalInfo: {
+                  fullName: text,
+                  portType: col.title?.toString().includes('Provider') ? 'Provider Port' : 
+                           col.title?.toString().includes('Receiver') ? 'Receiver Port' : 'Port'
+                }
+              })}
+            >
+              {portName}
+            </Button>
+          );
+        } else {
+          // Handle regular component name
+          return (
+            <Button
+              type="link"
+              style={{ 
+                padding: 0, 
+                height: 'auto', 
+                fontSize: 'inherit',
+                textAlign: 'left',
+                whiteSpace: 'normal',
+                wordBreak: 'break-word'
+              }}
+              onClick={() => handleElementClick({
+                uuid: record.swComponentUuid || record.key,
+                name: text,
+                type: 'component',
+                additionalInfo: {
+                  failureCount: 1 // This could be enhanced to show actual failure count
+                }
+              })}
+            >
+              {text}
+            </Button>
+          );
+        }
+      };
+    }
+
     // Special rendering for component names with actions
     if (col.dataIndex === 'swComponentName' && showComponentActions && !col.render) {
       baseColumn.render = (text: string, record: SafetyTableRow, index: number) => {
-        const isFirstRowForComponent = index === 0 || 
-          dataSource[index - 1]?.swComponentUuid !== record.swComponentUuid;
+        const isPortColumn = col.key === 'portName';
         
-        return isFirstRowForComponent ? col.render ? col.render(text, record, index) : (
-          <span style={{ fontWeight: 'bold' }}>{text}</span>
-        ) : null;
+        if (isPortColumn) {
+          // Handle port column grouping - only show port name on first row for each port
+          const isFirstRowForPort = index === 0 || 
+            dataSource[index - 1]?.swComponentUuid !== record.swComponentUuid;
+          
+          if (!isFirstRowForPort) {
+            return null; // Return blank space for subsequent rows of the same port
+          }
+          
+          // Extract port name from the format "PortName (P_PORT_PROTOTYPE)"
+          const match = text.match(/^(.+)\s+\(.*\)$/);
+          const portName = match ? match[1] : text;
+          
+          return (
+            <Button
+              type="link"
+              style={{ 
+                padding: 0, 
+                height: 'auto', 
+                fontSize: 'inherit',
+                textAlign: 'left',
+                whiteSpace: 'normal',
+                wordBreak: 'break-word',
+                fontWeight: 'bold',
+                color: '#1890ff'
+              }}
+              onClick={() => handleElementClick({
+                uuid: record.swComponentUuid || record.key,
+                name: portName,
+                type: 'port',
+                additionalInfo: {
+                  fullName: text,
+                  portType: col.title?.toString().includes('Provider') ? 'Provider Port' : 
+                           col.title?.toString().includes('Receiver') ? 'Receiver Port' : 'Port'
+                }
+              })}
+            >
+              {portName}
+            </Button>
+          );
+        } else {
+          // Handle regular component name
+          const isFirstRowForComponent = index === 0 || 
+            dataSource[index - 1]?.swComponentUuid !== record.swComponentUuid;
+          
+          return isFirstRowForComponent ? (
+            <Button
+              type="link"
+              style={{ 
+                padding: 0, 
+                height: 'auto', 
+                fontSize: 'inherit',
+                textAlign: 'left',
+                whiteSpace: 'normal',
+                wordBreak: 'break-word',
+                fontWeight: 'bold'
+              }}
+              onClick={() => handleElementClick({
+                uuid: record.swComponentUuid || record.key,
+                name: text,
+                type: 'component',
+                additionalInfo: {
+                  failureCount: 1 // This could be enhanced to show actual failure count
+                }
+              })}
+            >
+              {text}
+            </Button>
+          ) : null;
+        }
       };
     }
 
@@ -510,6 +716,13 @@ export default function CoreSafetyTable({
           background-color: #e6f3ff !important;
         }
       `}</style>
+
+      {/* Element Details Modal */}
+      <ElementDetailsModal
+        isVisible={isModalVisible}
+        onClose={handleModalClose}
+        elementDetails={selectedElement}
+      />
     </Form>
   );
 }

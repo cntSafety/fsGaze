@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Form, message } from 'antd';
-import { createFailureNode, deleteFailureNode } from '../../../../services/neo4j/queries/safety';
+import { createFailureNode, deleteFailureNode, updateFailureNode } from '../../../../services/neo4j/queries/safety';
 import { SwComponent, Failure } from '../types';
 import { SafetyTableRow } from '../../CoreSafetyTable';
 
@@ -37,7 +37,7 @@ export const useSwFailureModes = (
         swComponentName: swComponent.name,
         failureName: failure.failureName || '',
         failureDescription: failure.failureDescription || '',
-        asil: failure.asil || 'A',
+        asil: failure.asil || 'TBC',
         failureUuid: failure.failureUuid
       }));
       setTableData(tableRows);
@@ -113,18 +113,49 @@ export const useSwFailureModes = (
           message.error(`Error: ${result.message}`);
         }
       } else {
-        // Update existing failure (placeholder for future implementation)
-        const newData = [...tableData];
-        const index = newData.findIndex(item => key === item.key);
-        if (index > -1) {
-          const item = newData[index];
-          newData.splice(index, 1, {
-            ...item,
-            ...row,
-          });
-          setTableData(newData);
+        // Update existing failure - call Neo4j update service
+        if (!record.failureUuid) {
+          message.error('Cannot update failure: No failure UUID found');
+          return;
+        }
+
+        const result = await updateFailureNode(
+          record.failureUuid,
+          row.failureName,
+          row.failureDescription,
+          row.asil
+        );
+
+        if (result.success) {
+          // Update local failures array
+          const updatedFailures = failures.map(failure => 
+            failure.failureUuid === record.failureUuid 
+              ? {
+                  ...failure,
+                  failureName: row.failureName,
+                  failureDescription: row.failureDescription,
+                  asil: row.asil
+                }
+              : failure
+          );
+          setFailures(updatedFailures);
+
+          // Update table data
+          const newData = [...tableData];
+          const index = newData.findIndex(item => key === item.key);
+          if (index > -1) {
+            const item = newData[index];
+            newData.splice(index, 1, {
+              ...item,
+              ...row,
+            });
+            setTableData(newData);
+          }
+          
           setEditingKey('');
           message.success('Failure mode updated successfully!');
+        } else {
+          message.error(`Error updating failure: ${result.message}`);
         }
       }
     } catch (errInfo) {
@@ -211,7 +242,7 @@ export const useSwFailureModes = (
     form.setFieldsValue({
       failureName: '',
       failureDescription: '',
-      asil: 'A'
+      asil: 'TBC'
     });
     setEditingKey(newKey);
     
@@ -222,7 +253,7 @@ export const useSwFailureModes = (
       swComponentName: swComponent.name,
       failureName: '',
       failureDescription: '',
-      asil: 'A',
+      asil: 'TBC',
       isNewRow: true
     };
     

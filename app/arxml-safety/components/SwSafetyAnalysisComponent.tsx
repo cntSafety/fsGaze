@@ -1,14 +1,15 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Button, Spin, Card, Typography, Modal } from 'antd';
-import { ArrowLeftOutlined } from '@ant-design/icons';
+import { Button, Spin, Card, Typography, Modal, Tabs } from 'antd';
+import { ArrowLeftOutlined, TableOutlined, ApartmentOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import { useSwSafetyData } from './safety-analysis/hooks/useSwSafetyData';
 import SwComponentInfo from './safety-analysis/SwComponentInfo';
 import SwFailureModesTable from './safety-analysis/SwFailureModesTable';
 import ProviderPortsFailureModesTable from './safety-analysis/ProviderPortsFailureModesTable';
 import ReceiverPortsFailureModesTable from './safety-analysis/ReceiverPortsFailureModesTable';
+import FMFlow from './safety-analysis/FMFlow';
 import { createCausationBetweenFailures } from '@/app/services/ArxmlToNeoService';
 import { SwSafetyAnalysisProps } from './safety-analysis/types';
 
@@ -26,7 +27,8 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
     setPortFailures,
     receiverPorts,
     receiverPortFailures,
-    setReceiverPortFailures
+    setReceiverPortFailures,
+    refreshData
   } = useSwSafetyData(swComponentUuid);
 
   // Causation selection state
@@ -180,29 +182,69 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
         providerPorts={providerPorts}
       />
 
-      <SwFailureModesTable 
-        swComponentUuid={swComponentUuid}
-        swComponent={swComponent}
-        failures={failures}
-        setFailures={setFailures}
-        onFailureSelect={handleFailureSelection}
-        selectedFailures={selectedFailures}
-      />
+      <Tabs
+        defaultActiveKey="tables"
+        items={[
+          {
+            key: 'tables',
+            label: (
+              <span>
+                <TableOutlined />
+                Tables View
+              </span>
+            ),
+            children: (
+              <>
+                <SwFailureModesTable 
+                  swComponentUuid={swComponentUuid}
+                  swComponent={swComponent}
+                  failures={failures}
+                  setFailures={setFailures}
+                  onFailureSelect={handleFailureSelection}
+                  selectedFailures={selectedFailures}
+                />
 
-      <ProviderPortsFailureModesTable 
-        providerPorts={providerPorts}
-        portFailures={portFailures}
-        setPortFailures={setPortFailures}
-        onFailureSelect={handleFailureSelection}
-        selectedFailures={selectedFailures}
-      />
+                <ProviderPortsFailureModesTable 
+                  providerPorts={providerPorts}
+                  portFailures={portFailures}
+                  setPortFailures={setPortFailures}
+                  onFailureSelect={handleFailureSelection}
+                  selectedFailures={selectedFailures}
+                />
 
-      <ReceiverPortsFailureModesTable 
-        receiverPorts={receiverPorts}
-        portFailures={receiverPortFailures}
-        setPortFailures={setReceiverPortFailures}
-        onFailureSelect={handleFailureSelection}
-        selectedFailures={selectedFailures}
+                <ReceiverPortsFailureModesTable 
+                  receiverPorts={receiverPorts}
+                  portFailures={receiverPortFailures}
+                  setPortFailures={setReceiverPortFailures}
+                  onFailureSelect={handleFailureSelection}
+                  selectedFailures={selectedFailures}
+                />
+              </>
+            ),
+          },
+          {
+            key: 'flow',
+            label: (
+              <span>
+                <ApartmentOutlined />
+                Flow Diagram
+              </span>
+            ),
+            children: (
+              <FMFlow
+                swComponent={swComponent}
+                failures={failures}
+                providerPorts={providerPorts}
+                portFailures={portFailures}
+                receiverPorts={receiverPorts}
+                receiverPortFailures={receiverPortFailures}
+                onFailureSelect={handleFailureSelection}
+                selectedFailures={selectedFailures}
+                onRefresh={refreshData}
+              />
+            ),
+          },
+        ]}
       />
     </div>
   );

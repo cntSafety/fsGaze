@@ -43,7 +43,7 @@ export default function ArxmlSafetyAnalysisTable() {
                 swComponentName: component.name,
                 failureName: failure.failureName || '',
                 failureDescription: failure.failureDescription || '',
-                asil: failure.asil || 'A',
+                asil: failure.asil || 'TBC',
                 failureUuid: failure.failureUuid
               });
             });
@@ -88,7 +88,7 @@ export default function ArxmlSafetyAnalysisTable() {
       ...record,
       failureName: record.failureName === 'No failures defined' ? '' : record.failureName,
       failureDescription: record.failureDescription === '-' ? '' : record.failureDescription,
-      asil: record.asil === '-' ? 'A' : record.asil,
+      asil: record.asil === '-' ? 'TBC' : record.asil,
     });
     setEditingKey(record.key);
   };
@@ -99,7 +99,7 @@ export default function ArxmlSafetyAnalysisTable() {
       swComponentName,
       failureName: '',
       failureDescription: '',
-      asil: 'A'
+      asil: 'TBC'
     });
     setEditingKey(newKey);
     
@@ -110,7 +110,7 @@ export default function ArxmlSafetyAnalysisTable() {
       swComponentName,
       failureName: '',
       failureDescription: '',
-      asil: 'A',
+      asil: 'TBC',
       isNewRow: true
     };
     
@@ -277,6 +277,7 @@ export default function ArxmlSafetyAnalysisTable() {
         { value: 'C', label: 'ASIL C' },
         { value: 'D', label: 'ASIL D' },
         { value: 'QM', label: 'QM' },
+        { value: 'TBC', label: 'TBC' },
       ],
     },
   ];

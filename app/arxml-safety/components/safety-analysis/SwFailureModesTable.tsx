@@ -78,6 +78,7 @@ export default function SwFailureModesTable({
         { value: 'C', label: 'ASIL C' },
         { value: 'D', label: 'ASIL D' },
         { value: 'QM', label: 'QM' },
+        { value: 'TBC', label: 'TBC' },
       ],
     },
   ];

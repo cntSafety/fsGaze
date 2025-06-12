@@ -116,5 +116,6 @@ export const useSwSafetyData = (swComponentUuid: string) => {
     receiverPorts,
     receiverPortFailures,
     setReceiverPortFailures,
+    refreshData: loadData,
   };
 };

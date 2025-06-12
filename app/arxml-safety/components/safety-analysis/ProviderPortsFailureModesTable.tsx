@@ -49,24 +49,7 @@ export default function ProviderPortsFailureModesTable({
       dataIndex: 'swComponentName',
       searchable: true,
       width: 200,
-      render: (text: string, record: SafetyTableRow, index: number) => {
-        // Only show port name on the first row for each port in table order
-        const isFirstRowForPort = index === 0 || 
-          portTableData[index - 1]?.swComponentUuid !== record.swComponentUuid;
-        
-        if (!isFirstRowForPort) {
-          return null; // Return blank space for subsequent rows of the same port
-        }
-        
-        // Extract port name from the format "PortName (P_PORT_PROTOTYPE)"
-        const match = text.match(/^(.+)\s+\(.*\)$/);
-        const portName = match ? match[1] : text;
-        return (
-          <Typography.Text strong style={{ color: '#1890ff' }}>
-            {portName}
-          </Typography.Text>
-        );
-      },
+      // Remove custom render function to let CoreSafetyTable handle it
     },
     {
       key: 'failureName',
@@ -100,6 +83,7 @@ export default function ProviderPortsFailureModesTable({
         { value: 'C', label: 'ASIL C' },
         { value: 'D', label: 'ASIL D' },
         { value: 'QM', label: 'QM' },
+        { value: 'TBC', label: 'TBC' },
       ],
     },
   ];
