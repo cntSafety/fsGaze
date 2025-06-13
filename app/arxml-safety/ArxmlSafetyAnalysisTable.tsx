@@ -127,7 +127,7 @@ export default function ArxmlSafetyAnalysisTable() {
       }
       // Insert the new row at the correct position
       newData.splice(insertIndex, 0, newRow);
-      console.log('Adding new failure for component:', swComponentName, 'at index:', insertIndex);
+      // console.log('Adding new failure for component:', swComponentName, 'at index:', insertIndex);
       return newData;
     });
   };

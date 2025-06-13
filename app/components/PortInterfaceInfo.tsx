@@ -76,7 +76,7 @@ const PortInterfaceInfo: React.FC<PortInterfaceInfoProps> = ({ portUuid }) => {
                 }}
                 onClick={() => {
                     // TODO: Add interface details functionality
-                    console.log('Interface clicked:', interfaceInfo.interfaceName);
+                    // console.log('Interface clicked:', interfaceInfo.interfaceName);
                 }}
             >
                 {interfaceInfo.interfaceName}

@@ -62,7 +62,7 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
           }
         }
 
-        console.log(`Fetching assembly context for port ${elementDetails.name} (${actualPortType})`);
+        // console.log(`Fetching assembly context for port ${elementDetails.name} (${actualPortType})`);
         
         let result;
         if (actualPortType === 'P_PORT_PROTOTYPE') {
@@ -74,23 +74,23 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
         if (result && result.records) {
           const contextData = result.records.map(record => record.toObject() as unknown as AssemblyContextInfo);
           setAssemblyContext(contextData);
-          console.log(`Assembly context found for ${elementDetails.name}:`, contextData);
+          // console.log(`Assembly context found for ${elementDetails.name}:`, contextData);
         } else {
           setAssemblyContext([]);
-          console.log(`No assembly context found for ${elementDetails.name}`);
+          // console.log(`No assembly context found for ${elementDetails.name}`);
         }
 
         // For R-Ports, also check for communication partners without connectors
         if (actualPortType === 'R_PORT_PROTOTYPE') {
-          console.log(`Checking for communication partners without connectors for R-Port ${elementDetails.name}`);
+          // console.log(`Checking for communication partners without connectors for R-Port ${elementDetails.name}`);
           const partnersResult = await getCommunicationPartnersForRPortWithoutConnector(elementDetails.uuid);
           
           if (partnersResult.success && partnersResult.data) {
             setCommunicationPartners(partnersResult.data);
-            console.log(`Communication partners found for ${elementDetails.name}:`, partnersResult.data);
+            // console.log(`Communication partners found for ${elementDetails.name}:`, partnersResult.data);
           } else {
             setCommunicationPartners([]);
-            console.log(`No communication partners found for ${elementDetails.name}`);
+            // console.log(`No communication partners found for ${elementDetails.name}`);
           }
         } else {
           setCommunicationPartners([]);
@@ -208,9 +208,7 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
           borderRadius: '6px',
           border: '1px solid #e1e4e8'
         }}>
-          <Text type="secondary" style={{ fontStyle: 'italic' }}>
-            💡 Additional details and relationships will be displayed here in future updates
-          </Text>
+
         </div>
 
         {/* Assembly Context Section for Ports */}

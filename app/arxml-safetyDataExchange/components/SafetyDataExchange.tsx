@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
-import { Button, Space, Typography, Spin, Alert, Card, Upload, Input } from 'antd';
-import { UploadOutlined } from '@ant-design/icons';
+import React, { useState, useCallback, useRef } from 'react';
+import { Button, Space, Typography, Spin, Alert, Card, Upload, Input, Modal } from 'antd';
+import { UploadOutlined, DatabaseOutlined, DownloadOutlined } from '@ant-design/icons';
 import { getSafetyGraph } from '@/app/services/neo4j/queries/safety'; // Assuming this path is correct
+import StatusDB, { StatusDBRef } from '@/app/components/statusDB';
 
 const { Title, Paragraph } = Typography;
 
@@ -53,6 +54,11 @@ const SafetyDataExchange: React.FC = () => {
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadLogs, setUploadLogs] = useState<string[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [showPostImportStats, setShowPostImportStats] = useState<boolean>(false);
+  const [isStatusModalVisible, setIsStatusModalVisible] = useState<boolean>(false);
+
+  // Ref to trigger refresh of StatusDB component after import
+  const statusDBRef = useRef<StatusDBRef | null>(null);
 
 
   const handleExport = useCallback(async () => {
@@ -129,6 +135,8 @@ const SafetyDataExchange: React.FC = () => {
     setIsUploading(true);
     setUploadLogs([]);
     setUploadError(null);
+    setShowPostImportStats(false);
+    
     try {
       const response = await fetch('/api/safety-graph/import', {
         method: 'POST',
@@ -142,6 +150,12 @@ const SafetyDataExchange: React.FC = () => {
         setUploadLogs(result.logs || ['Upload successful, but no logs were returned.']);
         setImportedData(null); // Clear preview after successful upload
         setImportedFileName(null);
+        setShowPostImportStats(true);
+        
+        // Trigger StatusDB refresh after successful import
+        if (statusDBRef.current) {
+          statusDBRef.current.refresh();
+        }
       } else {
         setUploadError(result.message || 'Failed to upload data to Neo4j.');
         if(result.logs) {
@@ -163,21 +177,42 @@ const SafetyDataExchange: React.FC = () => {
     </Card>
   );
 
+  const handleOpenStatusModal = () => {
+    setIsStatusModalVisible(true);
+    // Refresh stats when modal opens
+    setTimeout(() => {
+      if (statusDBRef.current) {
+        statusDBRef.current.refresh();
+      }
+    }, 100);
+  };
+
   return (
     <div style={{ padding: 24 }}>
-      <Title level={2}>Safety Data Exchange</Title>
+      <Title level={2}>Export and Import the Safety Analysis</Title>
       <Paragraph>
         Export safety analysis data from Neo4j or import it from a JSON file.
       </Paragraph>
 
       <Space direction="vertical" style={{ width: '100%' }}>
+        {/* DB Status Button */}
+        <div style={{ marginBottom: 16 }}>
+          <Button 
+            type="default" 
+            icon={<DatabaseOutlined />} 
+            onClick={handleOpenStatusModal}
+          >
+            DB Status and Info
+          </Button>
+        </div>
+
         <Card title="Export Safety Analysis Data">
           <Space>
-            <Button type="primary" onClick={handleExport} loading={isLoading}>
-              Fetch Safety Data from Neo4j
+            <Button onClick={handleExport} loading={isLoading}>
+              Fetch Safety Data from DB
             </Button>
             {safetyData && (
-              <Button onClick={handleDownloadJson}>
+              <Button icon={<DownloadOutlined />} onClick={handleDownloadJson}>
                 Download as JSON
               </Button>
             )}
@@ -233,8 +268,30 @@ const SafetyDataExchange: React.FC = () => {
               />
             </Card>
           )}
+          
+          {/* Show updated database status after successful import */}
+          {showPostImportStats && uploadLogs.length > 0 && (
+            <Alert 
+              message="Import completed successfully! Click 'DB Status and Info' to view updated database statistics." 
+              type="success" 
+              showIcon 
+              style={{ marginTop: 16 }}
+            />
+          )}
         </Card>
       </Space>
+
+      {/* Database Status Modal */}
+      <Modal
+        title="Database Status and Information"
+        open={isStatusModalVisible}
+        onCancel={() => setIsStatusModalVisible(false)}
+        footer={null}
+        width={800}
+        destroyOnHidden={true}
+      >
+        <StatusDB ref={statusDBRef} />
+      </Modal>
     </div>
   );
 };

@@ -100,7 +100,7 @@ const SWCProtoRelations: React.FC = () => {
       const result = await getComponentDependencyGraph(component.uuid);
       
       // Console log the result for debugging
-      console.log('getComponentDependencyGraph result for component:', component.name, result);
+      // console.log('getComponentDependencyGraph result for component:', component.name, result);
       
       if (result.success && result.data) {
         setDependencyGraph(result.data);

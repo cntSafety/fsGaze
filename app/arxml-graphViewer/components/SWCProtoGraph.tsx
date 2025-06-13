@@ -82,7 +82,7 @@ const SWCProtoGraph: React.FC = () => {
   const copyToClipboard = async (text: string, label: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      console.log(`📋 Copied ${label} to clipboard:`, text);
+      // console.log(`📋 Copied ${label} to clipboard:`, text);
     } catch (err) {
       console.error('Failed to copy to clipboard:', err);
       // Fallback for older browsers
@@ -92,7 +92,7 @@ const SWCProtoGraph: React.FC = () => {
       textArea.select();
       document.execCommand('copy');
       document.body.removeChild(textArea);
-      console.log(`📋 Copied ${label} to clipboard (fallback):`, text);
+      // console.log(`📋 Copied ${label} to clipboard (fallback):`, text);
     }
   };
 
@@ -134,7 +134,7 @@ const SWCProtoGraph: React.FC = () => {
         
         if (result.success && result.data) {
           setPrototypes(result.data);
-          console.log('✅ Loaded SW Component Prototypes:', result.data.length);
+          // console.log('✅ Loaded SW Component Prototypes:', result.data.length);
         } else {
           setError(result.message || 'Failed to load SW Component Prototypes');
         }
@@ -160,13 +160,13 @@ const SWCProtoGraph: React.FC = () => {
       try {
         setLoading(true);
         setError(null);
-        console.log('🎯 Fetching dependency graph for:', selectedPrototype);
+        // console.log('🎯 Fetching dependency graph for:', selectedPrototype);
         
         const result = await getComponentDependencyGraph(selectedPrototype);
         
         if (result.success && result.data) {
           setGraphData(result.data);
-          console.log('✅ Dependency graph loaded:', result.data);
+          // console.log('✅ Dependency graph loaded:', result.data);
         } else {
           setError(result.message || 'Failed to load dependency graph');
         }
@@ -243,25 +243,25 @@ const SWCProtoGraph: React.FC = () => {
   useEffect(() => {
     if (!graphData || !svgRef.current) return;
 
-    console.log('🎨 Creating D3 visualization with data:', graphData);
+    // console.log('🎨 Creating D3 visualization with data:', graphData);
     createD3Visualization(graphData);
   }, [graphData, visibleNodeTypes, visibleRelationshipTypes]);
 
   const createD3Visualization = (data: ComponentVisualizationResult) => {
     if (!svgRef.current || !containerRef.current) return;
 
-    console.log('🎨 Creating D3 visualization with simplified data:', data);
-    console.log('📊 Nodes count:', data.nodes?.length || 0);
-    console.log('📊 Relationships count:', data.relationships?.length || 0);
-    console.log('📊 Metadata:', data.metadata);
+    // console.log('🎨 Creating D3 visualization with simplified data:', data);
+    // console.log('📊 Nodes count:', data.nodes?.length || 0);
+    // console.log('📊 Relationships count:', data.relationships?.length || 0);
+    // console.log('📊 Metadata:', data.metadata);
     
     // Log all available node types and relationship types
     const availableNodeTypes = [...new Set(data.nodes.map(n => n.type || n.label))];
     const availableRelationshipTypes = [...new Set(data.relationships.map(r => r.type))];
-    console.log('📊 Available Node Types:', availableNodeTypes);
-    console.log('📊 Visible Node Types:', Array.from(visibleNodeTypes));
-    console.log('📊 Available Relationship Types:', availableRelationshipTypes);
-    console.log('📊 Visible Relationship Types:', Array.from(visibleRelationshipTypes));
+    // console.log('📊 Available Node Types:', availableNodeTypes);
+    // console.log('📊 Visible Node Types:', Array.from(visibleNodeTypes));
+    // console.log('📊 Available Relationship Types:', availableRelationshipTypes);
+    // console.log('📊 Visible Relationship Types:', Array.from(visibleRelationshipTypes));
 
     // Clear previous visualization
     d3.select(svgRef.current).selectAll('*').remove();
@@ -305,7 +305,7 @@ const SWCProtoGraph: React.FC = () => {
       // Skip this node if it's not visible
       if (!visibleNodeTypes.has(nodeLabel)) {
         filteredNodeCount++;
-        console.log('🚫 Filtered out node:', nodeLabel, 'for node:', node.name);
+        // console.log('🚫 Filtered out node:', nodeLabel, 'for node:', node.name);
         return;
       }
       
@@ -397,7 +397,7 @@ const SWCProtoGraph: React.FC = () => {
       // Skip this relationship if it's not visible
       if (!visibleRelationshipTypes.has(relationship.type)) {
         filteredRelTypeCount++;
-        console.log('🚫 Filtered out relationship type:', relationship.type);
+        // console.log('🚫 Filtered out relationship type:', relationship.type);
         return;
       }
 
@@ -414,9 +414,9 @@ const SWCProtoGraph: React.FC = () => {
       
       if (!visibleNodeTypes.has(sourceNodeLabel) || !visibleNodeTypes.has(targetNodeLabel)) {
         filteredNodeVisibilityCount++;
-        console.log('🚫 Filtered out relationship due to node visibility:', 
-          `${sourceNodeLabel} -> ${targetNodeLabel}`, 
-          `(${relationship.type})`);
+        // console.log('🚫 Filtered out relationship due to node visibility:', 
+        //   `${sourceNodeLabel} -> ${targetNodeLabel}`, 
+        //   `(${relationship.type})`);
         return;
       }
 
@@ -474,22 +474,22 @@ const SWCProtoGraph: React.FC = () => {
       });
     });
 
-    console.log('📊 D3 Graph Data:', { nodes: nodes.length, links: links.length });
-    console.log('📊 Filtering Summary:', {
-      originalNodes: data.nodes.length,
-      filteredNodes: nodes.length,
-      nodesFilteredOut: filteredNodeCount,
-      originalRelationships: data.relationships.length,
-      filteredRelationships: links.length,
-      relationshipsFilteredByType: filteredRelTypeCount,
-      relationshipsFilteredByNodeVisibility: filteredNodeVisibilityCount
-    });
-    console.log('📊 Nodes:', nodes.map(n => ({ id: n.id, name: n.name, RenderingInfoType: n.RenderingInfoType })));
-    console.log('📊 Links:', links.map(l => ({ 
-      source: typeof l.source === 'string' ? l.source : l.source.id, 
-      target: typeof l.target === 'string' ? l.target : l.target.id, 
-      type: l.type 
-    })));
+    // console.log('📊 D3 Graph Data:', { nodes: nodes.length, links: links.length });
+    // console.log('📊 Filtering Summary:', {
+    //   originalNodes: data.nodes.length,
+    //   filteredNodes: nodes.length,
+    //   nodesFilteredOut: filteredNodeCount,
+    //   originalRelationships: data.relationships.length,
+    //   filteredRelationships: links.length,
+    //   relationshipsFilteredByType: filteredRelTypeCount,
+    //   relationshipsFilteredByNodeVisibility: filteredNodeVisibilityCount
+    // });
+    // console.log('📊 Nodes:', nodes.map(n => ({ id: n.id, name: n.name, RenderingInfoType: n.RenderingInfoType })));
+    // console.log('📊 Links:', links.map(l => ({ 
+    //   source: typeof l.source === 'string' ? l.source : l.source.id, 
+    //   target: typeof l.target === 'string' ? l.target : l.target.id, 
+    //   type: l.type 
+    // })));
 
     // Validate data before creating visualization
     if (nodes.length === 0) {
@@ -887,7 +887,7 @@ const SWCProtoGraph: React.FC = () => {
         .attr('stroke', '#ff6b6b')
         .attr('stroke-width', 3);
         
-      console.log('📌 Pinned node:', node.name, 'at position:', { x: node.fx, y: node.fy });
+      // console.log('📌 Pinned node:', node.name, 'at position:', { x: node.fx, y: node.fy });
     }
 
     // Add double-click to unpin functionality
@@ -909,7 +909,7 @@ const SWCProtoGraph: React.FC = () => {
       simulation.alphaTarget(0.3).restart();
       setTimeout(() => simulation.alphaTarget(0), 1000);
       
-      console.log('📍 Unpinned node:', node.name);
+      // console.log('📍 Unpinned node:', node.name);
     });
   };
 

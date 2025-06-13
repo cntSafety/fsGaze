@@ -107,7 +107,7 @@ export const getComponentDependencyGraph = async (swcProtoUuid: string): Promise
   const session = driver.session();
   
   try {
-    console.log(`🔍 Fetching component dependency graph for UUID: ${swcProtoUuid}`);
+    // console.log(`🔍 Fetching component dependency graph for UUID: ${swcProtoUuid}`);
     
     const result = await session.run(
       `// Find the SW Component in Scope
@@ -189,7 +189,7 @@ export const getComponentDependencyGraph = async (swcProtoUuid: string): Promise
     );
 
     if (result.records.length === 0) {
-      console.log(`❌ No component found for UUID: ${swcProtoUuid}`);
+      // console.log(`❌ No component found for UUID: ${swcProtoUuid}`);
       return {
         success: false,
         message: `Defined query for SW_COMPONENT_PROTOTYPE with UUID: ${swcProtoUuid} did not return any results.`,
@@ -202,7 +202,7 @@ export const getComponentDependencyGraph = async (swcProtoUuid: string): Promise
     const neo4jIdToUuidMap = new Map<string, string>(); // Map Neo4j internal ID to UUID
     let centerComponentName = '';
     let centerComponentId = '';
-    console.log(`🔍 RESULTS ----------:`, result);
+    // console.log(`🔍 RESULTS ----------:`, result);
     result.records.forEach(record => {
       // Extract nodes
       const nodeFields = [
@@ -306,14 +306,14 @@ export const getComponentDependencyGraph = async (swcProtoUuid: string): Promise
       }
     };
 
-    console.log(`✅ Component dependency graph retrieved:`, {
-      componentName: centerComponentName,
-      totalNodes: nodes.length,
-      resultData: resultData,
-      totalRelationships: relationships.length,
-      nodeTypes: [...new Set(nodes.map(n => n.type))],
-      relationshipTypes: [...new Set(relationships.map(r => r.type))]
-    });
+    // console.log(`✅ Component dependency graph retrieved:`, {
+    //   componentName: centerComponentName,
+    //   totalNodes: nodes.length,
+    //   resultData: resultData,
+    //   totalRelationships: relationships.length,
+    //   nodeTypes: [...new Set(nodes.map(n => n.type))],
+    //   relationshipTypes: [...new Set(relationships.map(r => r.type))]
+    // });
 
     return {
       success: true,
@@ -395,7 +395,7 @@ export const getScopedComponentConnectionsAndPartners = async (swcProtoUuid: str
   const session = driver.session();
   
   try {
-    console.log(`🔍 Fetching scoped component connections and partners for UUID: ${swcProtoUuid}`);
+    // console.log(`🔍 Fetching scoped component connections and partners for UUID: ${swcProtoUuid}`);
     
     const result = await session.run(
       `// Query Name: getScopedComponentConnectionsAndPartners
@@ -517,7 +517,7 @@ export const getScopedComponentConnectionsAndPartners = async (swcProtoUuid: str
     );
 
     if (result.records.length === 0) {
-      console.log(`❌ No component found for UUID: ${swcProtoUuid}`);
+      // console.log(`❌ No component found for UUID: ${swcProtoUuid}`);
       return {
         success: false,
         message: `No SW_COMPONENT_PROTOTYPE found with UUID: ${swcProtoUuid}`,
@@ -536,12 +536,12 @@ export const getScopedComponentConnectionsAndPartners = async (swcProtoUuid: str
       Connections: connections
     };
 
-    console.log(`✅ Scoped component connections and partners retrieved:`, {
-      scopeElement: scopeElement?.name || 'None',
-      partnersCount: partners.length,
-      connectionsCount: connections.length,
-      resultData: resultData
-    });
+    // console.log(`✅ Scoped component connections and partners retrieved:`, {
+    //   scopeElement: scopeElement?.name || 'None',
+    //   partnersCount: partners.length,
+    //   connectionsCount: connections.length,
+    //   resultData: resultData
+    // });
 
     return {
       success: true,

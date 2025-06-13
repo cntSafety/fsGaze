@@ -78,7 +78,7 @@ export const getInformationForPort = async (portUuid: string): Promise<{
   const session = driver.session();
   
   try {
-    console.log(`🔍 Fetching interface information for port UUID: ${portUuid}`);
+    // console.log(`🔍 Fetching interface information for port UUID: ${portUuid}`);
     
     const result = await session.run(
       `MATCH (port) 
@@ -89,7 +89,7 @@ export const getInformationForPort = async (portUuid: string): Promise<{
     );
 
     if (result.records.length === 0) {
-      console.log(`❌ No interface found for port UUID: ${portUuid}`);
+      // console.log(`❌ No interface found for port UUID: ${portUuid}`);
       return {
         success: false,
         message: `No interface reference found for port with UUID: ${portUuid}`,
@@ -114,7 +114,7 @@ export const getInformationForPort = async (portUuid: string): Promise<{
       uuid: interfaceRef.properties.uuid || '',
     };
 
-    console.log(`✅ Interface information retrieved for port ${portUuid}:`, interfaceInfo);
+    // console.log(`✅ Interface information retrieved for port ${portUuid}:`, interfaceInfo);
 
     return {
       success: true,
@@ -147,7 +147,7 @@ export const getProviderPortsForSWComponent = async (swComponentUuid: string): P
   const session = driver.session();
   
   try {
-    console.log(`🔍 Fetching provider ports for SW component UUID: ${swComponentUuid}`);
+    // console.log(`🔍 Fetching provider ports for SW component UUID: ${swComponentUuid}`);
     
     const result = await session.run(
       `MATCH (SWcomponent) 
@@ -158,7 +158,7 @@ export const getProviderPortsForSWComponent = async (swComponentUuid: string): P
     );
 
     if (result.records.length === 0) {
-      console.log(`❌ No provider ports found for SW component UUID: ${swComponentUuid}`);
+      // console.log(`❌ No provider ports found for SW component UUID: ${swComponentUuid}`);
       return {
         success: true,
         data: [],
@@ -177,7 +177,7 @@ export const getProviderPortsForSWComponent = async (swComponentUuid: string): P
       };
     });
 
-    console.log(`✅ Found ${providerPorts.length} provider ports for SW component ${swComponentUuid}:`, providerPorts);
+    // console.log(`✅ Found ${providerPorts.length} provider ports for SW component ${swComponentUuid}:`, providerPorts);
 
     return {
       success: true,
@@ -210,7 +210,7 @@ export const getReceiverPortsForSWComponent = async (swComponentUuid: string): P
   const session = driver.session();
   
   try {
-    console.log(`🔍 Fetching receiver ports for SW component UUID: ${swComponentUuid}`);
+    // console.log(`🔍 Fetching receiver ports for SW component UUID: ${swComponentUuid}`);
     
     const result = await session.run(
       `MATCH (SWcomponent) 
@@ -221,7 +221,7 @@ export const getReceiverPortsForSWComponent = async (swComponentUuid: string): P
     );
 
     if (result.records.length === 0) {
-      console.log(`❌ No receiver ports found for SW component UUID: ${swComponentUuid}`);
+      // console.log(`❌ No receiver ports found for SW component UUID: ${swComponentUuid}`);
       return {
         success: true,
         data: [],
@@ -240,7 +240,7 @@ export const getReceiverPortsForSWComponent = async (swComponentUuid: string): P
       };
     });
 
-    console.log(`✅ Found ${receiverPorts.length} receiver ports for SW component ${swComponentUuid}:`, receiverPorts);
+    // console.log(`✅ Found ${receiverPorts.length} receiver ports for SW component ${swComponentUuid}:`, receiverPorts);
 
     return {
       success: true,
@@ -279,7 +279,7 @@ export const getCommunicationPartnersForRPortWithoutConnector = async (rPortUuid
   const session = driver.session();
   
   try {
-    console.log(`🔍 Finding communication partners for R-Port without SW connector. UUID: ${rPortUuid}`);
+    // console.log(`🔍 Finding communication partners for R-Port without SW connector. UUID: ${rPortUuid}`);
     
     const result = await session.run(
       `MATCH (RPortsWithoutSWConnector) WHERE RPortsWithoutSWConnector.uuid = $rPortUuid
@@ -297,7 +297,7 @@ export const getCommunicationPartnersForRPortWithoutConnector = async (rPortUuid
     );
 
     if (result.records.length === 0) {
-      console.log(`❌ No communication partners found for R-Port UUID: ${rPortUuid}`);
+      // console.log(`❌ No communication partners found for R-Port UUID: ${rPortUuid}`);
       return {
         success: true,
         data: [],
@@ -312,7 +312,7 @@ export const getCommunicationPartnersForRPortWithoutConnector = async (rPortUuid
       partnerPath: record.get('partnerPath') || '',
     }));
 
-    console.log(`✅ Found ${partners.length} communication partners for R-Port ${rPortUuid}:`, partners);
+    // console.log(`✅ Found ${partners.length} communication partners for R-Port ${rPortUuid}:`, partners);
 
     return {
       success: true,

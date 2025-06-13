@@ -274,7 +274,7 @@ function ArxmlFlowViewer() {
         setScopedData(null);
 
         try {
-            console.log(`🔍 Loading scoped data for prototype: ${selectedProto.name} (${prototypeUuid})`);
+            // console.log(`🔍 Loading scoped data for prototype: ${selectedProto.name} (${prototypeUuid})`);
 
             const result = await getScopedComponentConnectionsAndPartners(prototypeUuid);
 
@@ -445,7 +445,7 @@ function ArxmlFlowViewer() {
             });
         });
 
-        console.log(`📊 Created ${newNodes.length} nodes and ${newEdges.length} edges`);
+        // console.log(`📊 Created ${newNodes.length} nodes and ${newEdges.length} edges`);
 
         // Apply layout and set nodes/edges
         const layoutedNodes = await applyLayout(newNodes, newEdges);
@@ -480,7 +480,7 @@ function ArxmlFlowViewer() {
     const renderConnectionModal = () => {
         // Debug logging for selectedConnection data
         if (selectedConnection) {
-            console.log('🔍 Modal opened with selectedConnection:', selectedConnection);
+            // console.log('🔍 Modal opened with selectedConnection:', selectedConnection);
         }
         
         return (

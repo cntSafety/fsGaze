@@ -180,7 +180,7 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
             : await getAssemblyContextForRPort(connectedElementUuid);
           
           const assemblyContextRecords = assemblyContextResult.records.map(r => r.toObject() as unknown as AssemblyContextInfo);
-          console.log('Assembly context records:', assemblyContextRecords); // For debugging
+          // console.log('Assembly context records:', assemblyContextRecords); // For debugging
           
           // Fetch failures for this port
           const failuresResult = await getFailuresForPorts(connectedElementUuid);

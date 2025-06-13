@@ -181,10 +181,10 @@ export default function FMFlow({
   // Function to fetch causation relationships from Neo4j
   const fetchCausationRelationships = useCallback(async () => {
     try {
-      console.log('🔍 Fetching causation relationships...');
+      // console.log('🔍 Fetching causation relationships...');
       const result = await getSafetyGraph();
       if (result.success && result.data?.causationLinks) {
-        console.log(`✅ Found ${result.data.causationLinks.length} causation links:`, result.data.causationLinks);
+        // console.log(`✅ Found ${result.data.causationLinks.length} causation links:`, result.data.causationLinks);
         return result.data.causationLinks;
       }
       console.warn('⚠️ Failed to fetch causation links:', result.message);
@@ -342,8 +342,8 @@ export default function FMFlow({
           }
         });
 
-        console.log(`📊 Processing ${causationLinks.length} causation links...`);
-        console.log('🗂️ Available failure UUIDs in nodes:', Array.from(failureUuidToNodeId.keys()));
+        // console.log(`📊 Processing ${causationLinks.length} causation links...`);
+        // console.log('🗂️ Available failure UUIDs in nodes:', Array.from(failureUuidToNodeId.keys()));
 
         // Create edges for causation relationships
         let createdEdgesCount = 0;
@@ -351,9 +351,9 @@ export default function FMFlow({
           const sourceNodeId = failureUuidToNodeId.get(link.causeFailureUuid);
           const targetNodeId = failureUuidToNodeId.get(link.effectFailureUuid);
           
-          console.log(`🔗 Processing causation: ${link.causeFailureName} → ${link.effectFailureName}`);
-          console.log(`   Source UUID: ${link.causeFailureUuid} → Node ID: ${sourceNodeId}`);
-          console.log(`   Target UUID: ${link.effectFailureUuid} → Node ID: ${targetNodeId}`);
+          // console.log(`🔗 Processing causation: ${link.causeFailureName} → ${link.effectFailureName}`);
+          // console.log(`   Source UUID: ${link.causeFailureUuid} → Node ID: ${sourceNodeId}`);
+          // console.log(`   Target UUID: ${link.effectFailureUuid} → Node ID: ${targetNodeId}`);
           
           if (sourceNodeId && targetNodeId) {
             newEdges.push({
@@ -373,13 +373,13 @@ export default function FMFlow({
               },
             });
             createdEdgesCount++;
-            console.log(`✅ Created causation edge: ${sourceNodeId} → ${targetNodeId}`);
+            // console.log(`✅ Created causation edge: ${sourceNodeId} → ${targetNodeId}`);
           } else {
-            console.log(`⚠️ Skipped causation edge - missing nodes: source=${sourceNodeId}, target=${targetNodeId}`);
+            // console.log(`⚠️ Skipped causation edge - missing nodes: source=${sourceNodeId}, target=${targetNodeId}`);
           }
         });
         
-        console.log(`📈 Created ${createdEdgesCount} out of ${causationLinks.length} causation edges`);
+        // console.log(`📈 Created ${createdEdgesCount} out of ${causationLinks.length} causation edges`);
       } catch (error) {
         console.error('❌ Error creating causation edges:', error);
       }

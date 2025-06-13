@@ -12,8 +12,6 @@ export const getNodeLabels = async (nodeUuid: string): Promise<{
   const session = driver.session();
   
   try {
-    console.log(`🔍 Fetching node labels for UUID: ${nodeUuid}`);
-    
     const result = await session.run(
       `MATCH (node) 
        WHERE node.uuid = $nodeUuid 
@@ -22,7 +20,6 @@ export const getNodeLabels = async (nodeUuid: string): Promise<{
     );
 
     if (result.records.length === 0) {
-      console.log(`❌ No node found for UUID: ${nodeUuid}`);
       return {
         success: false,
         message: `No node found with UUID: ${nodeUuid}`,
@@ -34,8 +31,6 @@ export const getNodeLabels = async (nodeUuid: string): Promise<{
     const nodeLabels = record.get('nodeLabels') || [];
     const nodeName = record.get('nodeName') || 'Unnamed';
 
-    console.log(`✅ Node labels retrieved for ${nodeName} (${nodeUuid}):`, nodeLabels);
-
     return {
       success: true,
       data: nodeLabels,
@@ -43,7 +38,6 @@ export const getNodeLabels = async (nodeUuid: string): Promise<{
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    console.error(`❌ Error fetching node labels for UUID ${nodeUuid}:`, errorMessage);
     
     return {
       success: false,
@@ -58,7 +52,7 @@ export const getNodeLabels = async (nodeUuid: string): Promise<{
 /**
  * Delete a node or relationship by UUID or elementId
  */
-export async function deleteNodeByUuid(identifier, identifierType, entityType = 'node') {
+export async function deleteNodeByUuid(identifier: string, identifierType: 'uuid' | 'elementId', entityType: 'node' | 'relationship' = 'node') {
   const session = driver.session();
   
   try {
@@ -104,25 +98,131 @@ export async function deleteNodeByUuid(identifier, identifierType, entityType = 
       }
     }
     
-    console.log(`🔄 Executing ${entityType} deletion query:`, query);
-    console.log(`📝 Parameters:`, params);
-    
     const result = await session.run(query, params);
     const deletedCount = result.records[0]?.get('deletedCount').toNumber() || 0;
-    
-    console.log(`✅ Deletion result: ${deletedCount} ${entityType}(s) deleted`);
     
     return {
       success: deletedCount > 0,
       message: deletedCount > 0 ? `Successfully deleted ${deletedCount} ${entityType}(s)` : `No ${entityType} found with that identifier`
     };
   } catch (error) {
-    console.error(`❌ Error deleting ${entityType}:`, error);
     return {
       success: false,
-      message: `Error deleting ${entityType}: ${error.message}`
+      message: `Error deleting ${entityType}: ${error instanceof Error ? error.message : 'Unknown error'}`
     };
   } finally {
     await session.close();
   }
 }
+
+/**
+ * Get database statistics including node count and relationship count
+ */
+export const getDatabaseStats = async (): Promise<{
+  success: boolean;
+  data?: {
+    nodeCount: number;
+    relationshipCount: number;
+    labels: string[];
+    relationshipTypes: string[];
+  };
+  message?: string;
+  error?: string;
+}> => {
+  const session = driver.session();
+  
+  try {
+    // Test connection first
+    const connectionTest = await session.run('RETURN 1 as test');
+    
+    // Get node count, relationship count, labels, and relationship types
+    
+    // Step 1: Get node count
+    const nodeCountResult = await session.run('MATCH (n) RETURN count(n) AS nodeCount');
+    const nodeCount = nodeCountResult.records[0]?.get('nodeCount').toNumber() || 0;
+    
+    // Step 2: Get relationship count
+    const relCountResult = await session.run('MATCH ()-[r]->() RETURN count(r) AS relationshipCount');
+    const relationshipCount = relCountResult.records[0]?.get('relationshipCount').toNumber() || 0;
+    
+    // Step 3: Get labels
+    const labelsResult = await session.run('CALL db.labels()');
+    const labels = labelsResult.records.map(record => record.get('label')) as string[];
+    
+    // Step 4: Get relationship types
+    const typesResult = await session.run('CALL db.relationshipTypes()');
+    const relationshipTypes = typesResult.records.map(record => record.get('relationshipType')) as string[];
+
+    if (nodeCount === 0 && relationshipCount === 0) {
+      return {
+        success: true, // Changed to true as this is a valid state
+        data: {
+          nodeCount: 0,
+          relationshipCount: 0,
+          labels: [],
+          relationshipTypes: []
+        },
+        message: 'Database is empty',
+      };
+    }
+
+    return {
+      success: true,
+      data: {
+        nodeCount,
+        relationshipCount,
+        labels,
+        relationshipTypes,
+      },
+    };
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    
+    return {
+      success: false,
+      message: 'Error fetching database statistics.',
+      error: errorMessage,
+    };
+  } finally {
+    await session.close();
+  }
+};
+
+/**
+ * Simple test to verify Neo4j connection
+ */
+export const testDatabaseConnection = async (): Promise<{
+  success: boolean;
+  message: string;
+}> => {
+  const session = driver.session();
+  
+  try {
+    const result = await session.run('RETURN "Hello Neo4j!" as message, timestamp() as time');
+    
+    if (result.records.length > 0) {
+      const message = result.records[0].get('message');
+      const time = result.records[0].get('time');
+      
+      return {
+        success: true,
+        message: `Connected successfully at ${new Date(time.toNumber()).toISOString()}`
+      };
+    } else {
+      return {
+        success: false,
+        message: 'No response from database'
+      };
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    
+    return {
+      success: false,
+      message: `Connection failed: ${errorMessage}`
+    };
+  } finally {
+    await session.close();
+  }
+};

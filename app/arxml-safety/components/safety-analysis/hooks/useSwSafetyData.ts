@@ -30,7 +30,7 @@ export const useSwSafetyData = (swComponentUuid: string) => {
       // Handle SW component
       if (swComponentResult.success && swComponentResult.data) {
         setSwComponent(swComponentResult.data);
-        console.log('SW Component:', swComponentResult.data);
+        // console.log('SW Component:', swComponentResult.data);
       } else {
         message.error(swComponentResult.message || 'SW Component not found');
       }
@@ -38,13 +38,13 @@ export const useSwSafetyData = (swComponentUuid: string) => {
       // Handle SW component failures
       if (failuresResult.success && failuresResult.data) {
         setFailures(failuresResult.data);
-        console.log('SW Component Failures:', failuresResult.data);
+        // console.log('SW Component Failures:', failuresResult.data);
       }
       
       // Handle provider ports
       if (providerPortsResult.success && providerPortsResult.data) {
         setProviderPorts(providerPortsResult.data);
-        console.log('Provider Ports:', providerPortsResult.data);
+        // console.log('Provider Ports:', providerPortsResult.data);
         
         // Get failures for provider ports - call function for each port individually
         if (providerPortsResult.data.length > 0) {
@@ -61,7 +61,7 @@ export const useSwSafetyData = (swComponentUuid: string) => {
           }
           
           setPortFailures(portFailuresMap);
-          console.log('Provider Port Failures:', portFailuresMap);
+          // console.log('Provider Port Failures:', portFailuresMap);
         }
       }
 
@@ -73,7 +73,7 @@ export const useSwSafetyData = (swComponentUuid: string) => {
           type: port.type,
         }));
         setReceiverPorts(receiverPortsData);
-        console.log('Receiver Ports:', receiverPortsData);
+        // console.log('Receiver Ports:', receiverPortsData);
 
         // Get failures for receiver ports - call function for each port individually
         if (receiverPortsData.length > 0) {
@@ -90,7 +90,7 @@ export const useSwSafetyData = (swComponentUuid: string) => {
           }
           
           setReceiverPortFailures(receiverPortFailuresMap);
-          console.log('Receiver Port Failures:', receiverPortFailuresMap);
+          // console.log('Receiver Port Failures:', receiverPortFailuresMap);
         }
       }
     } catch (error) {

@@ -306,7 +306,7 @@ export const useProviderPortFailures = (
       if (noFailuresIndex !== -1) {
         // Replace the "No failures defined" row with the new editable row
         newData[noFailuresIndex] = newRow;
-        console.log('Replacing "No failures defined" for port:', portName, 'at index:', noFailuresIndex);
+        // console.log('Replacing "No failures defined" for port:', portName, 'at index:', noFailuresIndex);
       } else {
         // Find the last index of rows with the same port UUID and insert after
         let insertIndex = newData.length;
@@ -318,7 +318,7 @@ export const useProviderPortFailures = (
         }
         // Insert the new row at the correct position
         newData.splice(insertIndex, 0, newRow);
-        console.log('Adding new failure for port:', portName, 'at index:', insertIndex);
+        // console.log('Adding new failure for port:', portName, 'at index:', insertIndex);
       }
       
       return newData;

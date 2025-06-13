@@ -388,12 +388,12 @@ export const createFailureNode = async (
   const session = driver.session();
   
   try {
-    console.log('🔍 Creating failure node with params:', {
-      existingElementUuid,
-      failureName,
-      failureDescription,
-      asil
-    });
+    // console.log('🔍 Creating failure node with params:', {
+    //   existingElementUuid,
+    //   failureName,
+    //   failureDescription,
+    //   asil
+    // });
 
 
     if (progressCallback) progressCallback(10, 'Validating existing element');
@@ -407,7 +407,7 @@ export const createFailureNode = async (
     );
 
     if (existingElementResult.records.length === 0) {
-      console.log('❌ No element found with UUID:', existingElementUuid);
+      // console.log('❌ No element found with UUID:', existingElementUuid);
       return {
         success: false,
         message: `No element found with UUID: ${existingElementUuid}`,
@@ -417,7 +417,7 @@ export const createFailureNode = async (
     const elementName = existingElementResult.records[0].get('elementName');
     const elementType = existingElementResult.records[0].get('elementType');
 
-    console.log('✅ Found existing element:', { elementName, elementType });
+    // console.log('✅ Found existing element:', { elementName, elementType });
 
     if (progressCallback) progressCallback(30, 'Creating failure node');
     
@@ -425,7 +425,7 @@ export const createFailureNode = async (
     const failureUuid = generateUUID();
     const currentTimestamp = new Date().toISOString();
     
-    console.log('🔍 About to create failure node with UUID:', failureUuid);
+    // console.log('🔍 About to create failure node with UUID:', failureUuid);
     
     // Create the failure node and establish the relationship
     const queryParams = {
@@ -437,7 +437,7 @@ export const createFailureNode = async (
       createdAt: currentTimestamp,
     };
 
-    console.log('🔍 Query parameters:', queryParams);
+    // console.log('🔍 Query parameters:', queryParams);
 
     const createResult = await session.run(
       `MATCH (element) 
@@ -464,12 +464,12 @@ export const createFailureNode = async (
 
     if (progressCallback) progressCallback(100, 'Failure node created successfully');
 
-    console.log(`✅ Failure node created successfully:`, {
-      failureUuid: createdFailureUuid,
-      failureName: createdFailureName,
-      linkedToElement: elementName,
-      elementType: elementType
-    });
+    // console.log(`✅ Failure node created successfully:`, {
+    //   failureUuid: createdFailureUuid,
+    //   failureName: createdFailureName,
+    //   linkedToElement: elementName,
+    //   elementType: elementType
+    // });
 
     return {
       success: true,
@@ -547,11 +547,11 @@ export const deleteFailureNode = async (
 
     if (progressCallback) progressCallback(100, 'Failure node deleted successfully');
 
-    console.log(`✅ Failure node deleted successfully:`, {
-      failureUuid,
-      failureName,
-      deletedCount
-    });
+    // console.log(`✅ Failure node deleted successfully:`, {
+    //   failureUuid,
+    //   failureName,
+    //   deletedCount
+    // });
 
     return {
       success: true,
@@ -654,12 +654,12 @@ export const createCausationBetweenFailures = async (
     const createdCausationUuid = result.records[0].get('createdCausationUuid');
     const createdCausationName = result.records[0].get('createdCausationName');
 
-    console.log(`✅ Causation node created:`, {
-      causationUuid: createdCausationUuid,
-      causationName: createdCausationName,
-      source: sourceName,
-      target: targetName
-    });
+    // console.log(`✅ Causation node created:`, {
+    //   causationUuid: createdCausationUuid,
+    //   causationName: createdCausationName,
+    //   source: sourceName,
+    //   target: targetName
+    // });
 
     return {
       success: true,
@@ -700,7 +700,7 @@ export const getFailuresForPorts = async (portUuid: string): Promise<{
   const session = driver.session();
   
   try {
-    console.log(`🔍 Fetching failures for port UUID: ${portUuid}`);
+    // console.log(`🔍 Fetching failures for port UUID: ${portUuid}`);
     
     const result = await session.run(
       `MATCH (port)-[r]-(failure:FAILURE)
@@ -718,7 +718,7 @@ export const getFailuresForPorts = async (portUuid: string): Promise<{
     );
 
     if (result.records.length === 0) {
-      console.log(`ℹ️ No failures found for port UUID: ${portUuid}`);
+      // console.log(`ℹ️ No failures found for port UUID: ${portUuid}`);
       return {
         success: true,
         data: [],
@@ -735,7 +735,7 @@ export const getFailuresForPorts = async (portUuid: string): Promise<{
       relationshipType: record.get('relationshipType'),
     }));
 
-    console.log(`✅ Found ${failures.length} failures for port ${portUuid}:`, failures);
+    // console.log(`✅ Found ${failures.length} failures for port ${portUuid}:`, failures);
 
     return {
       success: true,
@@ -851,12 +851,12 @@ export const updateFailureNode = async (
   try {
     if (progressCallback) progressCallback(10, 'Validating failure node');
     
-    console.log('🔍 Updating failure node with params:', {
-      failureUuid,
-      failureName,
-      failureDescription,
-      asil
-    });
+    // console.log('🔍 Updating failure node with params:', {
+    //   failureUuid,
+    //   failureName,
+    //   failureDescription,
+    //   asil
+    // });
 
     // First, verify that the failure node exists
     const existingFailureResult = await session.run(
@@ -867,7 +867,7 @@ export const updateFailureNode = async (
     );
 
     if (existingFailureResult.records.length === 0) {
-      console.log('❌ No failure node found with UUID:', failureUuid);
+      // console.log('❌ No failure node found with UUID:', failureUuid);
       return {
         success: false,
         message: `No failure node found with UUID: ${failureUuid}`,
@@ -879,12 +879,12 @@ export const updateFailureNode = async (
     const currentDescription = currentRecord.get('currentDescription');
     const currentAsil = currentRecord.get('currentAsil');
 
-    console.log('✅ Found existing failure node:', { 
-      currentName, 
-      currentDescription, 
-      currentAsil,
-      updating_to: { failureName, failureDescription, asil }
-    });
+    // console.log('✅ Found existing failure node:', { 
+    //   currentName, 
+    //   currentDescription, 
+    //   currentAsil,
+    //   updating_to: { failureName, failureDescription, asil }
+    // });
 
     if (progressCallback) progressCallback(50, 'Updating failure node properties');
     
@@ -919,15 +919,15 @@ export const updateFailureNode = async (
 
     if (progressCallback) progressCallback(100, 'Failure node updated successfully');
 
-    console.log(`✅ Failure node updated successfully:`, {
-      failureUuid: updatedFailureUuid,
-      failureName: updatedFailureName,
-      changes: {
-        name: currentName !== failureName ? `"${currentName}" → "${failureName}"` : 'unchanged',
-        description: currentDescription !== failureDescription ? `"${currentDescription}" → "${failureDescription}"` : 'unchanged',
-        asil: currentAsil !== asil ? `"${currentAsil}" → "${asil}"` : 'unchanged'
-      }
-    });
+    // console.log(`✅ Failure node updated successfully:`, {
+    //   failureUuid: updatedFailureUuid,
+    //   failureName: updatedFailureName,
+    //   changes: {
+    //     name: currentName !== failureName ? `"${currentName}" → "${failureName}"` : 'unchanged',
+    //     description: currentDescription !== failureDescription ? `"${currentDescription}" → "${failureDescription}"` : 'unchanged',
+    //     asil: currentAsil !== asil ? `"${currentAsil}" → "${asil}"` : 'unchanged'
+    //   }
+    // });
 
     return {
       success: true,
