@@ -1,7 +1,29 @@
 import React from 'react';
 
+interface Effect {
+    // Assuming effect is a string, adjust if it's an object
+    // For example: id: string; description: string;
+    [key: string]: any; // Or more specific type if known
+}
+
+interface FailureMode {
+    name: string;
+    effects: Effect[]; // Or string[] if effects are just strings
+}
+
+interface Part {
+    name: string;
+    elementId: string;
+    qualifiedName: string;
+}
+
+interface PartWithFailureModes {
+    part: Part;
+    failureModes: FailureMode[];
+}
+
 interface DetailViewProps {
-    partsWithFailureModes: any[];
+    partsWithFailureModes: PartWithFailureModes[];
 }
 
 const DetailView: React.FC<DetailViewProps> = ({ partsWithFailureModes }) => {
@@ -17,7 +39,7 @@ const DetailView: React.FC<DetailViewProps> = ({ partsWithFailureModes }) => {
                 </div>
             ) : (
                 <div className="grid grid-cols-1 gap-8">
-                    {partsWithFailureModes.map((item, partIndex) => (
+                    {partsWithFailureModes.map((item: PartWithFailureModes, partIndex: number) => (
                         <div key={partIndex} className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden transition-all duration-200 hover:shadow-lg">
                             <div className="bg-blue-50 dark:bg-gray-700 p-4 border-b border-gray-200 dark:border-gray-700">
                                 <h2 className="text-xl font-semibold text-blue-800 dark:text-blue-300">
@@ -57,7 +79,7 @@ const DetailView: React.FC<DetailViewProps> = ({ partsWithFailureModes }) => {
                                                 </tr>
                                             </thead>
                                             <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                                                {item.failureModes.map((failureMode, index) => (
+                                                {item.failureModes.map((failureMode: FailureMode, index: number) => (
                                                     <tr
                                                         key={index}
                                                         className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-150"
@@ -70,9 +92,9 @@ const DetailView: React.FC<DetailViewProps> = ({ partsWithFailureModes }) => {
                                                                 <span className="italic text-orange-700 dark:text-orange-500">No effects</span>
                                                             ) : (
                                                                 <ul className="list-disc list-inside">
-                                                                    {failureMode.effects.map((effect, i) => (
+                                                                    {failureMode.effects.map((effect: Effect, i: number) => (
                                                                         <li key={i} className="mb-1">
-                                                                            {effect}
+                                                                            {typeof effect === 'string' ? effect : JSON.stringify(effect)}
                                                                         </li>
                                                                     ))}
                                                                 </ul>

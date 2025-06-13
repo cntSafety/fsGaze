@@ -1,4 +1,4 @@
-import neo4j from "neo4j-driver";
+import neo4j, { Session } from "neo4j-driver";
 
 const URI = "neo4j://localhost";
 const USER = "neo4j";
@@ -112,15 +112,17 @@ export const executeNeo4jQuery = async (query: string, params = {}) => {
     const formattedResults = result.records.map((record) => {
       const resultObj: Record<string, any> = {};
       record.keys.forEach((key) => {
-        const node = record.get(key);
-        if (node && node.properties) {
-          resultObj[key] = {
-            id: node.identity.toString(),
-            labels: node.labels,
-            properties: node.properties,
-          };
-        } else {
-          resultObj[key] = node;
+        if (typeof key === 'string') {
+          const node = record.get(key);
+          if (node && node.properties) {
+            resultObj[key] = {
+              id: node.identity.toString(),
+              labels: node.labels,
+              properties: node.properties,
+            };
+          } else {
+            resultObj[key] = node;
+          }
         }
       });
       return resultObj;
@@ -186,7 +188,7 @@ const countNodes = (obj: any): number => {
 
 async function createNodesAndRelationships(
   jsonObjects: any[],
-  session: neo4j.Session,
+  session: Session,
 ) {
   const nodeCountResult = await session.run(
     "MATCH (n) RETURN count(n) AS count",
@@ -207,7 +209,7 @@ async function createNodesAndRelationships(
     string,
     Array<{ sourceId: string; targetId: string; props?: Record<string, any> }>
   >();
-  const excludedRelationshipTypes = new Set([]);
+  const excludedRelationshipTypes = new Set<string>([]);
   const skippedRelationships: Record<string, number> = {};
 
   let nodeCounter = 0;
@@ -225,7 +227,7 @@ async function createNodesAndRelationships(
     for (const [key, value] of Object.entries(payload)) {
       if (key === "@type") continue;
       if (typeof value === "object" && value !== null) {
-        if (Array.isArray(value) || value["@id"]) {
+        if (Array.isArray(value) || (value as any)["@id"]) {
           continue;
         }
         props[key] = JSON.stringify(value);
@@ -249,7 +251,7 @@ async function createNodesAndRelationships(
           skippedRelationships[key] += value.filter(
             (item) => item["@id"],
           ).length;
-        } else if (value && typeof value === "object" && value["@id"]) {
+        } else if (value && typeof value === "object" && (value as any)["@id"]) {
           skippedRelationships[key] += 1;
         }
         continue;
@@ -277,8 +279,8 @@ async function createNodesAndRelationships(
               .push({ sourceId: nodeId, targetId, props });
           }
         }
-      } else if (value && typeof value === "object" && value["@id"]) {
-        const targetId = value["@id"];
+      } else if (value && typeof value === "object" && (value as any)["@id"]) {
+        const targetId = (value as any)["@id"];
         if (!relationshipMap.has("links")) {
           relationshipMap.set("links", []);
         }
@@ -417,9 +419,10 @@ async function createNodesAndRelationships(
       }
 
       const merged = mergedRelationships.get(pairKey);
-      merged.types.push(rel.props.relationType);
+      if (rel.props) {
+        merged.types.push(rel.props.relationType);
 
-      for (const [key, value] of Object.entries(rel.props)) {
+        for (const [key, value] of Object.entries(rel.props)) {
         if (key !== "relationType") {
           if (merged.props[key]) {
             if (!Array.isArray(merged.props[key])) {
@@ -432,6 +435,7 @@ async function createNodesAndRelationships(
         }
       }
     }
+  }
   }
 
   console.log(
@@ -485,7 +489,7 @@ async function createNodesAndRelationships(
 }
 
 async function createNodeBatch(
-  session: neo4j.Session,
+  session: Session,
   nodeType: string,
   batch: Array<{ id: string; props: Record<string, any> }>,
 ) {

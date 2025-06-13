@@ -103,9 +103,9 @@ const formatCCIResultsForSphinx = (cciResults: any) => {
     const firstResult = cciResults.find(
       (result) =>
         result.actions &&
-        result.actions.some((a) =>
+        result.actions.some((a: any) =>
           actions.some(
-            (groupAction) =>
+            (groupAction: any) =>
               (typeof a === "object" && a.id === groupAction.id) ||
               (typeof a === "string" && a === groupAction),
           ),
@@ -260,7 +260,7 @@ export const exportSafetyStatusFile = async (
     // Try to use the File System Access API if available
     try {
       if ("showSaveFilePicker" in window) {
-        const fileHandle = await window.showSaveFilePicker({
+        const fileHandle = await (window as any).showSaveFilePicker({
           suggestedName: suggestedFileName,
           types: [
             {

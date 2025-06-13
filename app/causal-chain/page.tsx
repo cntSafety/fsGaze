@@ -29,11 +29,17 @@ import { useLoading } from '../components/LoadingProvider';
 const queryCache = new Map();
 
 // Data structure interfaces
+interface Effect {
+    // Assuming effect is a string, adjust if it's an object
+    // For example: id: string; description: string;
+    [key: string]: any; // Or more specific type if known
+}
+
 interface FailureMode {
     name: string;
     elementId: string;
     qualifiedName: string;
-    effects: string[]; // List of effects this failure mode can cause
+    effects: Effect[]; // Changed from string[] to Effect[] to match DetailView
 }
 
 interface PartUsage {
@@ -46,6 +52,37 @@ interface PartWithFailureModes {
     part: PartUsage;
     failureModes: FailureMode[]; // Failure modes associated with this part
 }
+
+// Interfaces for graph data structure
+interface GraphNode {
+    id: string;
+    name: string;
+    type: 'part' | 'failureMode';
+    val: number;
+    color: string;
+    neighbors: GraphNode[];
+    links: GraphLink[];
+    effects?: Effect[]; // Changed from string[] to Effect[]
+    partInfo?: { // Only for failureMode nodes
+        id: string;
+        name: string;
+    };    // Properties for D3 simulation if needed by GraphView's Node type
+    fx?: number;
+    fy?: number;
+    vx?: number;
+    vy?: number;
+    x?: number;
+    y?: number;
+    label: string; // Ensure label is always string
+    failureModes?: FailureMode[]; // Added to align with GraphView.Node, for part nodes
+}
+
+interface GraphLink {
+    source: string | GraphNode; // Can be ID or node object
+    target: string | GraphNode; // Can be ID or node object
+    type: 'has' | 'causes';
+}
+
 
 const FailureChain: React.FC = () => {
     const { hideLoading } = useLoading();
@@ -60,7 +97,7 @@ const FailureChain: React.FC = () => {
     const [showGraph, setShowGraph] = useState<boolean>(true); // Controls graph view visibility
 
     // Graph data and loading state
-    const [completeGraphData, setCompleteGraphData] = useState<{ nodes: any[], links: any[] }>({ nodes: [], links: [] });
+    const [completeGraphData, setCompleteGraphData] = useState<{ nodes: GraphNode[], links: GraphLink[] }>({ nodes: [], links: [] });
     const [dataLimit, setDataLimit] = useState<number>(100); // Pagination limit for query results
     const [loadProgress, setLoadProgress] = useState<number>(0); // Progress indicator (0-100)
     const [loadingPhase, setLoadingPhase] = useState<string>('initial'); // Current loading phase description
@@ -184,13 +221,14 @@ const FailureChain: React.FC = () => {
                         }
 
                         // Process the effects data into a map of failure mode ID -> effects array
-                        const effectsMap: Record<string, string[]> = {};
+                        const effectsMap: Record<string, Effect[]> = {}; // Changed to Effect[]
                         if (effectsResponse && effectsResponse.success) {
                             effectsResponse.results.forEach((effect: any) => {
                                 if (!effectsMap[effect.sourceId]) {
                                     effectsMap[effect.sourceId] = [];
                                 }
-                                effectsMap[effect.sourceId].push(effect.effectName);
+                                // Assuming effectName is the primary data for an Effect object
+                                effectsMap[effect.sourceId].push({ name: effect.effectName }); 
                             });
                         }
 
@@ -246,29 +284,32 @@ const FailureChain: React.FC = () => {
             return { nodes: [], links: [] };
         }
 
-        const nodes: any[] = [];
-        const links: any[] = [];
-        const failureModesByName: Record<string, any> = {}; // Lookup table for failure modes by name
+        const nodes: GraphNode[] = [];
+        const links: GraphLink[] = [];
+        const failureModesByName: Record<string, GraphNode> = {}; // Lookup table for failure modes by name
 
         // First pass: create nodes for parts and failure modes, and links between them
         partsWithFailureModes.forEach(item => {
             // Create part node
-            const partNode = {
+            const partNode: GraphNode = {
                 id: item.part.elementId,
                 name: item.part.name,
+                label: item.part.name, // Added label
                 type: 'part',
                 val: 5, // Size indicator for visualization
                 color: '#4299E1', // Blue color for parts
                 neighbors: [], // Connected nodes
-                links: [] // Connected links
+                links: [], // Connected links
+                failureModes: item.failureModes, // Store failure modes for this part
             };
             nodes.push(partNode);
 
-            // Create nodes for each failure mode and link to its part
+            // Create nodes for each failureMode and link to its part
             item.failureModes.forEach(failureMode => {
-                const failureNode = {
+                const failureNode: GraphNode = {
                     id: failureMode.elementId,
                     name: failureMode.name,
+                    label: failureMode.name, // Added label
                     type: 'failureMode',
                     val: 3, // Size indicator for visualization
                     color: '#F56565', // Red color for failure modes
@@ -284,8 +325,8 @@ const FailureChain: React.FC = () => {
                 nodes.push(failureNode);
                 failureModesByName[failureMode.name] = failureNode;
 
-                // Create link between part and failure mode
-                const link = {
+                // Create link between part and failureMode
+                const link: GraphLink = {
                     source: item.part.elementId,
                     target: failureMode.elementId,
                     type: 'has',
@@ -293,10 +334,16 @@ const FailureChain: React.FC = () => {
                 links.push(link);
 
                 // Track neighbors and links for interactivity
-                partNode.neighbors.push(failureNode);
-                failureNode.neighbors.push(partNode);
-                partNode.links.push(link);
-                failureNode.links.push(link);
+                // Ensure nodes exist before pushing
+                const pNode = nodes.find(n => n.id === partNode.id);
+                const fNode = nodes.find(n => n.id === failureNode.id);
+
+                if (pNode && fNode) {
+                    pNode.neighbors.push(fNode);
+                    fNode.neighbors.push(pNode);
+                    pNode.links.push(link);
+                    fNode.links.push(link);
+                }
             });
         });
 
@@ -305,11 +352,12 @@ const FailureChain: React.FC = () => {
             item.failureModes.forEach(failureMode => {
                 const sourceNode = nodes.find(n => n.id === failureMode.elementId);
 
-                // For each effect, create a link to the target failure mode
-                failureMode.effects.forEach(effect => {
-                    if (failureModesByName[effect]) {
-                        const targetNode = failureModesByName[effect];
-                        const link = {
+                // For each effect, create a link to the target failureMode
+                failureMode.effects.forEach(effect => { // effect is now an Effect object
+                    const effectName = typeof effect === 'string' ? effect : (effect as any).name; // Adapt based on actual Effect structure
+                    if (failureModesByName[effectName]) {
+                        const targetNode = failureModesByName[effectName];
+                        const link: GraphLink = {
                             source: failureMode.elementId,
                             target: targetNode.id,
                             type: 'causes',
@@ -390,10 +438,9 @@ const FailureChain: React.FC = () => {
             </div>
 
             {/* Graph visualization */}
-            {showGraph && (
-                <GraphView
-                    completeGraphData={completeGraphData}
-                    partsWithFailureModes={partsWithFailureModes}
+            {showGraph && (                <GraphView
+                    completeGraphData={completeGraphData as any}
+                    partsWithFailureModes={completeGraphData.nodes.filter(node => node.type === 'part' && node.failureModes && node.failureModes.length > 0) as any}
                     dataLimit={dataLimit}
                     onLoadMore={handleLoadMore}
                 />

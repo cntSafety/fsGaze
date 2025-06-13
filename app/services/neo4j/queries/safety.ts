@@ -914,11 +914,9 @@ export const updateFailureNode = async (
 
     if (updateResult.records.length === 0) {
       throw new Error('No records returned from UPDATE query');
-    }
-
-    const updatedFailureUuid = updateResult.records[0].get('updatedFailureUuid');
+    }    const updatedFailureUuid = updateResult.records[0].get('updatedFailureUuid');
     // Get updated name for potential logging
-    updateResult.records[0].get('updatedFailureName');
+    const updatedFailureName = updateResult.records[0].get('updatedFailureName');
 
     if (progressCallback) progressCallback(100, 'Failure node updated successfully');
 

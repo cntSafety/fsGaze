@@ -1,4 +1,4 @@
-import neo4j from "neo4j-driver";
+import neo4j, { Session } from "neo4j-driver";
 
 const URI = "neo4j://localhost";
 const USER = "neo4j";
@@ -79,7 +79,7 @@ export const importSphinxNeedsToNeo4j = async (jsonString: string) => {
 /**
  * Creates Neo4j nodes for each need in the JSON data
  */
-async function createNeedNodes(needs: any, session: neo4j.Session) {
+async function createNeedNodes(needs: any, session: Session) {
   let nodeCounter = 0;
   // Track all used types for later queries
   const needTypes = new Set<string>();
@@ -136,7 +136,7 @@ async function createNeedNodes(needs: any, session: neo4j.Session) {
 /**
  * Creates relationships between need nodes based on links and links_back
  */
-async function createNeedRelationships(needs: any, session: neo4j.Session) {
+async function createNeedRelationships(needs: any, session: Session) {
   let relationshipCounter = 0;
 
   // Process regular links
@@ -205,7 +205,7 @@ async function createNeedRelationships(needs: any, session: neo4j.Session) {
 /**
  * Creates relationships between RequirementUsage nodes and Sphinx needs nodes
  */
-async function createRequirementUsageRelationships(session: neo4j.Session) {
+async function createRequirementUsageRelationships(session: Session) {
   const createRequirementUsageRelationshipsQuery = `
     MATCH (req:RequirementUsage)
     MATCH (req)-[:links{member:true}]->(refU:ReferenceUsage{name:'sphinx_needs_id'})
@@ -248,15 +248,17 @@ export const executeSphinxNeedsQuery = async (query: string, params = {}) => {
       const formattedResults = result.records.map((record) => {
         const resultObj: Record<string, any> = {};
         record.keys.forEach((key) => {
-          const node = record.get(key);
-          if (node && node.properties) {
-            resultObj[key] = {
-              id: node.identity.toString(),
-              labels: node.labels,
-              properties: node.properties,
-            };
-          } else {
-            resultObj[key] = node;
+          if (typeof key === 'string') {
+            const node = record.get(key);
+            if (node && node.properties) {
+              resultObj[key] = {
+                id: node.identity.toString(),
+                labels: node.labels,
+                properties: node.properties,
+              };
+            } else {
+              resultObj[key] = node;
+            }
           }
         });
         return resultObj;

@@ -88,8 +88,8 @@ const EditableCell: React.FC<React.PropsWithChildren<EditableCellProps>> = ({
   title,
   inputType,
   // record and index are required by the interface but not used in this implementation
-  record: _record, // eslint-disable-line @typescript-eslint/no-unused-vars
-  index: _index,   // eslint-disable-line @typescript-eslint/no-unused-vars
+  record: _record,
+  index: _index,
   selectOptions,
   children,
   ...restProps
@@ -389,7 +389,7 @@ export default function CoreSafetyTable({
             {text}
           </Button>
         );
-      };
+    }
     }
 
     // Special rendering for component name column - make it clickable

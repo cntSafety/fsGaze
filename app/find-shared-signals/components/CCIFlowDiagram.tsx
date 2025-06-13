@@ -34,15 +34,22 @@ interface CCIFlowDiagramProps {
 
 export interface CCIFlowDiagramHandle {
     getDiagramRef: () => any;
+    toImage: (options?: any) => Promise<string>;
 }
 
 const CCIFlowDiagram = forwardRef<CCIFlowDiagramHandle, CCIFlowDiagramProps>(
     ({ nodes, edges, layouting, hasCCIResults, onExport }, ref) => {
-        const flowDiagramRef = React.useRef(null);
+        const flowDiagramRef = React.useRef<{ toImage: (options?: any) => Promise<string> } | null>(null);
 
         // Expose the diagram ref through the forwarded ref
         React.useImperativeHandle(ref, () => ({
-            getDiagramRef: () => flowDiagramRef.current
+            getDiagramRef: () => flowDiagramRef.current,
+            toImage: (options?: any) => {
+                if (flowDiagramRef.current) {
+                    return flowDiagramRef.current.toImage(options);
+                }
+                return Promise.reject(new Error('Diagram not available'));
+            }
         }));
 
         if (layouting) {

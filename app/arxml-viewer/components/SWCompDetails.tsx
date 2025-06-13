@@ -87,7 +87,7 @@ const SWCompDetails: React.FC<SWCompDetailsProps> = ({ componentUuid, componentN
       filterSearch: true,
       // Enable table's built-in filter dropdown for this column
       filters: Array.from(new Set(relations.map(r => r.relationshipType))).map(type => ({ text: type, value: type })),
-      onFilter: (value: string | number | boolean, record: Relation) => record.relationshipType.includes(value as string),
+      onFilter: (value: string | number | boolean | bigint, record: Relation) => record.relationshipType.includes(String(value)),
     },
     {
       title: 'Source Name',
@@ -96,7 +96,7 @@ const SWCompDetails: React.FC<SWCompDetailsProps> = ({ componentUuid, componentN
       sorter: (a: Relation, b: Relation) => (a.sourceName || '').localeCompare(b.sourceName || ''),
       filterSearch: true,
       filters: Array.from(new Set(relations.map(r => r.sourceName).filter(Boolean))).map(name => ({ text: name, value: name })),
-      onFilter: (value: string | number | boolean, record: Relation) => record.sourceName?.includes(value as string) ?? false,
+      onFilter: (value: string | number | boolean | bigint, record: Relation) => record.sourceName?.includes(String(value)) ?? false,
     },
     {
       title: 'Source Type',
@@ -105,7 +105,7 @@ const SWCompDetails: React.FC<SWCompDetailsProps> = ({ componentUuid, componentN
       sorter: (a: Relation, b: Relation) => (a.sourceType || '').localeCompare(b.sourceType || ''),
       filterSearch: true,
       filters: Array.from(new Set(relations.map(r => r.sourceType).filter(Boolean))).map(type => ({ text: type, value: type })),
-      onFilter: (value: string | number | boolean, record: Relation) => record.sourceType?.includes(value as string) ?? false,
+      onFilter: (value: string | number | boolean | bigint, record: Relation) => record.sourceType?.includes(String(value)) ?? false,
     },
     {
       title: 'Target Name',
@@ -114,7 +114,7 @@ const SWCompDetails: React.FC<SWCompDetailsProps> = ({ componentUuid, componentN
       sorter: (a: Relation, b: Relation) => (a.targetName || '').localeCompare(b.targetName || ''),
       filterSearch: true,
       filters: Array.from(new Set(relations.map(r => r.targetName).filter(Boolean))).map(name => ({ text: name, value: name })),
-      onFilter: (value: string | number | boolean, record: Relation) => record.targetName?.includes(value as string) ?? false,
+      onFilter: (value: string | number | boolean | bigint, record: Relation) => record.targetName?.includes(String(value)) ?? false,
     },
     {
       title: 'Target Type',
@@ -123,7 +123,7 @@ const SWCompDetails: React.FC<SWCompDetailsProps> = ({ componentUuid, componentN
       sorter: (a: Relation, b: Relation) => (a.targetType || '').localeCompare(b.targetType || ''),
       filterSearch: true,
       filters: Array.from(new Set(relations.map(r => r.targetType).filter(Boolean))).map(type => ({ text: type, value: type })),
-      onFilter: (value: string | number | boolean, record: Relation) => record.targetType?.includes(value as string) ?? false,
+      onFilter: (value: string | number | boolean | bigint, record: Relation) => record.targetType?.includes(String(value)) ?? false,
     },
   ];
 

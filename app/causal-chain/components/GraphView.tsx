@@ -4,7 +4,6 @@ import * as d3 from 'd3';
 import GraphLegend from './GraphLegend';
 import NodeDetailPanel from './NodeDetailPanel';
 
-// Dynamically import ForceGraph with loading indicator
 const ForceGraph2D = dynamic(() => import('react-force-graph-2d').then(mod => mod.default), {
     ssr: false,
     loading: () => <div className="flex h-[500px] items-center justify-center rounded-lg bg-gray-100">Loading graph visualization...</div>
@@ -15,6 +14,20 @@ interface Node {
     label: string;
     type: string;
     [key: string]: unknown;
+    // D3 simulation properties
+    index?: number;
+    x?: number;
+    y?: number;
+    vx?: number;
+    vy?: number;
+    fx?: number; // Changed from number | null | undefined to number | undefined
+    fy?: number; // Changed from number | null | undefined to number | undefined
+    // custom properties used in code
+    name?: string;
+    color?: string;
+    neighbors?: Node[];
+    links?: Link[];
+    partInfo?: { id: string };
 }
 
 interface Link {
@@ -22,6 +35,8 @@ interface Link {
     target: string | Node;
     type: string;
     [key: string]: unknown;
+    // D3 simulation properties
+    index?: number;
 }
 
 interface GraphViewProps {
@@ -77,7 +92,7 @@ const GraphView: React.FC<GraphViewProps> = ({
             updateHighlight();
             setSelectedNode(null);
         }
-    }, [showParts, completeGraphData, highlightNodes, highlightLinks, updateHighlight]);
+    }, [showParts, completeGraphData, highlightNodes, highlightLinks]); // Removed updateHighlight from dependencies
 
     // Zoom to fit on initial load
     useEffect(() => {
@@ -88,7 +103,8 @@ const GraphView: React.FC<GraphViewProps> = ({
         }
     }, [graphData]);
 
-    const handleNodeClick = (node: any) => {
+    const handleNodeClick = (genericNode: any, event?: MouseEvent) => { // Changed node to genericNode: any, added event?: MouseEvent 
+        const node = genericNode as Node; // Cast to our Node type
         highlightNodes.clear();
         highlightLinks.clear();
 
@@ -100,14 +116,14 @@ const GraphView: React.FC<GraphViewProps> = ({
             if (node) {
                 highlightNodes.add(node);
                 if (node.neighbors) {
-                    node.neighbors.forEach((neighbor: any) => highlightNodes.add(neighbor));
+                    node.neighbors.forEach((neighbor: Node) => highlightNodes.add(neighbor)); // Typed neighbor
                 }
                 if (node.links) {
-                    node.links.forEach((link: any) => highlightLinks.add(link));
+                    node.links.forEach((link: Link) => highlightLinks.add(link)); // Typed link
                 }
 
                 if (node.type === 'failureMode' && node.partInfo) {
-                    const partNode = completeGraphData.nodes.find(n => n.id === node.partInfo.id);
+                    const partNode = completeGraphData.nodes.find(n => n.id === (node.partInfo as { id: string }).id); // Added assertion for partInfo.id
                     if (partNode) {
                         highlightNodes.add(partNode);
                     }
@@ -118,18 +134,19 @@ const GraphView: React.FC<GraphViewProps> = ({
         updateHighlight();
     };
 
-    const paintRing = (node: any, ctx: any) => {
+    const paintRing = (genericNode: any, ctx: CanvasRenderingContext2D) => { // Changed node to genericNode: any
+        const node = genericNode as Node; // Cast to our Node type
         const nodeSize = node.type === 'part' ? 10 : 3; // Size for nodes
         const isHighlighted = highlightNodes.has(node);
         const isSelected = node === selectedNode;
 
         // Only create custom visualization for failure mode nodes
         // Part nodes will use the default visualization from ForceGraph
-        if (node.type === 'failureMode') {
+        if ((node as Node).type === 'failureMode') {
             // Highlight ring for failure mode nodes
             if (isHighlighted) {
                 ctx.beginPath();
-                ctx.arc(node.x, node.y, nodeSize * 2, 0, 2 * Math.PI);
+                ctx.arc(node.x!, node.y!, nodeSize * 2, 0, 2 * Math.PI);
                 ctx.fillStyle = 'rgba(255, 165, 0, 0.3)';
                 ctx.fill();
             }
@@ -137,14 +154,14 @@ const GraphView: React.FC<GraphViewProps> = ({
             // Selected ring for failure mode nodes
             if (isSelected) {
                 ctx.beginPath();
-                ctx.arc(node.x, node.y, nodeSize * 1.8, 0, 2 * Math.PI);
+                ctx.arc(node.x!, node.y!, nodeSize * 1.8, 0, 2 * Math.PI);
                 ctx.fillStyle = 'rgba(75, 192, 192, 0.3)';
                 ctx.fill();
             }
 
             // Draw the circle for failure mode nodes
             ctx.beginPath();
-            ctx.arc(node.x, node.y, nodeSize, 0, 2 * Math.PI);
+            ctx.arc(node.x!, node.y!, nodeSize, 0, 2 * Math.PI);
             ctx.fillStyle = node.color ? node.color.replace(')', ', 0.7)').replace('rgb', 'rgba') : 'rgba(200, 200, 200, 0.7)';
             ctx.fill();
             
@@ -172,27 +189,28 @@ const GraphView: React.FC<GraphViewProps> = ({
                     autoPauseRedraw={false}
                     nodeColor={node => {
                         // Add transparency to all nodes
-                        if (node.type === 'part') {
+                        if ((node as Node).type === 'part') { // Cast node to Node
                             return 'rgba(75, 94, 170, 0.7)'; // Blue with transparency for part nodes
                         } else {
-                            return node.color ? node.color.replace(')', ', 0.7)').replace('rgb', 'rgba') : 'rgba(200, 200, 200, 0.7)';
+                            return (node as Node).color ? (node as Node).color!.replace(')', ', 0.7)').replace('rgb', 'rgba') : 'rgba(200, 200, 200, 0.7)'; // Cast node to Node
                         }
                     }}
                     linkWidth={link => highlightLinks.has(link) ? 4 : 1}
                     linkColor={link => {
                         if (highlightLinks.has(link)) {
-                            return link.type === 'has' ? '#1E88E5' : '#FF9800';
+                            return (link as Link).type === 'has' ? '#1E88E5' : '#FF9800'; // Cast link to Link
                         }
-                        return link.type === 'has' ? '#90CAF9' : '#FFB74D';
+                        return (link as Link).type === 'has' ? '#90CAF9' : '#FFB74D'; // Cast link to Link
                     }}
                     linkDirectionalParticles={link => highlightLinks.has(link) ? 4 : 0}
                     linkDirectionalParticleWidth={link => highlightLinks.has(link) ? 4 : 0}
-                    linkDirectionalParticleColor={link => link.type === 'has' ? '#64B5F6' : '#FFA726'}
+                    linkDirectionalParticleColor={link => (link as Link).type === 'has' ? '#64B5F6' : '#FFA726'} // Cast link to Link
                     backgroundColor="#ffffff"
-                    nodeCanvasObjectMode={node => node.type === 'failureMode' ? 'before' : undefined}
+                    nodeCanvasObjectMode={genericNode => (genericNode as Node).type === 'failureMode' ? 'before' : undefined} // Changed node to genericNode and cast
                     nodeCanvasObject={paintRing}
-                    nodeLabel={node => node.name} // Use the built-in label functionality instead
+                    nodeLabel={genericNode => (genericNode as Node).name || ''} // Changed node to genericNode, cast, and added || '' to ensure string return
                     onNodeClick={handleNodeClick}
+                    // @ts-expect-error TODO: Library type issue for linkDistance
                     linkDistance={50}
                     cooldownTime={2000}
                     d3AlphaDecay={0.02}
@@ -204,10 +222,11 @@ const GraphView: React.FC<GraphViewProps> = ({
                         const forceGraph = graphRef.current;
                         if (forceGraph) {
                             // Charge force (repulsion between nodes)
-                            forceGraph.d3Force('charge', d3.forceManyBody().strength(node => {
+                            forceGraph.d3Force('charge', d3.forceManyBody().strength(n => { // n is SimulationNodeDatum
+                                const node = n as Node; // Cast to our Node type
                                 const hasLinks = graphData.links.some(link =>
-                                    (link.source.id || link.source) === node.id ||
-                                    (link.target.id || link.target) === node.id
+                                    (typeof link.source === 'string' ? link.source : (link.source as Node).id) === node.id ||
+                                    (typeof link.target === 'string' ? link.target : (link.target as Node).id) === node.id
                                 );
                                 // Weaker repulsion for FailureMode nodes, stronger for Part nodes
                                 if (node.type === 'failureMode') {
@@ -217,7 +236,8 @@ const GraphView: React.FC<GraphViewProps> = ({
                             }));
 
                             // Link force (attraction between connected nodes)
-                            forceGraph.d3Force('link', d3.forceLink(graphData.links).id(d => d.id).strength(link => {
+                            forceGraph.d3Force('link', d3.forceLink<Node, Link>(graphData.links as any).id(d => (d as Node).id).strength(l => { // l is SimulationLinkDatum
+                                const link = l as Link; // Cast to our Link type
                                 // Stronger attraction between Parts and FailureModes
                                 if (link.type === 'has') {
                                     return 1.5; // Strong attraction between Part and FailureMode
@@ -226,7 +246,7 @@ const GraphView: React.FC<GraphViewProps> = ({
                             }).distance(30)); // Shorter distance for tighter clustering
 
                             // Collision force to prevent overlap
-                            forceGraph.d3Force('collide', d3.forceCollide().radius(node => node.type === 'part' ? 20 : 10));
+                            forceGraph.d3Force('collide', d3.forceCollide().radius(n => (n as Node).type === 'part' ? 20 : 10));
 
                             // Centering forces
                             forceGraph.d3Force('center', d3.forceCenter().strength(0.5));
@@ -234,17 +254,17 @@ const GraphView: React.FC<GraphViewProps> = ({
                             forceGraph.d3Force('y', d3.forceY().strength(0.3));
 
                             // Custom force for unconnected nodes
-                            forceGraph.d3Force('unconnected', alpha => {
-                                graphData.nodes.forEach(node => {
+                            forceGraph.d3Force('unconnected', (alpha: number) => { // Typed alpha
+                                graphData.nodes.forEach(node => { // node is our Node type
                                     const hasLinks = graphData.links.some(link =>
-                                        (link.source.id || link.source) === node.id ||
-                                        (link.target.id || link.target) === node.id
+                                        (typeof link.source === 'string' ? link.source : (link.source as Node).id) === node.id ||
+                                        (typeof link.target === 'string' ? link.target : (link.target as Node).id) === node.id
                                     );
 
                                     if (!hasLinks) {
                                         const k = 1.0 * alpha;
-                                        node.vx -= node.x * k;
-                                        node.vy -= node.y * k;
+                                        node.vx = (node.vx ?? 0) - (node.x ?? 0) * k;
+                                        node.vy = (node.vy ?? 0) - (node.y ?? 0) * k;
                                     }
                                 });
                             });
@@ -252,7 +272,8 @@ const GraphView: React.FC<GraphViewProps> = ({
                             forceGraph.zoomToFit(400, 50);
                         }
                     }}
-                    onNodeDragEnd={node => {
+                    onNodeDragEnd={genericNode => { // Changed node to genericNode
+                        const node = genericNode as Node; // Cast to our Node type
                         node.fx = node.x;
                         node.fy = node.y;
                     }}

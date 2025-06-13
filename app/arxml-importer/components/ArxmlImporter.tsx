@@ -45,7 +45,6 @@ const ArxmlImporter: React.FC<ArxmlImporterProps> = () => {
   const scanDirectory = async (dirHandle: FileSystemDirectoryHandle, basePath = ''): Promise<ArxmlFile[]> => {
     const arxmlFiles: ArxmlFile[] = [];
     // TypeScript definitions for File System API are incomplete, using any for values() method
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for await (const entry of (dirHandle as any).values()) {
       const entryPath = basePath ? `${basePath}/${entry.name}` : entry.name;
       if (entry.kind === 'file' && entry.name.endsWith('.arxml')) {

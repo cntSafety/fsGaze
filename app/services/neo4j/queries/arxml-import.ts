@@ -57,10 +57,8 @@ function recursiveExtractLogic(
   if (shortNameValue && arxmlUuid) {
     currentNeo4jNodeUuid = arxmlUuid;
     const nodeLabel = getLabelFromXmlTag(xmlElementTag);
-    const semanticArxmlPath = '/' + currentElementSemanticPathParts.join('/');
-
-    // --- OPTIMIZATION 1: Use Set.has() for a fast O(1) check instead of Array.find() ---
-    if (!seenNodeUuids.has(currentNeo4jNodeUuid)) {
+    const semanticArxmlPath = '/' + currentElementSemanticPathParts.join('/');    // --- OPTIMIZATION 1: Use Set.has() for a fast O(1) check instead of Array.find() ---
+    if (currentNeo4jNodeUuid && !seenNodeUuids.has(currentNeo4jNodeUuid)) {
       const props: Record<string, any> = {
         shortName: shortNameValue,
         name: shortNameValue,
@@ -89,9 +87,10 @@ function recursiveExtractLogic(
         uuid: currentNeo4jNodeUuid!,
         label: nodeLabel,
         props: props,
-      });
-      // Add the UUID to the set to mark it as seen
-      seenNodeUuids.add(currentNeo4jNodeUuid);
+      });      // Add the UUID to the set to mark it as seen
+      if (currentNeo4jNodeUuid) {
+        seenNodeUuids.add(currentNeo4jNodeUuid);
+      }
     }
 
     if (parentNeo4jNodeUuid) {
