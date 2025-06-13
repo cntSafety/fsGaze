@@ -1,12 +1,11 @@
 // Moved from app/arxml-importer/ArxmlImporter.tsx
-import React, { useState, useEffect } from 'react';
-import { Button, Card, Typography, Space, message, Table, Checkbox, Input, Select, Progress } from 'antd';
+import React, { useState } from 'react';
+import { Button, Card, Typography, Space, message, Table, Checkbox, Input, Progress } from 'antd';
 import { FolderOpenOutlined, SearchOutlined, CheckSquareOutlined, BorderOutlined } from '@ant-design/icons';
 import '../ArxmlImporter.css';
 import { uploadArxmlToNeo4j } from '../../services/ArxmlToNeoService';
-import { useLoading } from '../../components/LoadingProvider';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 const { Search } = Input;
 
 interface ArxmlFile {
@@ -19,11 +18,15 @@ interface ArxmlFile {
 
 type FilterType = 'all' | 'selected' | 'unselected';
 
-const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void> }> = ({ onFileImported }) => {
+interface ArxmlImporterProps {
+  onFileImported?: (fileData: unknown) => Promise<void>;
+}
+
+const ArxmlImporter: React.FC<ArxmlImporterProps> = () => {
   const [files, setFiles] = useState<ArxmlFile[]>([]);
   const [filteredFiles, setFilteredFiles] = useState<ArxmlFile[]>([]);
-  const [dirHandle, setDirHandle] = useState<any>(null);
-  const [selectedFilter, setSelectedFilter] = useState<FilterType>('all');
+  const [dirHandle, setDirHandle] = useState<FileSystemDirectoryHandle | null>(null);
+  const [selectedFilter] = useState<FilterType>('all');
   const [searchText, setSearchText] = useState('');
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionProgress, setExtractionProgress] = useState(0);
@@ -39,9 +42,11 @@ const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void
   } | null>(null);
 
   // Helper: Recursively scan directory for .arxml files
-  const scanDirectory = async (dirHandle: any, basePath = ''): Promise<ArxmlFile[]> => {
+  const scanDirectory = async (dirHandle: FileSystemDirectoryHandle, basePath = ''): Promise<ArxmlFile[]> => {
     const arxmlFiles: ArxmlFile[] = [];
-    for await (const entry of dirHandle.values()) {
+    // TypeScript definitions for File System API are incomplete, using any for values() method
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for await (const entry of (dirHandle as any).values()) {
       const entryPath = basePath ? `${basePath}/${entry.name}` : entry.name;
       if (entry.kind === 'file' && entry.name.endsWith('.arxml')) {
         const file = await entry.getFile();
@@ -62,7 +67,7 @@ const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void
 
   const handleFolderSelect = async () => {
     try {
-      // @ts-ignore
+      // @ts-expect-error - showDirectoryPicker is not yet in TypeScript types but exists in modern browsers
       const newDirHandle = await window.showDirectoryPicker();
       setDirHandle(newDirHandle);
       messageApi.loading({ content: 'Scanning directory...', key: 'scanning', duration: 0 });
@@ -82,8 +87,8 @@ const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void
         key: 'scanning',
         duration: 2,
       });
-    } catch (error: any) {
-      if (error.name !== 'AbortError') {
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name !== 'AbortError') {
         messageApi.error({
           content: 'Failed to select folder',
           key: 'scanning',
@@ -112,11 +117,6 @@ const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void
     );
     setFiles(updatedFiles);
     applyFilters(searchText, selectedFilter, updatedFiles);
-  };
-
-  const handleFilterChange = (filter: FilterType) => {
-    setSelectedFilter(filter);
-    applyFilters(searchText, filter);
   };
 
   const applyFilters = (searchValue: string, filter: FilterType, filesToFilter = files) => {
@@ -225,9 +225,9 @@ const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void
         });
         // extractionProgress will be reset in finally if not successful
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       messageApi.error({
-        content: `Failed to import files: ${error.message || 'Unknown error. Please try again.'}`,
+        content: `Failed to import files: ${error instanceof Error ? error.message : 'Unknown error. Please try again.'}`,
         key: messageKey, // This will replace the loading message
         duration: 3,
       });
@@ -243,39 +243,6 @@ const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void
       // If import was successful, the success message is shown.
       // If a new import starts, the message will be replaced by the initial "Initializing import..."
     }
-  };
-
-  // Parse ARXML content to JSON
-  const parseArxmlContent = (xmlString: string) => {
-    const parser = new DOMParser();
-    const xmlDoc = parser.parseFromString(xmlString, 'text/xml');
-    return convertXmlToJson(xmlDoc.documentElement);
-  };
-
-  // Convert XML DOM to JSON
-  const convertXmlToJson = (node: Element): any => {
-    const result: any = {
-      nodeName: node.nodeName,
-      attributes: {},
-      children: []
-    };
-    if (node.attributes) {
-      for (let i = 0; i < node.attributes.length; i++) {
-        const attr = node.attributes[i];
-        result.attributes[attr.nodeName] = attr.nodeValue;
-      }
-    }
-    node.childNodes.forEach((childNode: any) => {
-      if (childNode.nodeType === Node.ELEMENT_NODE) {
-        result.children.push(convertXmlToJson(childNode));
-      } else if (childNode.nodeType === Node.TEXT_NODE) {
-        const text = childNode.nodeValue?.trim();
-        if (text && text.length > 0) {
-          result.textContent = text;
-        }
-      }
-    });
-    return result;
   };
 
   // Generate and download import summary file
@@ -327,7 +294,7 @@ const ArxmlImporter: React.FC<{ onFileImported?: (fileData: any) => Promise<void
       dataIndex: 'selected',
       key: 'selected',
       width: 80,
-      render: (_: any, record: ArxmlFile) => (
+      render: (_: unknown, record: ArxmlFile) => (
         <Checkbox
           checked={record.selected}
           onChange={e => handleFileSelect(record.id, e.target.checked)}

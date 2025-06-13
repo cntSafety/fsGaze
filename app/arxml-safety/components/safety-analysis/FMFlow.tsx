@@ -41,8 +41,17 @@ interface FMFlowProps {
   onRefresh?: () => void;
 }
 
+interface NodeData {
+  label: string;
+  asil: string;
+  description?: string;
+  failureUuid: string;
+  portName?: string;
+  portUuid?: string;
+}
+
 // Custom node component for SW Component failures (center)
-function SwFailureNode({ data }: { data: any }) {
+function SwFailureNode({ data }: { data: NodeData }) {
   return (
     <div style={{
       padding: '12px 16px',
@@ -87,7 +96,7 @@ function SwFailureNode({ data }: { data: any }) {
 }
 
 // Custom node component for receiver port failures (left side)
-function ReceiverPortFailureNode({ data }: { data: any }) {
+function ReceiverPortFailureNode({ data }: { data: NodeData }) {
   return (
     <div style={{
       padding: '10px 14px',
@@ -120,7 +129,7 @@ function ReceiverPortFailureNode({ data }: { data: any }) {
 }
 
 // Custom node component for provider port failures (right side)
-function ProviderPortFailureNode({ data }: { data: any }) {
+function ProviderPortFailureNode({ data }: { data: NodeData }) {
   return (
     <div style={{
       padding: '10px 14px',
@@ -265,9 +274,9 @@ export default function FMFlow({
 
       // Create receiver port failure nodes (left side)
       let receiverYOffset = 50;
-      receiverPorts.forEach((port, portIndex) => {
+      receiverPorts.forEach((port) => {
         const portFailuresList = receiverPortFailures[port.uuid] || [];
-        portFailuresList.forEach((failure, failureIndex) => {
+        portFailuresList.forEach((failure) => {
           if (failure.failureName && failure.failureName !== 'No failures defined') {
             newNodes.push({
               id: `receiver-${port.uuid}-${failure.failureUuid}`,
@@ -289,7 +298,7 @@ export default function FMFlow({
 
       // Create SW component failure nodes (center) - 400px from left
       let swYOffset = 50;
-      failures.forEach((failure, index) => {
+      failures.forEach((failure) => {
         if (failure.failureName && failure.failureName !== 'No failures defined') {
           newNodes.push({
             id: `sw-${failure.failureUuid}`,
@@ -308,9 +317,9 @@ export default function FMFlow({
 
       // Create provider port failure nodes (right side) - 400px from center
       let providerYOffset = 50;
-      providerPorts.forEach((port, portIndex) => {
+      providerPorts.forEach((port) => {
         const portFailuresList = portFailures[port.uuid] || [];
-        portFailuresList.forEach((failure, failureIndex) => {
+        portFailuresList.forEach((failure) => {
           if (failure.failureName && failure.failureName !== 'No failures defined') {
             newNodes.push({
               id: `provider-${port.uuid}-${failure.failureUuid}`,
@@ -346,8 +355,8 @@ export default function FMFlow({
         // console.log('🗂️ Available failure UUIDs in nodes:', Array.from(failureUuidToNodeId.keys()));
 
         // Create edges for causation relationships
-        let createdEdgesCount = 0;
-        causationLinks.forEach((link, index) => {
+        // let createdEdgesCount = 0;
+        causationLinks.forEach((link, linkIndex) => {
           const sourceNodeId = failureUuidToNodeId.get(link.causeFailureUuid);
           const targetNodeId = failureUuidToNodeId.get(link.effectFailureUuid);
           
@@ -357,7 +366,7 @@ export default function FMFlow({
           
           if (sourceNodeId && targetNodeId) {
             newEdges.push({
-              id: `causation-${link.causationUuid}-${index}`,
+              id: `causation-${link.causationUuid}-${linkIndex}`,
               source: sourceNodeId,
               target: targetNodeId,
               type: 'smoothstep',
@@ -372,7 +381,7 @@ export default function FMFlow({
                 color: '#F59E0B',
               },
             });
-            createdEdgesCount++;
+            // createdEdgesCount++;
             // console.log(`✅ Created causation edge: ${sourceNodeId} → ${targetNodeId}`);
           } else {
             // console.log(`⚠️ Skipped causation edge - missing nodes: source=${sourceNodeId}, target=${targetNodeId}`);

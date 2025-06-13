@@ -10,9 +10,23 @@ const ForceGraph2D = dynamic(() => import('react-force-graph-2d').then(mod => mo
     loading: () => <div className="flex h-[500px] items-center justify-center rounded-lg bg-gray-100">Loading graph visualization...</div>
 });
 
+interface Node {
+    id: string;
+    label: string;
+    type: string;
+    [key: string]: unknown;
+}
+
+interface Link {
+    source: string | Node;
+    target: string | Node;
+    type: string;
+    [key: string]: unknown;
+}
+
 interface GraphViewProps {
-    completeGraphData: { nodes: any[], links: any[] };
-    partsWithFailureModes: any[];
+    completeGraphData: { nodes: Node[], links: Link[] };
+    partsWithFailureModes: Node[];
     dataLimit: number;
     onLoadMore: () => void;
 }
@@ -23,18 +37,23 @@ const GraphView: React.FC<GraphViewProps> = ({
     dataLimit,
     onLoadMore
 }) => {
-    const [graphData, setGraphData] = useState<{ nodes: any[], links: any[] }>({ nodes: [], links: [] });
+    const [graphData, setGraphData] = useState<{ nodes: Node[], links: Link[] }>({ nodes: [], links: [] });
     const [highlightNodes, setHighlightNodes] = useState(new Set());
     const [highlightLinks, setHighlightLinks] = useState(new Set());
-    const [selectedNode, setSelectedNode] = useState(null);
+    const [selectedNode, setSelectedNode] = useState<Node | null>(null);
     const [showParts, setShowParts] = useState<boolean>(false);
 
     // Ref for ForceGraph2D
-    const graphRef = useRef(null);
+    const graphRef = useRef<any>(null);
 
     // Function to store the graph instance
-    const setGraphInstance = (instance) => {
+    const setGraphInstance = (instance: any) => {
         graphRef.current = instance;
+    };
+
+    const updateHighlight = () => {
+        setHighlightNodes(new Set(highlightNodes));
+        setHighlightLinks(new Set(highlightLinks));
     };
 
     useEffect(() => {
@@ -44,8 +63,6 @@ const GraphView: React.FC<GraphViewProps> = ({
             } else {
                 const failureModeNodes = completeGraphData.nodes.filter(node => node.type === 'failureMode');
                 const failureModeLinks = completeGraphData.links.filter(link => {
-                    const source = typeof link.source === 'object' ? link.source.id : link.source;
-                    const target = typeof link.target === 'object' ? link.target.id : link.target;
                     return link.type === 'causes';
                 });
 
@@ -60,7 +77,7 @@ const GraphView: React.FC<GraphViewProps> = ({
             updateHighlight();
             setSelectedNode(null);
         }
-    }, [showParts, completeGraphData]);
+    }, [showParts, completeGraphData, highlightNodes, highlightLinks, updateHighlight]);
 
     // Zoom to fit on initial load
     useEffect(() => {
@@ -71,12 +88,7 @@ const GraphView: React.FC<GraphViewProps> = ({
         }
     }, [graphData]);
 
-    const updateHighlight = () => {
-        setHighlightNodes(new Set(highlightNodes));
-        setHighlightLinks(new Set(highlightLinks));
-    };
-
-    const handleNodeClick = (node) => {
+    const handleNodeClick = (node: any) => {
         highlightNodes.clear();
         highlightLinks.clear();
 
@@ -88,10 +100,10 @@ const GraphView: React.FC<GraphViewProps> = ({
             if (node) {
                 highlightNodes.add(node);
                 if (node.neighbors) {
-                    node.neighbors.forEach(neighbor => highlightNodes.add(neighbor));
+                    node.neighbors.forEach((neighbor: any) => highlightNodes.add(neighbor));
                 }
                 if (node.links) {
-                    node.links.forEach(link => highlightLinks.add(link));
+                    node.links.forEach((link: any) => highlightLinks.add(link));
                 }
 
                 if (node.type === 'failureMode' && node.partInfo) {
@@ -106,7 +118,7 @@ const GraphView: React.FC<GraphViewProps> = ({
         updateHighlight();
     };
 
-    const paintRing = (node, ctx, globalScale) => {
+    const paintRing = (node: any, ctx: any) => {
         const nodeSize = node.type === 'part' ? 10 : 3; // Size for nodes
         const isHighlighted = highlightNodes.has(node);
         const isSelected = node === selectedNode;
@@ -177,10 +189,9 @@ const GraphView: React.FC<GraphViewProps> = ({
                     linkDirectionalParticleWidth={link => highlightLinks.has(link) ? 4 : 0}
                     linkDirectionalParticleColor={link => link.type === 'has' ? '#64B5F6' : '#FFA726'}
                     backgroundColor="#ffffff"
-                    nodeCanvasObjectMode={node => node.type === 'failureMode' ? 'before' : null}
+                    nodeCanvasObjectMode={node => node.type === 'failureMode' ? 'before' : undefined}
                     nodeCanvasObject={paintRing}
                     nodeLabel={node => node.name} // Use the built-in label functionality instead
-                    nodeLabelVisibility={true} // Always show the labels
                     onNodeClick={handleNodeClick}
                     linkDistance={50}
                     cooldownTime={2000}

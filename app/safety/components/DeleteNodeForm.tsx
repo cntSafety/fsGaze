@@ -31,7 +31,7 @@ export default function DeleteNodeForm() {
       } else {
         setMessage({ type: 'error', text: result.message || `Failed to delete ${entityType}` });
       }
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: 'An unexpected error occurred' });
     } finally {
       setLoading(false);

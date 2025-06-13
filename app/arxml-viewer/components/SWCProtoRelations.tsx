@@ -42,19 +42,6 @@ const TreeNode: React.FC<TreeNodeProps> = ({ label, children, isExpanded = false
   );
 };
 
-// Helper function to convert Neo4j Integer to JavaScript number
-const convertNeo4jInteger = (value: any): number => {
-  if (value && typeof value === 'object' && ('low' in value || 'toNumber' in value)) {
-    if (typeof value.toNumber === 'function') {
-      return value.toNumber();
-    }
-    if ('low' in value) {
-      return value.low;
-    }
-  }
-  return typeof value === 'number' ? value : 0;
-};
-
 const SWCProtoRelations: React.FC = () => {
   const [swcPrototypes, setSwcPrototypes] = useState<SwcPrototype[]>([]);
   const [selectedComponent, setSelectedComponent] = useState<SwcPrototype | null>(null);

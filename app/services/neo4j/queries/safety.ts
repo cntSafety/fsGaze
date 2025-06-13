@@ -1,14 +1,13 @@
-import neo4j from 'neo4j-driver';
 import { driver } from '@/app/services/neo4j/config'; // Import the shared driver
 import { generateUUID } from '../utils'; // Assuming path app/services/neo4j/utils.ts
 
 // Define the structure of the data to be imported/exported
-interface SafetyGraphNode {
+export interface SafetyGraphNode {
     uuid: string;
-    properties: Record<string, any>;
+    properties: Record<string, unknown>;
 }
 
-interface OccurrenceLink {
+export interface OccurrenceLink {
     failureUuid: string;
     failureName: string; // For logging/verification, not directly stored in relationship
     occuranceSourceUuid: string;
@@ -16,7 +15,7 @@ interface OccurrenceLink {
     // Optional: any properties for the OCCURRENCE relationship itself
 }
 
-interface CausationLinkInfo {
+export interface CausationLinkInfo {
     causationUuid: string;
     causationName: string; // For logging/verification
     causeFailureUuid: string;
@@ -25,7 +24,7 @@ interface CausationLinkInfo {
     effectFailureName: string; // For logging/verification
 }
 
-interface SafetyGraphData {
+export interface SafetyGraphData {
     failures: SafetyGraphNode[];
     causations: SafetyGraphNode[];
     occurrences: OccurrenceLink[];
@@ -128,7 +127,7 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
         if (value && typeof value.toNumber === 'function') { // Check for neo4j.int or similar BigInt objects
             try {
                 return value.toNumber();
-            } catch (e) { // toNumber() can fail if the number is too large for JS standard number
+            } catch { // toNumber() can fail if the number is too large for JS standard number
                 //logs.push(`[WARNING] Failed to convert Neo4j Integer to JS number (possibly too large): ${value.toString()}. Treating as an invalid timestamp for comparison.`);
                 return null;
             }
@@ -543,7 +542,8 @@ export const deleteFailureNode = async (
       { failureUuid }
     );
 
-    const deletedCount = deleteResult.records[0].get('deletedCount');
+    // Get deleted count for potential logging
+    deleteResult.records[0].get('deletedCount');
 
     if (progressCallback) progressCallback(100, 'Failure node deleted successfully');
 
@@ -652,7 +652,8 @@ export const createCausationBetweenFailures = async (
     }
 
     const createdCausationUuid = result.records[0].get('createdCausationUuid');
-    const createdCausationName = result.records[0].get('createdCausationName');
+    // Get causation name for potential logging
+    result.records[0].get('createdCausationName');
 
     // console.log(`✅ Causation node created:`, {
     //   causationUuid: createdCausationUuid,
@@ -875,9 +876,10 @@ export const updateFailureNode = async (
     }
 
     const currentRecord = existingFailureResult.records[0];
-    const currentName = currentRecord.get('currentName');
-    const currentDescription = currentRecord.get('currentDescription');
-    const currentAsil = currentRecord.get('currentAsil');
+    // Get current values for potential logging
+    currentRecord.get('currentName');
+    currentRecord.get('currentDescription');
+    currentRecord.get('currentAsil');
 
     // console.log('✅ Found existing failure node:', { 
     //   currentName, 
@@ -915,13 +917,14 @@ export const updateFailureNode = async (
     }
 
     const updatedFailureUuid = updateResult.records[0].get('updatedFailureUuid');
-    const updatedFailureName = updateResult.records[0].get('updatedFailureName');
+    // Get updated name for potential logging
+    updateResult.records[0].get('updatedFailureName');
 
     if (progressCallback) progressCallback(100, 'Failure node updated successfully');
 
     // console.log(`✅ Failure node updated successfully:`, {
     //   failureUuid: updatedFailureUuid,
-    //   failureName: updatedFailureName,
+    //   failureName: failureName,
     //   changes: {
     //     name: currentName !== failureName ? `"${currentName}" → "${failureName}"` : 'unchanged',
     //     description: currentDescription !== failureDescription ? `"${currentDescription}" → "${failureDescription}"` : 'unchanged',

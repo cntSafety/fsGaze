@@ -2,7 +2,6 @@
 
 import React, { useEffect } from 'react';
 import KerMLUpload from '@/app/kerml-analyzer/components/KerMLUpload';
-import Link from 'next/link';
 import { useLoading } from '../components/LoadingProvider';
 
 export default function KerMLAnalyzerPage() {

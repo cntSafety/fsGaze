@@ -4,7 +4,6 @@ import { getInfoForAppSWComp } from '../../../../services/neo4j/queries/componen
 import { getFailuresForSwComponents, getFailuresForPorts } from '../../../../services/neo4j/queries/safety';
 import { getProviderPortsForSWComponent, getReceiverPortsForSWComponent } from '../../../../services/neo4j/queries/ports';
 import { SwComponent, Failure, PortFailure, ProviderPort } from '../types';
-import { SafetyTableRow } from '../../CoreSafetyTable';
 
 export const useSwSafetyData = (swComponentUuid: string) => {
   const [loading, setLoading] = useState(true);

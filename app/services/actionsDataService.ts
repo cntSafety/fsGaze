@@ -125,7 +125,8 @@ export async function fetchActionsData() {
           ? incomingFlowsResponse.results.map((flow: any) => ({
               sourceId: flow.sourceId || "No Source ID",
               sourceName: flow.sourceName || "Unnamed Source",
-              sourcePin: flow.sourcePin
+              sourcePin: flow.sourcePin,
+              targetId: actionId // Add the target ID (this action is the target)
             }))
           : [];
 

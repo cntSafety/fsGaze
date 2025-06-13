@@ -81,8 +81,6 @@ export default function ArxmlSafetyAnalysisTable() {
     }
   };
 
-  const isEditing = (record: SafetyTableRow) => record.key === editingKey;
-
   const edit = (record: SafetyTableRow) => {
     form.setFieldsValue({
       ...record,
@@ -220,7 +218,8 @@ export default function ArxmlSafetyAnalysisTable() {
       editable: false,
       searchable: true,
       minWidth: 200,
-      render: (text: string, record: SafetyTableRow, index: number) => {
+      render: (text: unknown, record: SafetyTableRow, index: number) => {
+        const textStr = String(text || '');
         // Only show component name on the first row for each component in table order
         const isFirstRowForComponent = index === 0 || 
           tableData[index - 1]?.swComponentUuid !== record.swComponentUuid;
@@ -232,7 +231,7 @@ export default function ArxmlSafetyAnalysisTable() {
               router.push(`/arxml-safety/${record.swComponentUuid}`);
             }}
           >
-            {text}
+            {textStr}
           </Typography.Link>
         ) : null;
       },
@@ -244,11 +243,14 @@ export default function ArxmlSafetyAnalysisTable() {
       editable: true,
       searchable: true,
       minWidth: 150,
-      render: (text: string) => (
-        <span style={{ color: text === 'No failures defined' ? '#999' : 'inherit' }}>
-          {text}
-        </span>
-      ),
+      render: (text: unknown) => {
+        const textStr = String(text || '');
+        return (
+          <span style={{ color: textStr === 'No failures defined' ? '#999' : 'inherit' }}>
+            {textStr}
+          </span>
+        );
+      },
     },
     {
       key: 'failureDescription',
@@ -258,11 +260,14 @@ export default function ArxmlSafetyAnalysisTable() {
       searchable: true,
       ellipsis: true,
       minWidth: 250,
-      render: (text: string) => (
-        <span style={{ color: text === '-' ? '#999' : 'inherit' }}>
-          {text}
-        </span>
-      ),
+      render: (text: unknown) => {
+        const textStr = String(text || '');
+        return (
+          <span style={{ color: textStr === '-' ? '#999' : 'inherit' }}>
+            {textStr}
+          </span>
+        );
+      },
     },
     {
       key: 'asil',

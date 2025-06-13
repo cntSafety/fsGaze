@@ -47,7 +47,7 @@ interface PartWithFailureModes {
     failureModes: FailureMode[]; // Failure modes associated with this part
 }
 
-export const FailureChain: React.FC = () => {
+const FailureChain: React.FC = () => {
     const { hideLoading } = useLoading();
     
     // Main state for parts and their associated failure modes

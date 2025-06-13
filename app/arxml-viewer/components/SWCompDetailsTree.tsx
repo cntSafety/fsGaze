@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Tree, Input, Modal, Spin, Alert, Typography, Table, Dropdown, Menu, Button } from 'antd';
+import { Tree, Input, Modal, Spin, Alert, Typography, Table, Dropdown, Button } from 'antd';
 import type { GetProps, MenuProps } from 'antd';
 import { DataNode as AntDataNode } from 'antd/es/tree';
 import { PlusOutlined, DeleteOutlined, ExclamationCircleOutlined, ReloadOutlined } from '@ant-design/icons';
@@ -79,7 +79,7 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
     uuid: string;
     name: string;
   } | null>(null);
-  const [secondFailureForCausation, setSecondFailureForCausation] = useState<{
+  const [, setSecondFailureForCausation] = useState<{
     uuid: string;
     name: string;
   } | null>(null);
@@ -128,14 +128,15 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
       const connectedElementUuid = isSourceOfRelation ? targetUuid : sourceUuid;
       const connectedElementType = isSourceOfRelation ? targetType : sourceType;
       
-      const directionPrefix = isSourceOfRelation ? "To: " : "From: ";
+      // Direction prefix for debugging (currently unused in display)
+      // const directionPrefix = isSourceOfRelation ? "To: " : "From: ";
 
       if (!connectedElementUuid || !connectedElementType) {
         console.warn('Skipping relation due to missing connected element info:', relation);
         continue;
       }
 
-      let typeGroupKey = `${relationshipType}-${connectedElementType}`;
+      const typeGroupKey = `${relationshipType}-${connectedElementType}`;
       let typeGroupNode = relTypeGroupNode.children!.find(child => child.key === typeGroupKey);
 
       if (!typeGroupNode) {

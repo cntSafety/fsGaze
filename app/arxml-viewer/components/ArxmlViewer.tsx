@@ -22,7 +22,6 @@ const ArxmlViewer: React.FC = () => {
   const [showEmptyDbMessage, setShowEmptyDbMessage] = useState<boolean>(false);
   const [selectedComponentUuid, setSelectedComponentUuid] = useState<string | null>(null);
   const [selectedComponentName, setSelectedComponentName] = useState<string | null>(null);
-  const [detailViewMode, setDetailViewMode] = useState<'table' | 'tree' | null>(null); // 'table', 'tree', or null
   const [isTreeModalVisible, setIsTreeModalVisible] = useState<boolean>(false);
   const [isTableModalVisible, setIsTableModalVisible] = useState<boolean>(false);
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -190,7 +189,7 @@ const ArxmlViewer: React.FC = () => {
       } else {
         setError(result.message || 'Failed to fetch components.');
       }
-    } catch (err) {
+    } catch {
       setError('An unexpected error occurred while fetching components.');
     } finally {
       setLoading(false);
@@ -250,7 +249,7 @@ const ArxmlViewer: React.FC = () => {
               setCurrentPage(1); // Reset to first page when page size changes
             },
           }}
-          onRow={(record) => {
+          onRow={() => {
             return {
               onClick: () => { // Default click on row can be table view or removed if icons are preferred
                 // setSelectedComponentUuid(record.uuid);

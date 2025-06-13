@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Navbar } from "./components/Navbar";
 import { FaGithub } from "react-icons/fa"; // Import GitHub icon from react-icons
 import { useEffect } from "react";
 import { useLoading } from "./components/LoadingProvider";
@@ -38,10 +37,12 @@ export default function Home() {
             capabilities.
           </p>
 
-          <img
+          <Image
             src="/SafetyGazeIntro.svg"
             alt="SafetyGaze Intro"
             className="h-auto w-4/5"
+            width={800}
+            height={600}
           />
 
           <div className="flex gap-4 items-center flex-col sm:flex-row">

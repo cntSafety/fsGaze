@@ -262,11 +262,11 @@ export const getReceiverPortsForSWComponent = async (swComponentUuid: string): P
 };
 
 /**
- * Find communication partners for R-Ports that don't have a connection to ASSEMBLY_SW_CONNECTOR 
- * via the TARGET-R-PORT-REF relationship. This function traces through the required interface
- * to find partner components that provide the same interface.
+ * Find the source package for R-Ports that have a MODE_SWITCH_INTERFACE.
+ * This function traces through the required interface to find the source package
+ * that contains the MODE_SWITCH_INTERFACE.
  */
-export const getCommunicationPartnersForRPortWithoutConnector = async (rPortUuid: string): Promise<{
+export const getSourcePackageForModeSwitchInterface = async (rPortUuid: string): Promise<{
   success: boolean;
   data?: Array<{
     partnerName: string;
@@ -279,29 +279,30 @@ export const getCommunicationPartnersForRPortWithoutConnector = async (rPortUuid
   const session = driver.session();
   
   try {
-    // console.log(`🔍 Finding communication partners for R-Port without SW connector. UUID: ${rPortUuid}`);
+    // console.log(`🔍 Finding source package for MODE_SWITCH_INTERFACE. R-Port UUID: ${rPortUuid}`);
     
     const result = await session.run(
-      `MATCH (RPortsWithoutSWConnector) WHERE RPortsWithoutSWConnector.uuid = $rPortUuid
-       //for RPorts without SW connector find the Required Interface
-       MATCH (RPortsWithoutSWConnector)-[:\`REQUIRED-INTERFACE-TREF\`]->(RPortsWithoutSWConnectorReqiredInterface)
-       //for the additional R port interface find the source (this is for example a certain interface type)
-       //RPortsWithoutSWConnectorReqiredInterface short is RPortsWOswConReqInter
-       MATCH (RPortsWithoutSWConnectorReqiredInterface)<-[:CONTAINS]-(RPortsWOswConReqInterGroup)
-       //finally get the partner
-       MATCH (RPortsWOswConReqInterGroup)<-[:CONTAINS]-(PartnerForRPortsWOswCon)
-       RETURN PartnerForRPortsWOswCon.name as partnerName, 
-              PartnerForRPortsWOswCon.uuid as partnerUUID, 
-              PartnerForRPortsWOswCon.arxmlPath as partnerPath`,
+      `MATCH (Rports) WHERE Rports.uuid = $rPortUuid
+       //for RPorts without SW connector find the Required Interface e.g. mode switch interface
+       MATCH (Rports)-[:\`REQUIRED-INTERFACE-TREF\`]->(RequiredInterface)
+       //Filter to only include MODE_SWITCH_INTERFACE
+       WHERE "MODE_SWITCH_INTERFACE" IN labels(RequiredInterface)
+       //for the Rport interface find the parent e.g. Autosar Interface package
+       MATCH (RequiredInterface)<-[:CONTAINS]-(interfaceParent)
+       //finally get the source package of that interface e.g. /MICROSAR/BswM_swc
+       MATCH (interfaceParent)<-[:CONTAINS]-(SourcePackage)
+       RETURN SourcePackage.name as partnerName, 
+              SourcePackage.uuid as partnerUUID, 
+              SourcePackage.arxmlPath as partnerPath`,
       { rPortUuid }
     );
 
     if (result.records.length === 0) {
-      // console.log(`❌ No communication partners found for R-Port UUID: ${rPortUuid}`);
+      // console.log(`❌ No source package found for MODE_SWITCH_INTERFACE with R-Port UUID: ${rPortUuid}`);
       return {
         success: true,
         data: [],
-        message: `No communication partners found for R-Port with UUID: ${rPortUuid}`,
+        message: `No source package found for MODE_SWITCH_INTERFACE with R-Port UUID: ${rPortUuid}`,
       };
     }
 
@@ -312,7 +313,7 @@ export const getCommunicationPartnersForRPortWithoutConnector = async (rPortUuid
       partnerPath: record.get('partnerPath') || '',
     }));
 
-    // console.log(`✅ Found ${partners.length} communication partners for R-Port ${rPortUuid}:`, partners);
+    // console.log(`✅ Found ${partners.length} source packages for MODE_SWITCH_INTERFACE with R-Port ${rPortUuid}:`, partners);
 
     return {
       success: true,
@@ -321,11 +322,11 @@ export const getCommunicationPartnersForRPortWithoutConnector = async (rPortUuid
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    console.error(`❌ Error finding communication partners for R-Port UUID ${rPortUuid}:`, errorMessage);
+    console.error(`❌ Error finding source package for MODE_SWITCH_INTERFACE with R-Port UUID ${rPortUuid}:`, errorMessage);
     
     return {
       success: false,
-      message: `Error finding communication partners for R-Port UUID ${rPortUuid}.`,
+      message: `Error finding source package for MODE_SWITCH_INTERFACE with R-Port UUID ${rPortUuid}.`,
       error: errorMessage,
     };
   } finally {

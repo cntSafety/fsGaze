@@ -14,6 +14,9 @@ interface DatabaseStats {
 
 interface StatusDBProps {
   // No auto-refresh, only manual refresh
+  // This interface is intentionally minimal as the component takes no props
+  // Using object type to explicitly allow any object props if needed in the future
+  [key: string]: unknown;
 }
 
 export interface StatusDBRef {
@@ -47,7 +50,7 @@ const StatusDB = forwardRef<StatusDBRef, StatusDBProps>((props, ref) => {
       const result = await Promise.race([
         getDatabaseStats(),
         timeoutPromise
-      ]) as any;
+      ]) as { success: boolean; data?: DatabaseStats; error?: string; message?: string };
       
       if (result.success && result.data) {
         setStats(result.data);

@@ -25,6 +25,7 @@ import {
     getScopedComponentConnectionsAndPartners,
     ScopedComponentConnectionsAndPartnersResult,
 } from '@/app/services/ArxmlToNeoService';
+import { Connection, Partner, ScopeElement, PortInfo } from '@/app/services/neo4j/types';
 import PortInterfaceInfo from '../../components/PortInterfaceInfo';
 
 const { Option } = Select;
@@ -37,17 +38,27 @@ interface SwcPrototype {
     arxmlPath: string;
 }
 
-// Custom node component for the scope element (center node)
+interface ScopeElementData {
+    label: string;
+    type: string;
+    element: ScopeElement;
+}
 
-interface SwcPrototype {
-    uuid: string;
-    name: string;
-    shortName: string;
-    arxmlPath: string;
+interface PartnerNodeData {
+    label: string;
+    type: string;
+    element: Partner;
+    partnerType: 'provider' | 'consumer' | 'mixed' | 'unknown';
+}
+
+interface SelectedConnectionData {
+    clickedConnection: Connection;
+    partner: Partner;
+    allConnections: Connection[];
 }
 
 // Custom node component for the scope element (center node)
-function ScopeElementNode({ data }: { data: any }) {
+function ScopeElementNode({ data }: { data: ScopeElementData }) {
     return (
         <div style={{
             padding: '20px',
@@ -98,7 +109,7 @@ function ScopeElementNode({ data }: { data: any }) {
 }
 
 // Custom node component for partner components
-function PartnerNode({ data }: { data: any }) {
+function PartnerNode({ data }: { data: PartnerNodeData }) {
     const { partnerType } = data;
     
     // Determine which handle to show based on partner type
@@ -181,7 +192,7 @@ function ArxmlFlowViewer() {
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
     // Modal state for connection details
-    const [selectedConnection, setSelectedConnection] = useState<any>(null);
+    const [selectedConnection, setSelectedConnection] = useState<SelectedConnectionData | null>(null);
     const [isModalVisible, setIsModalVisible] = useState(false);
     const [showDetails, setShowDetails] = useState(false); // New state for details toggle
 
@@ -284,7 +295,7 @@ function ArxmlFlowViewer() {
             } else {
                 setError(result.error || 'Failed to load scoped data');
             }
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('Error loading scoped data:', err);
             setError('Error loading scoped component data');
         } finally {
@@ -298,12 +309,12 @@ function ArxmlFlowViewer() {
         const newEdges: Edge[] = [];
 
         // Analyze partners to determine their connection types
-        const analyzePartnerPorts = (partner: any) => {
-            const hasPPorts = data.Connections.some(connection => 
-                connection.TargetPPort && partner.ports.some(port => port.uuid === connection.TargetPPort.uuid)
+        const analyzePartnerPorts = (partner: Partner) => {
+            const hasPPorts = data.Connections.some((connection: Connection) => 
+                connection.TargetPPort && partner.ports.some((port) => port.uuid === connection.TargetPPort!.uuid)
             );
-            const hasRPorts = data.Connections.some(connection => 
-                connection.TargetRPort && partner.ports.some(port => port.uuid === connection.TargetRPort.uuid)
+            const hasRPorts = data.Connections.some((connection: Connection) => 
+                connection.TargetRPort && partner.ports.some((port) => port.uuid === connection.TargetRPort!.uuid)
             );
 
             if (hasPPorts && hasRPorts) return 'mixed';
@@ -327,7 +338,7 @@ function ArxmlFlowViewer() {
         }
 
         // Create partner nodes with connection type information
-        data.Partners.forEach((partner, index) => {
+        data.Partners.forEach((partner) => {
             const partnerType = analyzePartnerPorts(partner);
             
             newNodes.push({
@@ -346,33 +357,33 @@ function ArxmlFlowViewer() {
         // Count connections per partner to determine line thickness
         const connectionCountByPartner = new Map<string, number>();
 
-        data.Connections.forEach((connection) => {
-            const connectedPartners = data.Partners.filter(partner => {
-                return partner.ports.some(port => {
+        data.Connections.forEach((connection: Connection) => {
+            const connectedPartners = data.Partners.filter((partner: Partner) => {
+                return partner.ports.some((port) => {
                     return (connection.TargetPPort && port.uuid === connection.TargetPPort.uuid) ||
                         (connection.TargetRPort && port.uuid === connection.TargetRPort.uuid);
                 });
             });
 
-            connectedPartners.forEach(partner => {
+            connectedPartners.forEach((partner: Partner) => {
                 const currentCount = connectionCountByPartner.get(partner.uuid) || 0;
                 connectionCountByPartner.set(partner.uuid, currentCount + 1);
             });
         });
 
         // Create edges based on connections
-        data.Connections.forEach((connection, index) => {
+        data.Connections.forEach((connection: Connection) => {
             // Find which partners are connected by this connection
-            const connectedPartners = data.Partners.filter(partner => {
+            const connectedPartners = data.Partners.filter((partner: Partner) => {
                 // Check if any of the partner's ports match the connection's target ports
-                return partner.ports.some(port => {
+                return partner.ports.some((port) => {
                     return (connection.TargetPPort && port.uuid === connection.TargetPPort.uuid) ||
                         (connection.TargetRPort && port.uuid === connection.TargetRPort.uuid);
                 });
             });
 
             // Create edges from scope element to connected partners
-            connectedPartners.forEach((partner, partnerIndex) => {
+            connectedPartners.forEach((partner) => {
                 if (data.ScopeElement) {
                     const edgeId = `${data.ScopeElement.uuid}-${partner.uuid}-${connection.uuid}`;
                     const partnerType = analyzePartnerPorts(partner);
@@ -456,12 +467,12 @@ function ArxmlFlowViewer() {
     // Handle edge click to show connection details - Enhanced to show ALL connections for the partner
     const handleEdgeClick = useCallback((event: React.MouseEvent, edge: Edge) => {
         if (edge.data && edge.data.connection && edge.data.partner && scopedData) {
-            const clickedPartner = edge.data.partner;
+            const clickedPartner = edge.data.partner as Partner;
 
             // Find all connections that involve this partner
-            const allConnectionsForPartner = scopedData.Connections.filter(connection => {
+            const allConnectionsForPartner = scopedData.Connections.filter((connection: Connection) => {
                 // Check if any of the partner's ports match the connection's target ports
-                return clickedPartner.ports.some(port => {
+                return clickedPartner.ports.some((port: PortInfo) => {
                     return (connection.TargetPPort && port.uuid === connection.TargetPPort.uuid) ||
                         (connection.TargetRPort && port.uuid === connection.TargetRPort.uuid);
                 });
@@ -528,7 +539,7 @@ function ArxmlFlowViewer() {
                     <div style={{ marginBottom: '24px' }}>
                         <Title level={5} style={{ marginBottom: '12px' }}>All Ports of ({selectedConnection.partner.ports.length})</Title>
                         <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid #e9ecef', borderRadius: '6px' }}>
-                            {selectedConnection.partner.ports.map((port: any, index: number) => (
+                            {selectedConnection.partner.ports.map((port: PortInfo, index: number) => (
                                 <div key={index} style={{
                                     padding: '12px',
                                     borderBottom: index < selectedConnection.partner.ports.length - 1 ? '1px solid #f0f0f0' : 'none',
@@ -556,7 +567,7 @@ function ArxmlFlowViewer() {
                     <div>
                         <Title level={5} style={{ marginBottom: '12px' }}>All Connections to this Partner ({selectedConnection.allConnections.length})</Title>
                         <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid #e9ecef', borderRadius: '6px' }}>
-                            {selectedConnection.allConnections.map((connection: any, index: number) => {
+                            {selectedConnection.allConnections.map((connection: Connection, index: number) => {
                                 return (
                                     <div key={index} style={{
                                         padding: '16px',

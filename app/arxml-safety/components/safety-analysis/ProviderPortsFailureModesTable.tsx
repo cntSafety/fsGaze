@@ -1,6 +1,6 @@
 import React from 'react';
 import { Card, Typography } from 'antd';
-import CoreSafetyTable, { SafetyTableColumn, SafetyTableRow } from '../CoreSafetyTable';
+import CoreSafetyTable, { SafetyTableColumn } from '../CoreSafetyTable';
 import { useProviderPortFailures } from './hooks/useProviderPortFailures';
 import { ProviderPort, PortFailure } from './types';
 
@@ -58,7 +58,7 @@ export default function ProviderPortsFailureModesTable({
       editable: true,
       searchable: true,
       minWidth: 150,
-      render: (text: string | null) => text || '-',
+      render: (text: unknown) => String(text || '-'),
     },
     {
       key: 'failureDescription',
@@ -68,7 +68,7 @@ export default function ProviderPortsFailureModesTable({
       searchable: true,
       ellipsis: true,
       minWidth: 200,
-      render: (text: string | null) => text || '-',
+      render: (text: unknown) => String(text || '-'),
     },
     {
       key: 'asil',

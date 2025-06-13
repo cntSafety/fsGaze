@@ -44,8 +44,6 @@ const GraphView: React.FC<GraphViewProps> = ({
             } else {
                 const failureModeNodes = completeGraphData.nodes.filter(node => node.type === 'failureMode');
                 const failureModeLinks = completeGraphData.links.filter(link => {
-                    const source = typeof link.source === 'object' ? link.source.id : link.source;
-                    const target = typeof link.target === 'object' ? link.target.id : link.target;
                     return link.type === 'causes';
                 });
 

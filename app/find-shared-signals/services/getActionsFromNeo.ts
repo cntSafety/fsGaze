@@ -11,7 +11,7 @@ import { fetchActionsData } from "@/app/services/actionsDataService";
  *   - loading: Boolean indicating if data is currently being fetched
  *   - error: Error message if the data fetch fails
  */
-export const getActionsFromNeo = () => {
+export const useActionsFromNeo = () => {
   // State to store the detailed action data including all relationships
   const [actions, setActions] = useState<ActionUsage[]>([]);
   // State to store a simplified version of the data optimized for the UI
@@ -54,8 +54,9 @@ export const getActionsFromNeo = () => {
         setActions(actionsData); // Detailed structure with complete relationship data
         setMergedData(combinedData); // Structure optimized for UI display
         setLoading(false); // Data loading complete
-      } catch (err: any) {
-        setError(err.message || "Failed to fetch action usage data");
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : "Failed to fetch action usage data";
+        setError(errorMessage);
         setLoading(false);
         console.error(err);
       }

@@ -1,5 +1,3 @@
-import { QueryResult, RecordShape } from 'neo4j-driver';
-
 // Add type definitions
 export interface ArxmlFileContent {
   name: string;
@@ -9,14 +7,14 @@ export interface ArxmlFileContent {
 export interface Neo4jNode {
   uuid: string;
   label: string;
-  props: Record<string, any>;
+  props: Record<string, unknown>;
 }
 
 export interface Neo4jRelationship {
   from: string;
   to: string;
   type: string;
-  props?: Record<string, any>;
+  props?: Record<string, unknown>;
 }
 
 export interface PendingReference {
@@ -40,7 +38,7 @@ export interface ComponentVisualizationNode {
   name: string;
   type: string;
   label: string;
-  properties: Record<string, any>;
+  properties: Record<string, unknown>;
 }
 
 export interface ComponentVisualizationRelationship {
@@ -48,7 +46,7 @@ export interface ComponentVisualizationRelationship {
   source: string;
   target: string;
   type: string;
-  properties: Record<string, any>;
+  properties: Record<string, unknown>;
 }
 
 export interface ComponentVisualizationResult {

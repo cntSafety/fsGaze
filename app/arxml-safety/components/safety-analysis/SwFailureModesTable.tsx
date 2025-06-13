@@ -53,7 +53,7 @@ export default function SwFailureModesTable({
       editable: true,
       searchable: true,
       minWidth: 150,
-      render: (text: string | null) => text || '-',
+      render: (text: unknown) => String(text || '-'),
     },
     {
       key: 'failureDescription',
@@ -63,7 +63,7 @@ export default function SwFailureModesTable({
       searchable: true,
       ellipsis: true,
       minWidth: 250,
-      render: (text: string | null) => text || '-',
+      render: (text: unknown) => String(text || '-'),
     },
     {
       key: 'asil',

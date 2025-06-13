@@ -18,8 +18,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { executeNeo4jQuery } from '../services/KerMLToNeoService';
-import ELK from 'elkjs/lib/elk.bundled.js';
-import dagre from 'dagre';
+// import ELK from 'elkjs/lib/elk.bundled.js';
 
 // Interface definitions
 interface FailureMode {
@@ -124,8 +123,8 @@ function FMPropagation() {
         failureModeNode: FailureModeNode
     }), []);
 
-    // ELK layout configuration
-    const elk = useMemo(() => new ELK(), []);
+    // ELK layout configuration could be used for future layout enhancements
+    // const elk = useMemo(() => new ELK(), []);
 
     const determinePartRank = useCallback((partsWithFMs: PartWithFailureModes[]) => {
         // Filter out parts without failure modes
@@ -240,7 +239,7 @@ function FMPropagation() {
 
         try {
             // Use a layered approach based on part ranks
-            let newNodes = [...nodes];
+            const newNodes = [...nodes];
 
             // Find the max rank to create our layout
             const maxRank = Math.max(...Object.values(partRanks), 0);
@@ -256,7 +255,7 @@ function FMPropagation() {
             });
 
             // Calculate horizontal spacing based on the number of ranks
-            const rankCount = Object.keys(nodesByRank).length;
+            // const rankCount = Object.keys(nodesByRank).length;
             const horizontalSpacing = 450; // Increased horizontal spacing between ranks
             const horizontalOffset = 100; // Start position
 
@@ -432,7 +431,7 @@ function FMPropagation() {
             const failureModesByName: Record<string, any> = {};
 
             // Create part nodes (containers) - only for parts WITH failure modes
-            partsWithActualFailureModes.forEach((item, index) => {
+            partsWithActualFailureModes.forEach((item) => {
                 // Add part as parent node
                 const partNode = {
                     id: item.part.elementId,

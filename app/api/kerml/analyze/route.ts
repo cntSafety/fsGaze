@@ -170,10 +170,12 @@ export async function POST(request: NextRequest) {
         error: neo4jResult.error
       }
     });
-  } catch (error: any) {
+  } catch (error) {
     // Log and return any errors that occur during processing
     console.error('Error analyzing KerML:', error);
-    return NextResponse.json({ error: "Internal server error: " + error.message }, { status: 500 });
+    return NextResponse.json({ 
+      error: "Internal server error: " + (error instanceof Error ? error.message : String(error)) 
+    }, { status: 500 });
   }
 }
 

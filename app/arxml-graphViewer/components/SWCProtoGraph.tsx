@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Select, Alert, Spin, Card, Divider, Checkbox } from 'antd';
 import { NodeCollapseOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import * as d3 from 'd3';
@@ -79,7 +79,7 @@ const SWCProtoGraph: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Utility function to copy text to clipboard
-  const copyToClipboard = async (text: string, label: string) => {
+  const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
       // console.log(`📋 Copied ${label} to clipboard:`, text);
@@ -247,7 +247,7 @@ const SWCProtoGraph: React.FC = () => {
     createD3Visualization(graphData);
   }, [graphData, visibleNodeTypes, visibleRelationshipTypes]);
 
-  const createD3Visualization = (data: ComponentVisualizationResult) => {
+  const createD3Visualization = useCallback((data: ComponentVisualizationResult) => {
     if (!svgRef.current || !containerRef.current) return;
 
     // console.log('🎨 Creating D3 visualization with simplified data:', data);
@@ -256,8 +256,8 @@ const SWCProtoGraph: React.FC = () => {
     // console.log('📊 Metadata:', data.metadata);
     
     // Log all available node types and relationship types
-    const availableNodeTypes = [...new Set(data.nodes.map(n => n.type || n.label))];
-    const availableRelationshipTypes = [...new Set(data.relationships.map(r => r.type))];
+    // const availableNodeTypes = [...new Set(data.nodes.map(n => n.type || n.label))];
+    // const availableRelationshipTypes = [...new Set(data.relationships.map(r => r.type))];
     // console.log('📊 Available Node Types:', availableNodeTypes);
     // console.log('📊 Visible Node Types:', Array.from(visibleNodeTypes));
     // console.log('📊 Available Relationship Types:', availableRelationshipTypes);
@@ -298,13 +298,11 @@ const SWCProtoGraph: React.FC = () => {
     const links: D3Link[] = [];
 
     // Convert the simplified nodes to D3 nodes
-    let filteredNodeCount = 0;
-    data.nodes.forEach((node, index) => {
+    data.nodes.forEach((node) => {
       const nodeLabel = node.type || node.label;
       
       // Skip this node if it's not visible
       if (!visibleNodeTypes.has(nodeLabel)) {
-        filteredNodeCount++;
         // console.log('🚫 Filtered out node:', nodeLabel, 'for node:', node.name);
         return;
       }
@@ -386,17 +384,17 @@ const SWCProtoGraph: React.FC = () => {
         shape: shape,
         nodeLabel: nodeLabel,
         prototype: node.type,
-        arxmlPath: node.properties?.arxmlPath || node.properties?.path
+        arxmlPath: (node.properties?.arxmlPath || node.properties?.path) as string | undefined
       });
     });
 
     // Convert relationships to D3 links
-    let filteredRelTypeCount = 0;
-    let filteredNodeVisibilityCount = 0;
+    // let filteredRelTypeCount = 0;
+    // let filteredNodeVisibilityCount = 0;
     data.relationships.forEach(relationship => {
       // Skip this relationship if it's not visible
       if (!visibleRelationshipTypes.has(relationship.type)) {
-        filteredRelTypeCount++;
+        // filteredRelTypeCount++;
         // console.log('🚫 Filtered out relationship type:', relationship.type);
         return;
       }
@@ -413,7 +411,7 @@ const SWCProtoGraph: React.FC = () => {
       const targetNodeLabel = targetNode.type || targetNode.label;
       
       if (!visibleNodeTypes.has(sourceNodeLabel) || !visibleNodeTypes.has(targetNodeLabel)) {
-        filteredNodeVisibilityCount++;
+        // filteredNodeVisibilityCount++;
         // console.log('🚫 Filtered out relationship due to node visibility:', 
         //   `${sourceNodeLabel} -> ${targetNodeLabel}`, 
         //   `(${relationship.type})`);
@@ -596,10 +594,10 @@ const SWCProtoGraph: React.FC = () => {
 
     // Create simulation with validated data
     const simulation = d3.forceSimulation(nodes)
-      .force('link', d3.forceLink(validLinks).id((d: any) => d.id).distance(d => d.type === 'contains' ? 50 : 100))
+      .force('link', d3.forceLink(validLinks).id((d: any) => (d as D3Node).id).distance(d => d.type === 'contains' ? 50 : 100))
       .force('charge', d3.forceManyBody().strength(-300))
       .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collision', d3.forceCollide().radius((d: any) => d.size + 5));
+      .force('collision', d3.forceCollide().radius((d: any) => (d as D3Node).size + 5));
 
     // Create arrow markers for directed links
     svg.append('defs').selectAll('marker')
@@ -639,7 +637,7 @@ const SWCProtoGraph: React.FC = () => {
       .attr('stroke', getNodeStroke)
       .attr('stroke-width', getNodeStrokeWidth)
       .attr('stroke-dasharray', getNodeStrokeDasharray)
-      .call(d3.drag<SVGCircleElement, any>()
+      .call(d3.drag<SVGCircleElement, D3Node>()
         .on('start', dragstarted)
         .on('drag', dragged)
         .on('end', dragended));
@@ -655,7 +653,7 @@ const SWCProtoGraph: React.FC = () => {
       .attr('fill', getNodeColor)
       .attr('stroke', getNodeStroke)
       .attr('stroke-width', getNodeStrokeWidth)
-      .call(d3.drag<SVGRectElement, any>()
+      .call(d3.drag<SVGRectElement, D3Node>()
         .on('start', dragstarted)
         .on('drag', dragged)
         .on('end', dragended));
@@ -672,7 +670,7 @@ const SWCProtoGraph: React.FC = () => {
       .attr('fill', getNodeColor)
       .attr('stroke', getNodeStroke)
       .attr('stroke-width', getNodeStrokeWidth)
-      .call(d3.drag<SVGPathElement, any>()
+      .call(d3.drag<SVGPathElement, D3Node>()
         .on('start', dragstarted)
         .on('drag', dragged)
         .on('end', dragended));
@@ -690,7 +688,7 @@ const SWCProtoGraph: React.FC = () => {
       .attr('fill', getNodeColor)
       .attr('stroke', getNodeStroke)
       .attr('stroke-width', getNodeStrokeWidth)
-      .call(d3.drag<SVGPathElement, any>()
+      .call(d3.drag<SVGPathElement, D3Node>()
         .on('start', dragstarted)
         .on('drag', dragged)
         .on('end', dragended));
@@ -816,50 +814,50 @@ const SWCProtoGraph: React.FC = () => {
       
       // Convert to formatted JSON string
       const dataString = JSON.stringify(componentData, null, 2);
-      copyToClipboard(dataString, `Complete data for component ${node.name}`);
+      copyToClipboard(dataString);
     });
 
     // Update positions on simulation tick
     simulation.on('tick', () => {
       link
-        .attr('x1', (d: any) => d.source.x)
-        .attr('y1', (d: any) => d.source.y)
-        .attr('x2', (d: any) => d.target.x)
-        .attr('y2', (d: any) => d.target.y);
+        .attr('x1', (d: any) => (d.source as D3Node).x || 0)
+        .attr('y1', (d: any) => (d.source as D3Node).y || 0)
+        .attr('x2', (d: any) => (d.target as D3Node).x || 0)
+        .attr('y2', (d: any) => (d.target as D3Node).y || 0);
 
       circleNodes
-        .attr('cx', (d: any) => d.x)
-        .attr('cy', (d: any) => d.y);
+        .attr('cx', (d: D3Node) => d.x || 0)
+        .attr('cy', (d: D3Node) => d.y || 0);
 
       rectNodes
-        .attr('x', (d: any) => d.x - d.size)
-        .attr('y', (d: any) => d.y - d.size);
+        .attr('x', (d: D3Node) => (d.x || 0) - d.size)
+        .attr('y', (d: D3Node) => (d.y || 0) - d.size);
 
       halfCircleNodes
-        .attr('transform', (d: any) => `translate(${d.x}, ${d.y})`);
+        .attr('transform', (d: D3Node) => `translate(${d.x || 0}, ${d.y || 0})`);
 
       triangleNodes
-        .attr('transform', (d: any) => `translate(${d.x}, ${d.y})`);
+        .attr('transform', (d: D3Node) => `translate(${d.x || 0}, ${d.y || 0})`);
 
       portLabels
-        .attr('x', (d: any) => d.x)
-        .attr('y', (d: any) => d.y);
+        .attr('x', (d: D3Node) => d.x || 0)
+        .attr('y', (d: D3Node) => d.y || 0);
 
       modeLabels
-        .attr('x', (d: any) => d.x)
-        .attr('y', (d: any) => d.y);
+        .attr('x', (d: D3Node) => d.x || 0)
+        .attr('y', (d: D3Node) => d.y || 0);
 
       senderLabels
-        .attr('x', (d: any) => d.x)
-        .attr('y', (d: any) => d.y);
+        .attr('x', (d: D3Node) => d.x || 0)
+        .attr('y', (d: D3Node) => d.y || 0);
 
       clientServerLabels
-        .attr('x', (d: any) => d.x)
-        .attr('y', (d: any) => d.y);
+        .attr('x', (d: D3Node) => d.x || 0)
+        .attr('y', (d: D3Node) => d.y || 0);
 
       label
-        .attr('x', (d: any) => d.x)
-        .attr('y', (d: any) => d.y);
+        .attr('x', (d: D3Node) => d.x || 0)
+        .attr('y', (d: D3Node) => d.y || 0);
     });
 
     // Enhanced drag behavior with pinning
@@ -911,7 +909,7 @@ const SWCProtoGraph: React.FC = () => {
       
       // console.log('📍 Unpinned node:', node.name);
     });
-  };
+  }, [visibleNodeTypes, visibleRelationshipTypes]);
 
   const selectedPrototypeName = prototypes.find(p => p.uuid === selectedPrototype)?.name || '';
 

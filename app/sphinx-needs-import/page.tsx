@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { executeNeo4jQuery } from '../services/KerMLToNeoService';
 import { importSphinxNeedsToNeo4j } from '../services/SphinxNeedsImport';
 
-export const Requirements: React.FC = () => {
+const Requirements: React.FC = () => {
     const [requirements, setRequirements] = useState<any[]>([]);
     const [requirementSphinxNeeds, setRequirementSphinxNeeds] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState<boolean>(false);
@@ -21,9 +21,10 @@ export const Requirements: React.FC = () => {
     const [importResults, setImportResults] = useState<{
         success?: boolean;
         message?: string;
-        project?: string;
+        project?: string | null;
         nodeCount?: number;
         relationshipCount?: number;
+        reqUsageRelationshipCount?: number;
         error?: string | null;
     } | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);

@@ -1,10 +1,9 @@
 "use client";
 
 import React from "react";
-import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { HiHome, HiCloudDownload, HiChartBar, HiClipboardCheck, HiDocumentReport, HiMenuAlt2, HiChevronDown, HiLightningBolt, HiX, HiChevronLeft, HiChevronRight, HiOutlineDocumentReport, HiOutlineCode, HiFastForward    } from "react-icons/hi";
+import { HiHome, HiCloudDownload, HiMenuAlt2, HiChevronDown, HiLightningBolt, HiX, HiChevronLeft, HiChevronRight, HiOutlineDocumentReport, HiOutlineCode, HiFastForward } from "react-icons/hi";
 import { useState, useEffect } from "react";
 import { IconType } from "react-icons";
 import { useLoading } from "./LoadingProvider";

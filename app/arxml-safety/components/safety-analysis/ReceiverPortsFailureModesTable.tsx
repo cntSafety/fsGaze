@@ -1,8 +1,8 @@
 import React from 'react';
 import { Card, Typography } from 'antd';
-import CoreSafetyTable, { SafetyTableColumn, SafetyTableRow } from '../CoreSafetyTable';
-import { useProviderPortFailures } from './hooks/useProviderPortFailures';
-import { ProviderPort, PortFailure } from './types';
+import CoreSafetyTable, { SafetyTableColumn } from '../CoreSafetyTable';
+import { useReceiverPortFailures } from './hooks/useReceiverPortFailures';
+import { PortFailure, ProviderPort } from './types';
 
 const { Title } = Typography;
 
@@ -39,7 +39,7 @@ export default function ReceiverPortsFailureModesTable({
     handleCancelPort,
     handleDeletePort,
     handleAddPortFailure
-  } = useProviderPortFailures(receiverPorts, portFailures, setPortFailures);
+  } = useReceiverPortFailures(receiverPorts, portFailures, setPortFailures);
 
   // Define columns for the receiver ports failure modes table
   const portColumns: SafetyTableColumn[] = [
@@ -58,7 +58,7 @@ export default function ReceiverPortsFailureModesTable({
       editable: true,
       searchable: true,
       minWidth: 150,
-      render: (text: string | null) => text || '-',
+      render: (text: unknown) => String(text || '-'),
     },
     {
       key: 'failureDescription',
@@ -68,7 +68,7 @@ export default function ReceiverPortsFailureModesTable({
       searchable: true,
       ellipsis: true,
       minWidth: 200,
-      render: (text: string | null) => text || '-',
+      render: (text: unknown) => String(text || '-'),
     },
     {
       key: 'asil',

@@ -16,14 +16,14 @@ import {
 } from './types';
 
 // Import custom hooks and services
-import { getActionsFromNeo } from './services/getActionsFromNeo';
+import { useActionsFromNeo } from './services/getActionsFromNeo';
 import { useCCIStore } from './store/cciStore';
 import { checkCommonCauseInitiators } from './services/cciAnalysisService';
 import { transformToFlowFormat } from './services/diagramLayoutService';
 import { captureDiagramAsPng } from './services/diagramCaptureService';
 import { useLoading } from '../components/LoadingProvider';
 
-export const CCIAnalysis: React.FC = () => {
+const CCIAnalysis: React.FC = () => {
     const { hideLoading } = useLoading();
     
     // Custom hook for data fetching
@@ -31,7 +31,7 @@ export const CCIAnalysis: React.FC = () => {
     // - mergedData: preprocessed action data with relationships
     // - loading: indicates if data is being fetched
     // - error: any error that occurred during data fetching
-    const { actions, mergedData, loading, error } = getActionsFromNeo();
+    const { actions, mergedData, loading, error } = useActionsFromNeo();
 
     // Use the CCI Zustand store for state management
     // - cciResults: analysis results containing common cause initiators
@@ -119,7 +119,7 @@ export const CCIAnalysis: React.FC = () => {
                         name: req.name,
                         description: req.description,
                         sphinxneedsID: req.sphinxneedsID,
-                        ASIL: asilAttribute ? asilAttribute.value : ''
+                        asil: asilAttribute ? asilAttribute.value : ''
                     });
                 }
             });
@@ -138,7 +138,7 @@ export const CCIAnalysis: React.FC = () => {
                     requirementName: item.requirementName || reqDetails.name || '',
                     requirementId: item.requirementId || '',
                     // Use ASIL from requirement attributes if available
-                    ASIL: reqDetails.ASIL || '',
+                    asil: reqDetails.asil || '',
                     timestamp: item.timestamp || new Date().toISOString()
                 };
             })
@@ -155,7 +155,6 @@ export const CCIAnalysis: React.FC = () => {
         );
     }, [mergedData, updateResults]);
 
-    // DATA FLOW: diagram ref -> capture service -> PNG file download
     // Export diagram as PNG when user requests it
     const exportDiagramAsPng = useCallback(async () => {
         if (!diagramRef.current || layouting) return;
@@ -164,7 +163,7 @@ export const CCIAnalysis: React.FC = () => {
             setLayouting(true);
             // captureDiagramAsPng service uses the diagram ref to generate
             // and download a PNG image of the current diagram state
-            await captureDiagramAsPng(diagramRef);
+            await captureDiagramAsPng(diagramRef as React.RefObject<CCIFlowDiagramHandle>);
         } catch (err: any) {
             console.error('Error exporting diagram:', err);
         } finally {
@@ -224,7 +223,7 @@ export const CCIAnalysis: React.FC = () => {
                         requirementName: result.requirementName || '', // Ensure required fields have default values
                         requirementId: result.requirementId || '',
                         sphinxneedsID: result.sphinxneedsID === null ? undefined : result.sphinxneedsID,
-                        ASIL: result.ASIL || '', // Pass ASIL level to result component
+                        asil: result.asil || '', // Pass ASIL level to result component
                         timestamp: result.timestamp || new Date().toISOString()
                     }))}
                 />

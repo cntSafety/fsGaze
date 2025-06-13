@@ -1,16 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Typography, Descriptions, Tag, Spin, Alert } from 'antd';
 import { InfoCircleOutlined, LinkOutlined } from '@ant-design/icons';
-import { getAssemblyContextForPPort, getAssemblyContextForRPort, getCommunicationPartnersForRPortWithoutConnector } from '@/app/services/neo4j/queries/ports';
+import { getAssemblyContextForPPort, getAssemblyContextForRPort, getSourcePackageForModeSwitchInterface } from '@/app/services/neo4j/queries/ports';
 import { AssemblyContextInfo } from '@/app/services/neo4j/types';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 export interface ElementDetails {
   uuid: string;
   name: string;
   type: 'port' | 'failure' | 'component' | 'other';
-  additionalInfo?: Record<string, any>;
+  additionalInfo?: {
+    portType?: string;
+    type?: string;
+    [key: string]: unknown;
+  };
 }
 
 interface ElementDetailsModalProps {
@@ -83,7 +87,7 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
         // For R-Ports, also check for communication partners without connectors
         if (actualPortType === 'R_PORT_PROTOTYPE') {
           // console.log(`Checking for communication partners without connectors for R-Port ${elementDetails.name}`);
-          const partnersResult = await getCommunicationPartnersForRPortWithoutConnector(elementDetails.uuid);
+          const partnersResult = await getSourcePackageForModeSwitchInterface(elementDetails.uuid);
           
           if (partnersResult.success && partnersResult.data) {
             setCommunicationPartners(partnersResult.data);
@@ -296,7 +300,7 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
                 {communicationPartners.length > 0 && (
                   <>
                     <Text strong style={{ color: '#595959', fontSize: '14px', marginBottom: '12px', display: 'block' }}>
-                      🌐 Relationships based on REQUIRED-INTERFACE Reference
+                      🌐 Relationships based on required interface is of type &quot;MODE_SWITCH_INTERFACE&quot; 
                     </Text>
                     
                     {communicationPartners.map((partner, index) => (
@@ -342,9 +346,6 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
                   fontSize: '11px',
                   color: '#666'
                 }}>
-                  <Text type="secondary" style={{ fontStyle: 'italic' }}>
-                    💡 Assembly context shows connections via TARGET-P-PORT-REF. In addition REQUIRED-INTERFACE-TREF based relationships are shown e.g. for state input from BswM.
-                  </Text>
                 </div>
               </div>
             ) : (

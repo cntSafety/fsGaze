@@ -49,7 +49,7 @@ const SWCompDetails: React.FC<SWCompDetailsProps> = ({ componentUuid, componentN
         setError(result.message || 'Failed to fetch component relations.');
         setRelations([]);
       }
-    } catch (err) {
+    } catch {
       setError('An unexpected error occurred while fetching relations.');
       setRelations([]);
     } finally {

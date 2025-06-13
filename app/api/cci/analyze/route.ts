@@ -33,17 +33,16 @@
  * - 500: Internal Server Error (processing failures)
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { checkCommonCauseInitiators } from '@/app/find-shared-signals/services/cciAnalysisService';
 import { fetchActionsData } from '@/app/services/actionsDataService';
 
 /**
  * Handles GET requests to analyze Common Cause Initiators
  * 
- * @param request - The incoming HTTP request
  * @returns A JSON response with CCI analysis results
  */
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     // Fetch action data using the shared service
     const response = await fetchActionsData();
@@ -73,7 +72,7 @@ export async function GET(request: NextRequest) {
       (action.requirements || []).forEach(req => {
         if (req.id) {
           // Find ASIL attribute if it exists
-          const asilAttribute = (req.attributes || []).find(attr =>
+          const asilAttribute = (req.attributes || []).find((attr: { name: string; value: string }) =>
             attr.name === 'ASIL' || attr.name === 'asil'
           );
 

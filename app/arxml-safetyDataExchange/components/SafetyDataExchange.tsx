@@ -11,7 +11,7 @@ const { Title, Paragraph } = Typography;
 // Define the structure of the data
 interface SafetyGraphNode {
   uuid: string;
-  properties: Record<string, any>;
+  properties: Record<string, unknown>;
 }
 
 interface OccurrenceLink {
@@ -72,8 +72,8 @@ const SafetyDataExchange: React.FC = () => {
       } else {
         setError(result.message || 'Failed to fetch safety data.');
       }
-    } catch (err: any) {
-      setError(`An error occurred: ${err.message}`);
+    } catch (err: unknown) {
+      setError(`An error occurred: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
@@ -113,8 +113,8 @@ const SafetyDataExchange: React.FC = () => {
         } else {
           setImportError('Invalid JSON structure for safety data.');
         }
-      } catch (err: any) {
-        setImportError(`Error parsing JSON file: ${err.message}`);
+      } catch (err: unknown) {
+        setImportError(`Error parsing JSON file: ${err instanceof Error ? err.message : 'Unknown error'}`);
       } finally {
         setIsProcessingFile(false);
       }
@@ -162,14 +162,14 @@ const SafetyDataExchange: React.FC = () => {
           setUploadLogs(result.logs);
         }
       }
-    } catch (err: any) {
-      setUploadError(`An error occurred during upload: ${err.message}`);
+    } catch (err: unknown) {
+      setUploadError(`An error occurred during upload: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setIsUploading(false);
     }
   };
 
-  const renderDataAsJson = (data: any, title: string) => (
+  const renderDataAsJson = (data: unknown, title: string) => (
     <Card title={title} style={{ marginTop: 16 }}>
       <pre style={{ maxHeight: 300, overflowY: 'auto', backgroundColor: '#f5f5f5', padding: 10 }}>
         {JSON.stringify(data, null, 2)}

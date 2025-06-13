@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Table, Form, Input, Select, Typography, Popconfirm, Button, Space, Tooltip } from 'antd';
+import { Table, Form, Input, Select, Popconfirm, Button, Space, Tooltip } from 'antd';
 import { SearchOutlined, DeleteOutlined, EditOutlined, PlusOutlined, LinkOutlined } from '@ant-design/icons';
 import type { TableProps, ColumnType } from 'antd/es/table';
+import type { FormInstance } from 'antd/es/form';
 import type { FilterDropdownProps } from 'antd/es/table/interface';
 import { Resizable } from 'react-resizable';
 import ElementDetailsModal, { ElementDetails } from './ElementDetailsModal';
@@ -11,7 +12,13 @@ import ElementDetailsModal, { ElementDetails } from './ElementDetailsModal';
 const { Option } = Select;
 
 // Resizable column title component
-const ResizableTitle = (props: any) => {
+interface ResizableTitleProps {
+  onResize: (width: number) => void;
+  width: number;
+  [key: string]: unknown;
+}
+
+const ResizableTitle = (props: ResizableTitleProps) => {
   const { onResize, width, ...restProps } = props;
 
   if (!width) {
@@ -30,7 +37,7 @@ const ResizableTitle = (props: any) => {
           }}
         />
       }
-      onResize={onResize}
+      onResize={(e, data) => onResize(data.size.width)}
       draggableOpts={{ enableUserSelectHack: false }}
     >
       <th {...restProps} />
@@ -56,7 +63,7 @@ export interface SafetyTableColumn {
   editable?: boolean;
   searchable?: boolean;
   filterable?: boolean;
-  render?: (text: any, record: SafetyTableRow, index: number) => React.ReactNode;
+  render?: (text: unknown, record: SafetyTableRow, index: number) => React.ReactNode;
   inputType?: 'text' | 'select';
   selectOptions?: Array<{ value: string; label: string }>;
   width?: string | number;
@@ -68,7 +75,7 @@ export interface SafetyTableColumn {
 interface EditableCellProps extends React.HTMLAttributes<HTMLElement> {
   editing: boolean;
   dataIndex: string;
-  title: any;
+  title: string;
   inputType: 'text' | 'select';
   record: SafetyTableRow;
   index: number;
@@ -80,8 +87,9 @@ const EditableCell: React.FC<React.PropsWithChildren<EditableCellProps>> = ({
   dataIndex,
   title,
   inputType,
-  record,
-  index,
+  // record and index are required by the interface but not used in this implementation
+  record: _record, // eslint-disable-line @typescript-eslint/no-unused-vars
+  index: _index,   // eslint-disable-line @typescript-eslint/no-unused-vars
   selectOptions,
   children,
   ...restProps
@@ -133,7 +141,7 @@ interface CoreSafetyTableProps {
   isSaving?: boolean;
   pagination?: false | TableProps<SafetyTableRow>['pagination'];
   showComponentActions?: boolean;
-  form?: any;
+  form?: FormInstance;
   // New props for failure linking
   onFailureSelect?: (failure: { uuid: string; name: string }) => void;
   selectedFailures?: {
@@ -285,7 +293,7 @@ export default function CoreSafetyTable({
   });
 
   // Handle column resize
-  const handleResize = (index: number, columnKey: string) => (e: any, { size }: any) => {
+  const handleResize = (index: number, columnKey: string) => (e: unknown, { size }: { size: { width: number; height: number } }) => {
     setColumnWidths(prev => ({
       ...prev,
       [columnKey]: size.width,
@@ -567,7 +575,7 @@ export default function CoreSafetyTable({
         width: columnWidths['actions'] || (onFailureSelect ? 160 : 120),
         onResize: handleResize(columns.length, 'actions'),
       } as any),
-      render: (_: any, record: SafetyTableRow, index: number) => {
+      render: (_: unknown, record: SafetyTableRow, index: number) => {
         const editable = isEditing(record);
         const isFirstRowForComponent = showComponentActions && (index === 0 || 
           dataSource[index - 1]?.swComponentUuid !== record.swComponentUuid);

@@ -29,6 +29,7 @@ export const getNodeLabels = async (nodeUuid: string): Promise<{
     // Process the result - should be a single record
     const record = result.records[0];
     const nodeLabels = record.get('nodeLabels') || [];
+    // Get node name for potential logging
     const nodeName = record.get('nodeName') || 'Unnamed';
 
     return {
@@ -133,7 +134,7 @@ export const getDatabaseStats = async (): Promise<{
   
   try {
     // Test connection first
-    const connectionTest = await session.run('RETURN 1 as test');
+    await session.run('RETURN 1 as test');
     
     // Get node count, relationship count, labels, and relationship types
     
@@ -202,7 +203,8 @@ export const testDatabaseConnection = async (): Promise<{
     const result = await session.run('RETURN "Hello Neo4j!" as message, timestamp() as time');
     
     if (result.records.length > 0) {
-      const message = result.records[0].get('message');
+      // Get message for potential logging
+      result.records[0].get('message');
       const time = result.records[0].get('time');
       
       return {
