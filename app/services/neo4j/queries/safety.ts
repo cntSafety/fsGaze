@@ -490,6 +490,117 @@ export const createFailureNode = async (
       success: false,
       message: "Error creating failure node.",
       error: errorMessage,
+    };  } finally {
+    await session.close();
+  }
+};
+
+/**
+ * Create a new RISKRATING node and link it to an existing FAILURE node
+ */
+export const createRiskRatingNode = async (
+  failureUuid: string,
+  severity: number,
+  occurrence: number,
+  detection: number,
+  ratingComment?: string,
+  progressCallback?: (progress: number, message: string) => void
+): Promise<{
+  success: boolean;
+  message: string;
+  riskRatingUuid?: string;
+  error?: string;
+}> => {
+  const session = driver.session();
+  
+  try {
+    if (progressCallback) progressCallback(10, 'Validating existing failure node');
+    
+    // First, verify that the failure node exists
+    const failureResult = await session.run(
+      `MATCH (failure:FAILURE) 
+       WHERE failure.uuid = $failureUuid 
+       RETURN failure.name AS failureName, failure.uuid AS failureUuid`,
+      { failureUuid }
+    );
+
+    if (failureResult.records.length === 0) {
+      return {
+        success: false,
+        message: `No failure node found with UUID: ${failureUuid}`,
+      };
+    }
+
+    const failureName = failureResult.records[0].get('failureName');    if (progressCallback) progressCallback(30, 'Creating risk rating node');
+    
+    // Generate a UUID for the new risk rating node
+    const riskRatingUuid = generateUUID();
+    const currentTimestamp = new Date().toISOString();
+    
+    // Generate the risk rating name based on failure name
+    const riskRatingName = `RR${failureName}`;
+    
+    // Create the risk rating node and establish the relationship
+    const queryParams = {
+      failureUuid,
+      riskRatingUuid,
+      name: riskRatingName,
+      severity,
+      occurrence,
+      detection,
+      ratingComment: ratingComment || '',
+      created: currentTimestamp,
+      lastModified: currentTimestamp,
+    };    const createResult = await session.run(
+      `MATCH (failure:FAILURE) 
+       WHERE failure.uuid = $failureUuid
+       CREATE (riskRating:RISKRATING {
+         uuid: $riskRatingUuid,
+         name: $name,
+         Severity: $severity,
+         Occurrence: $occurrence,
+         Detection: $detection,
+         RatingComment: $ratingComment,
+         Created: $created,
+         LastModified: $lastModified
+       })
+       CREATE (failure)-[r:RATED]->(riskRating)
+       RETURN riskRating.uuid AS createdRiskRatingUuid`,
+      queryParams
+    );
+
+    if (progressCallback) progressCallback(90, 'Finalizing risk rating node creation');
+
+    if (createResult.records.length === 0) {
+      throw new Error('No records returned from CREATE query');
+    }
+
+    const createdRiskRatingUuid = createResult.records[0].get('createdRiskRatingUuid');
+
+    if (progressCallback) progressCallback(100, 'Risk rating node created successfully');
+
+    return {
+      success: true,
+      message: `Risk rating created and linked to failure "${failureName}".`,
+      riskRatingUuid: createdRiskRatingUuid,
+    };
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error(`❌ Error creating risk rating node:`, error);    console.error(`❌ Error details:`, {
+      message: errorMessage,
+      stack: error instanceof Error ? error.stack : 'No stack trace',
+      failureUuid,
+      severity,
+      occurrence,
+      detection,
+      ratingComment,
+    });
+    
+    return {
+      success: false,
+      message: "Error creating risk rating node.",
+      error: errorMessage,
     };
   } finally {
     await session.close();

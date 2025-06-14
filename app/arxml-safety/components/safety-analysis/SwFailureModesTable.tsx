@@ -1,9 +1,10 @@
 import React from 'react';
-import { Card, Typography, Button } from 'antd';
+import { Card, Typography, Button, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import CoreSafetyTable, { SafetyTableColumn } from '../CoreSafetyTable';
 import { useSwFailureModes } from './hooks/useSwFailureModes';
 import { SwComponent, Failure } from './types';
+import { createRiskRatingNode } from '@/app/services/neo4j/queries/safety';
 
 const { Title } = Typography;
 
@@ -41,8 +42,23 @@ export default function SwFailureModesTable({
     handleSave,
     handleCancel,
     handleDelete,
-    handleAddFailure
-  } = useSwFailureModes(swComponentUuid, swComponent, failures, setFailures);
+    handleAddFailure  } = useSwFailureModes(swComponentUuid, swComponent, failures, setFailures);
+
+  // Risk rating handler
+  const handleRiskRating = async (failureUuid: string, severity: number, occurrence: number, detection: number, ratingComment?: string) => {
+    try {
+      const result = await createRiskRatingNode(failureUuid, severity, occurrence, detection, ratingComment);
+      
+      if (result.success) {
+        message.success('Risk rating saved successfully!');
+      } else {
+        message.error(`Error saving risk rating: ${result.message}`);
+      }
+    } catch (error) {
+      console.error('Error saving risk rating:', error);
+      message.error('Failed to save risk rating');
+    }
+  };
 
   // Define columns for the failure modes table
   const columns: SafetyTableColumn[] = [
@@ -99,8 +115,7 @@ export default function SwFailureModesTable({
         </Button>
       </div>
       
-      {tableData.length > 0 ? (
-        <CoreSafetyTable
+      {tableData.length > 0 ? (        <CoreSafetyTable
           dataSource={tableData}
           columns={columns}
           loading={false}
@@ -109,6 +124,7 @@ export default function SwFailureModesTable({
           onSave={handleSave}
           onCancel={handleCancel}
           onDelete={handleDelete}
+          onRiskRating={handleRiskRating}
           isSaving={isSaving}
           form={form}
           onFailureSelect={onFailureSelect}

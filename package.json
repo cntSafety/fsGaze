@@ -5,6 +5,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "build-and-start": "npm run build && npm run start",
+    "prod": "npm run build && npm run start",
     "lint": "next lint"
   },
   "dependencies": {

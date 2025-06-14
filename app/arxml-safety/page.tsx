@@ -1,4 +1,4 @@
-import ArxmlSafetyAnalysisTable from './ArxmlSafetyAnalysisTable';
+import ArxmlSafetyAnalysisTable from './ArxmlSafetyAnalysisTableClean';
 
 export default function ArxmlSafetyPage() {
   return (

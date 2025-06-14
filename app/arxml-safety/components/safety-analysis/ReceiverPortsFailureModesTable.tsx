@@ -1,8 +1,9 @@
 import React from 'react';
-import { Card, Typography } from 'antd';
+import { Card, Typography, message } from 'antd';
 import CoreSafetyTable, { SafetyTableColumn } from '../CoreSafetyTable';
 import { useReceiverPortFailures } from './hooks/useReceiverPortFailures';
 import { PortFailure, ProviderPort } from './types';
+import { createRiskRatingNode } from '@/app/services/neo4j/queries/safety';
 
 const { Title } = Typography;
 
@@ -38,8 +39,23 @@ export default function ReceiverPortsFailureModesTable({
     handleSavePort,
     handleCancelPort,
     handleDeletePort,
-    handleAddPortFailure
-  } = useReceiverPortFailures(receiverPorts, portFailures, setPortFailures);
+    handleAddPortFailure  } = useReceiverPortFailures(receiverPorts, portFailures, setPortFailures);
+
+  // Risk rating handler
+  const handleRiskRating = async (failureUuid: string, severity: number, occurrence: number, detection: number, ratingComment?: string) => {
+    try {
+      const result = await createRiskRatingNode(failureUuid, severity, occurrence, detection, ratingComment);
+      
+      if (result.success) {
+        message.success('Risk rating saved successfully!');
+      } else {
+        message.error(`Error saving risk rating: ${result.message}`);
+      }
+    } catch (error) {
+      console.error('Error saving risk rating:', error);
+      message.error('Failed to save risk rating');
+    }
+  };
 
   // Define columns for the receiver ports failure modes table
   const portColumns: SafetyTableColumn[] = [
@@ -96,8 +112,7 @@ export default function ReceiverPortsFailureModesTable({
         </Title>
       </div>
       
-      {portTableData.length > 0 ? (
-        <CoreSafetyTable
+      {portTableData.length > 0 ? (        <CoreSafetyTable
           dataSource={portTableData}
           columns={portColumns}
           loading={false}
@@ -107,6 +122,7 @@ export default function ReceiverPortsFailureModesTable({
           onCancel={handleCancelPort}
           onAdd={handleAddPortFailure}
           onDelete={handleDeletePort}
+          onRiskRating={handleRiskRating}
           isSaving={isSavingPort}
           showComponentActions={true}
           form={form}

@@ -2,12 +2,13 @@
 
 import React, { useState } from 'react';
 import { Table, Form, Input, Select, Popconfirm, Button, Space, Tooltip } from 'antd';
-import { SearchOutlined, DeleteOutlined, EditOutlined, PlusOutlined, LinkOutlined } from '@ant-design/icons';
+import { SearchOutlined, DeleteOutlined, EditOutlined, PlusOutlined, LinkOutlined, DashboardOutlined } from '@ant-design/icons';
 import type { TableProps, ColumnType } from 'antd/es/table';
 import type { FormInstance } from 'antd/es/form';
 import type { FilterDropdownProps } from 'antd/es/table/interface';
 import { Resizable } from 'react-resizable';
 import ElementDetailsModal, { ElementDetails } from './ElementDetailsModal';
+import RiskRatingModal from './RiskRatingModal';
 
 const { Option } = Select;
 
@@ -138,6 +139,7 @@ interface CoreSafetyTableProps {
   onCancel?: () => void;
   onAdd?: (swComponentUuid: string, swComponentName: string) => void;
   onDelete?: (record: SafetyTableRow) => Promise<void>;
+  onRiskRating?: (failureUuid: string, severity: number, occurrence: number, detection: number) => Promise<void>;
   isSaving?: boolean;
   pagination?: false | TableProps<SafetyTableRow>['pagination'];
   showComponentActions?: boolean;
@@ -202,6 +204,7 @@ export default function CoreSafetyTable({
   onCancel,
   onAdd,
   onDelete,
+  onRiskRating,
   isSaving = false,
   pagination = { pageSize: 10 },
   showComponentActions = false,
@@ -211,10 +214,14 @@ export default function CoreSafetyTable({
   onElementClick,
 }: CoreSafetyTableProps) {
   const isEditing = (record: SafetyTableRow) => record.key === editingKey;
-  
-  // Modal state management
+    // Modal state management
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [selectedElement, setSelectedElement] = useState<ElementDetails | null>(null);
+  
+  // Risk rating modal state
+  const [isRiskRatingModalVisible, setIsRiskRatingModalVisible] = useState(false);
+  const [selectedFailureForRiskRating, setSelectedFailureForRiskRating] = useState<SafetyTableRow | null>(null);
+  const [isRiskRatingSaving, setIsRiskRatingSaving] = useState(false);
   
   // Helper function to check if a failure is selected
   const isFailureSelected = (failureUuid: string) => {
@@ -240,7 +247,6 @@ export default function CoreSafetyTable({
       setIsModalVisible(true);
     }
   };
-
   // Helper function to close modal
   const handleModalClose = () => {
     setIsModalVisible(false);
@@ -255,6 +261,32 @@ export default function CoreSafetyTable({
       uuid: record.failureUuid,
       name: record.failureName
     });
+  };
+
+  // Risk rating handlers
+  const handleRiskRatingClick = (record: SafetyTableRow) => {
+    setSelectedFailureForRiskRating(record);
+    setIsRiskRatingModalVisible(true);
+  };
+
+  const handleRiskRatingCancel = () => {
+    setIsRiskRatingModalVisible(false);
+    setSelectedFailureForRiskRating(null);
+  };
+
+  const handleRiskRatingSave = async (severity: number, occurrence: number, detection: number) => {
+    if (!selectedFailureForRiskRating?.failureUuid || !onRiskRating) return;
+    
+    try {
+      setIsRiskRatingSaving(true);
+      await onRiskRating(selectedFailureForRiskRating.failureUuid, severity, occurrence, detection);
+      setIsRiskRatingModalVisible(false);
+      setSelectedFailureForRiskRating(null);
+    } catch (error) {
+      console.error('Error saving risk rating:', error);
+    } finally {
+      setIsRiskRatingSaving(false);
+    }
   };
 
   // State for managing column widths
@@ -563,27 +595,29 @@ export default function CoreSafetyTable({
 
     return baseColumn;
   });
-
   // Add actions column if handlers are provided
-  if (onEdit || onSave || onCancel || onAdd || onDelete || onFailureSelect) {
+  if (onEdit || onSave || onCancel || onAdd || onDelete || onFailureSelect || onRiskRating) {
     tableColumns.push({
       title: 'Actions',
       dataIndex: 'actions',
-      key: 'actions',
-      width: columnWidths['actions'] || (onFailureSelect ? 160 : 120), // Wider if link icon is present
+      key: 'actions',      width: columnWidths['actions'] || (onFailureSelect || onRiskRating ? 180 : 120), // Wider if link or risk rating icons are present
       onHeaderCell: () => ({
-        width: columnWidths['actions'] || (onFailureSelect ? 160 : 120),
+        width: columnWidths['actions'] || (onFailureSelect || onRiskRating ? 180 : 120),
         onResize: handleResize(columns.length, 'actions'),
       } as any),
       render: (_: unknown, record: SafetyTableRow, index: number) => {
         const editable = isEditing(record);
         const isFirstRowForComponent = showComponentActions && (index === 0 || 
           dataSource[index - 1]?.swComponentUuid !== record.swComponentUuid);
-        
-        // Don't show link icon for placeholder rows or rows without failure UUID
+          // Don't show link icon for placeholder rows or rows without failure UUID
         const canLink = record.failureName !== 'No failures defined' && 
                        record.failureUuid && 
                        onFailureSelect;
+        
+        // Don't show risk rating for placeholder rows or rows without failure UUID
+        const canRiskRating = record.failureName !== 'No failures defined' && 
+                              record.failureUuid && 
+                              onRiskRating;
         
         const selectionState = canLink ? getFailureSelectionState(record.failureUuid!) : null;
         
@@ -633,6 +667,19 @@ export default function CoreSafetyTable({
                                selectionState === 'second' ? '#ff7875' : undefined,
                     color: selectionState ? '#fff' : undefined
                   }}
+                />              </Tooltip>
+            )}
+            
+            {/* Risk Rating Icon */}
+            {canRiskRating && (
+              <Tooltip title="Set Risk Rating">
+                <Button 
+                  type="text"
+                  size="small"
+                  disabled={editingKey !== ''} 
+                  onClick={() => handleRiskRatingClick(record)}
+                  icon={<DashboardOutlined />}
+                  style={{ color: '#52c41a' }}
                 />
               </Tooltip>
             )}
@@ -723,13 +770,20 @@ export default function CoreSafetyTable({
         :global(.selected-failure-row:hover) {
           background-color: #e6f3ff !important;
         }
-      `}</style>
-
-      {/* Element Details Modal */}
+      `}</style>      {/* Element Details Modal */}
       <ElementDetailsModal
         isVisible={isModalVisible}
         onClose={handleModalClose}
         elementDetails={selectedElement}
+      />
+      
+      {/* Risk Rating Modal */}
+      <RiskRatingModal
+        visible={isRiskRatingModalVisible}
+        onCancel={handleRiskRatingCancel}
+        onSave={handleRiskRatingSave}
+        failureName={selectedFailureForRiskRating?.failureName || ''}
+        loading={isRiskRatingSaving}
       />
     </Form>
   );
