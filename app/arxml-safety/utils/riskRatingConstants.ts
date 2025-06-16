@@ -1,7 +1,7 @@
 // Risk rating constants for FMEA analysis
 
 export interface RiskRatingOption {
-  value: string;
+  value: number;
   label: string;
   description: string;
   color: string;
@@ -9,41 +9,41 @@ export interface RiskRatingOption {
 
 export const SEVERITY_OPTIONS: RiskRatingOption[] = [
   {
-    value: 'Low',
-    label: 'Low',
-    description: 'The impact of the failure is low',
+    value: 1,
+    label: 'QM impact',
+    description: 'No violation safety requiremetns',
     color: '#52c41a' // Green
   },
   {
-    value: 'Medium',
-    label: 'Medium',
-    description: 'A higher impact but not violating human life',
+    value: 2,
+    label: 'Indirect safety impact',
+    description: 'Safety impact only in combination with another failure, e.g. Safety mechansism is not working as expected',
     color: '#fadb14' // Light yellow
   },
   {
-    value: 'High',
-    label: 'High',
-    description: 'Potential harm of humans',
+    value: 3,
+    label: 'Direct safety impact',
+    description: 'Leads to a direct violation of safety requirements, e.g. wrong setting of target toreqe',
     color: '#ff4d4f' // Red
   }
 ];
 
 export const OCCURRENCE_OPTIONS: RiskRatingOption[] = [
   {
-    value: 'Low Risk of Failure',
-    label: 'Low',
+    value: 1,
+    label: 'Simple',
     description: 'Simple stateless component with no side effects',
     color: '#52c41a' // Green
   },
   {
-    value: 'Medium Risk of Failure',
-    label: 'Medium',
+    value: 2,
+    label: 'Medium complexity',
     description: 'Non trivial algorythm with some states and side effects',
     color: '#fadb14' // Light yellow
   },
   {
-    value: 'High Risk of Failure',
-    label: 'High',
+    value: 3,
+    label: 'High complexity',
     description: 'Complex component with states and complex algorythms',
     color: '#ff4d4f' // Red
   }
@@ -51,20 +51,20 @@ export const OCCURRENCE_OPTIONS: RiskRatingOption[] = [
 
 export const DETECTION_OPTIONS: RiskRatingOption[] = [
   {
-    value: 'Low Confidence',
-    label: 'Low',
+    value: 1,
+    label: 'Low Confidence',
     description: 'Difficult to detect potential failures in the component',
     color: '#ff4d4f' // Red (low confidence in detection is bad)
   },
   {
-    value: 'Medium Confidence',
-    label: 'Medium',
-    description: 'Placeholder description for medium detection',
+    value: 2,
+    label: 'Medium Confidence',
+    description: 'In most cases it is possible to detect potential failures in the component',
     color: '#fadb14' // Light yellow
   },
   {
-    value: 'High Confidence',
-    label: 'High',
+    value: 3,
+    label: 'High Confidence',
     description: 'Easy to detect potential failures in the component',
     color: '#52c41a' // Green (high confidence in detection is good)
   }

@@ -136,10 +136,10 @@ interface CoreSafetyTableProps {
   editingKey: string;
   onEdit?: (record: SafetyTableRow) => void;
   onSave?: (key: React.Key) => Promise<void>;
-  onCancel?: () => void;
-  onAdd?: (swComponentUuid: string, swComponentName: string) => void;
+  onCancel?: () => void;  onAdd?: (swComponentUuid: string, swComponentName: string) => void;
   onDelete?: (record: SafetyTableRow) => Promise<void>;
   onRiskRating?: (failureUuid: string, severity: number, occurrence: number, detection: number) => Promise<void>;
+  onRiskRatingClick?: (failureUuid: string, failureName: string, failureDescription?: string) => Promise<void>; // New enhanced handler
   isSaving?: boolean;
   pagination?: false | TableProps<SafetyTableRow>['pagination'];
   showComponentActions?: boolean;
@@ -196,8 +196,7 @@ const getColumnSearchProps = (dataIndex: string): ColumnType<SafetyTableRow> => 
 
 export default function CoreSafetyTable({
   dataSource,
-  columns,
-  loading = false,
+  columns,  loading = false,
   editingKey,
   onEdit,
   onSave,
@@ -205,6 +204,7 @@ export default function CoreSafetyTable({
   onAdd,
   onDelete,
   onRiskRating,
+  onRiskRatingClick,
   isSaving = false,
   pagination = { pageSize: 10 },
   showComponentActions = false,
@@ -264,9 +264,15 @@ export default function CoreSafetyTable({
   };
 
   // Risk rating handlers
-  const handleRiskRatingClick = (record: SafetyTableRow) => {
-    setSelectedFailureForRiskRating(record);
-    setIsRiskRatingModalVisible(true);
+  const handleRiskRatingClick = async (record: SafetyTableRow) => {
+    if (onRiskRatingClick && record.failureUuid) {
+      // Use the new enhanced handler that checks for existing risk ratings
+      await onRiskRatingClick(record.failureUuid, record.failureName, record.failureDescription);
+    } else {
+      // Fall back to the old behavior
+      setSelectedFailureForRiskRating(record);
+      setIsRiskRatingModalVisible(true);
+    }
   };
 
   const handleRiskRatingCancel = () => {
@@ -591,18 +597,18 @@ export default function CoreSafetyTable({
         editing: isEditing(record),
         selectOptions: col.selectOptions,
       });
-    }
-
-    return baseColumn;
+    }    return baseColumn;
   });
+
   // Add actions column if handlers are provided
-  if (onEdit || onSave || onCancel || onAdd || onDelete || onFailureSelect || onRiskRating) {
+  if (onEdit || onSave || onCancel || onAdd || onDelete || onFailureSelect || onRiskRating || onRiskRatingClick) {
     tableColumns.push({
       title: 'Actions',
       dataIndex: 'actions',
-      key: 'actions',      width: columnWidths['actions'] || (onFailureSelect || onRiskRating ? 180 : 120), // Wider if link or risk rating icons are present
+      key: 'actions',
+      width: columnWidths['actions'] || (onFailureSelect || onRiskRating || onRiskRatingClick ? 180 : 120), // Wider if link or risk rating icons are present
       onHeaderCell: () => ({
-        width: columnWidths['actions'] || (onFailureSelect || onRiskRating ? 180 : 120),
+        width: columnWidths['actions'] || (onFailureSelect || onRiskRating || onRiskRatingClick ? 180 : 120),
         onResize: handleResize(columns.length, 'actions'),
       } as any),
       render: (_: unknown, record: SafetyTableRow, index: number) => {
@@ -613,11 +619,10 @@ export default function CoreSafetyTable({
         const canLink = record.failureName !== 'No failures defined' && 
                        record.failureUuid && 
                        onFailureSelect;
-        
-        // Don't show risk rating for placeholder rows or rows without failure UUID
+          // Don't show risk rating for placeholder rows or rows without failure UUID
         const canRiskRating = record.failureName !== 'No failures defined' && 
                               record.failureUuid && 
-                              onRiskRating;
+                              (onRiskRating || onRiskRatingClick);
         
         const selectionState = canLink ? getFailureSelectionState(record.failureUuid!) : null;
         
@@ -769,8 +774,9 @@ export default function CoreSafetyTable({
         }
         :global(.selected-failure-row:hover) {
           background-color: #e6f3ff !important;
-        }
-      `}</style>      {/* Element Details Modal */}
+        }        `}</style>
+        
+        {/* Element Details Modal */}
       <ElementDetailsModal
         isVisible={isModalVisible}
         onClose={handleModalClose}
@@ -782,8 +788,7 @@ export default function CoreSafetyTable({
         visible={isRiskRatingModalVisible}
         onCancel={handleRiskRatingCancel}
         onSave={handleRiskRatingSave}
-        failureName={selectedFailureForRiskRating?.failureName || ''}
-        loading={isRiskRatingSaving}
+        failureName={selectedFailureForRiskRating?.failureName || ''}        loading={isRiskRatingSaving}
       />
     </Form>
   );

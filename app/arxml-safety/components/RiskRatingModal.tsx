@@ -1,13 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Modal, Form, Select, Button, Space, Typography, Divider, Card, Input } from 'antd';
-import { DashboardOutlined } from '@ant-design/icons';
+import React, { useEffect } from 'react';
+import { Modal, Form, Select, Button, Space, Typography, Divider, Input, Tabs, Popconfirm } from 'antd';
+import { PlusOutlined, DeleteOutlined, ClockCircleOutlined, EditOutlined, BugOutlined } from '@ant-design/icons';
 import { 
   SEVERITY_OPTIONS, 
   OCCURRENCE_OPTIONS, 
   DETECTION_OPTIONS, 
-  RATING_VALUE_MAP,
   type RiskRatingOption 
 } from '../utils/riskRatingConstants';
 
@@ -18,46 +17,90 @@ const { TextArea } = Input;
 interface RiskRatingModalProps {
   visible: boolean;
   onCancel: () => void;
-  onSave: (severity: number, occurrence: number, detection: number, ratingComment?: string) => Promise<void>;
+  onSave?: (severity: number, occurrence: number, detection: number, ratingComment?: string) => Promise<void>;
+  onOk?: (values: { severity: number; occurrence: number; detection: number; ratingComment?: string }) => Promise<void>;  onCreateNew?: () => void; // New callback for creating additional risk ratings
+  onDelete?: () => Promise<void>; // New callback for deleting risk ratings
   failureName: string;
+  failureDescription?: string; // New prop for failure description
   loading?: boolean;
+  // Enhanced props for multi-modal support
+  mode?: 'create' | 'edit' | 'tabs';
+  activeRiskRating?: {
+    uuid: string;
+    name: string;
+    severity: number;
+    occurrence: number;
+    detection: number;
+    ratingComment: string;
+    created: string;
+    lastModified: string;
+  } | null;
+  existingRiskRatings?: any[];
+  activeTabIndex?: number;
+  onTabChange?: (index: number) => void;
 }
 
 interface RiskRatingFormData {
-  severity: string;
-  occurrence: string;
-  detection: string;
+  severity: number;
+  occurrence: number;
+  detection: number;
   ratingComment?: string;
 }
 
 const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
   visible,
   onCancel,
-  onSave,
+  onSave,  onOk,
+  onCreateNew,
+  onDelete,
   failureName,
-  loading = false
+  failureDescription,
+  loading = false,
+  mode = 'create',
+  activeRiskRating = null,
+  existingRiskRatings = [],
+  activeTabIndex = 0,
+  onTabChange
 }) => {
   const [form] = Form.useForm<RiskRatingFormData>();
-  const [selectedSeverity, setSelectedSeverity] = useState<string>();
-  const [selectedOccurrence, setSelectedOccurrence] = useState<string>();
-  const [selectedDetection, setSelectedDetection] = useState<string>();const handleOk = async () => {
+
+  // Effect to populate form when editing existing risk rating
+  useEffect(() => {
+    if (mode === 'edit' || mode === 'tabs') {
+      if (activeRiskRating) {
+        // Use the integer values directly
+        form.setFieldsValue({
+          severity: activeRiskRating.severity,
+          occurrence: activeRiskRating.occurrence,
+          detection: activeRiskRating.detection,
+          ratingComment: activeRiskRating.ratingComment || ''
+        });
+      }
+    } else {
+      // Reset form for create mode
+      form.resetFields();
+    }
+  }, [mode, activeRiskRating, form]);
+
+  const handleOk = async () => {
     try {
       const values = await form.validateFields();
-      console.log('Form values:', values); // Debug log
       
-      // Convert string values to numbers using the mapping
-      const severityValue = RATING_VALUE_MAP[values.severity];
-      const occurrenceValue = RATING_VALUE_MAP[values.occurrence];
-      const detectionValue = RATING_VALUE_MAP[values.detection];
+      // Use the integer values directly (no conversion needed)
       
-      console.log('Converted values:', { severityValue, occurrenceValue, detectionValue }); // Debug log
+      // Support both old onSave and new onOk interfaces
+      if (onOk) {
+        await onOk({
+          severity: values.severity,
+          occurrence: values.occurrence,
+          detection: values.detection,
+          ratingComment: values.ratingComment
+        });      } else if (onSave) {
+        await onSave(values.severity, values.occurrence, values.detection, values.ratingComment);
+      }
       
-      await onSave(severityValue, occurrenceValue, detectionValue, values.ratingComment);
-        // Reset form
+      // Reset form
       form.resetFields();
-      setSelectedSeverity(undefined);
-      setSelectedOccurrence(undefined);
-      setSelectedDetection(undefined);
     } catch (error) {
       console.error('Form validation failed:', error);
     }
@@ -65,131 +108,102 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
 
   const handleCancel = () => {
     form.resetFields();
-    setSelectedSeverity(undefined);
-    setSelectedOccurrence(undefined);
-    setSelectedDetection(undefined);
     onCancel();
-  };const renderSelectOption = (option: RiskRatingOption) => (
-    <Option key={option.value} value={option.value} title={option.description}>
-      <div style={{ display: 'flex', alignItems: 'center' }}>
-        <div 
-          style={{ 
-            width: '12px', 
-            height: '12px', 
-            backgroundColor: option.color, 
-            borderRadius: '50%', 
-            marginRight: '8px' 
-          }} 
-        />
-        {option.label}
-      </div>
-    </Option>
-  );
-
-  const getSelectedOptionColor = (value: string | undefined, options: RiskRatingOption[]) => {
-    if (!value) return undefined;
-    const option = options.find(opt => opt.value === value);
-    return option?.color;
   };
 
-  return (
-    <Modal
-      title={
-        <Space>
-          <DashboardOutlined style={{ color: '#1890ff' }} />
-          <span>Risk Rating Assessment</span>
-        </Space>
-      }
-      open={visible}
-      onCancel={handleCancel}
-      footer={[
-        <Button key="cancel" onClick={handleCancel} disabled={loading}>
-          Cancel
-        </Button>,
-        <Button
-          key="save"
-          type="primary"
-          onClick={handleOk}
-          loading={loading}
-          icon={<DashboardOutlined />}
-        >
-          Save Risk Rating        </Button>,
-      ]}
-      width={600}
-      destroyOnHidden
-    >
-      <Card
-        size="small"
-        style={{ marginBottom: 16, backgroundColor: '#f6f8fa' }}
-      >
-        <Text strong>Failure Mode: </Text>
-        <Text>{failureName}</Text>
-      </Card>
+  const getModalTitle = () => {
+    switch (mode) {
+      case 'create':
+        return 'Create Risk Rating Assessment';
+      case 'edit':
+        return 'Edit Risk Rating Assessment';
+      case 'tabs':
+        return 'Risk Rating Assessments';
+      default:
+        return 'Risk Rating Assessment';    }
+  };
 
+  const renderFormContent = () => {
+    return (
       <Form
         form={form}
         layout="vertical"
         requiredMark={false}
-      >        <Form.Item
+      >
+        <Form.Item
           name="severity"
-          label="Severity"
+          label={<span style={{ fontWeight: 'bold' }}>Severity</span>}
           rules={[{ required: true, message: 'Please select a severity level' }]}
         >
           <Select
             placeholder="Select severity level"
-            style={{ 
-              width: '100%',
-              borderColor: selectedSeverity ? getSelectedOptionColor(selectedSeverity, SEVERITY_OPTIONS) : undefined
-            }}
+            style={{ width: '100%' }}
             dropdownStyle={{ minWidth: '400px' }}
-            onChange={(value) => {
-              console.log('Severity changed:', value);
-              setSelectedSeverity(value);
-            }}
           >
-            {SEVERITY_OPTIONS.map(renderSelectOption)}
+            {SEVERITY_OPTIONS.map(option => (
+              <Option 
+                key={option.value} 
+                value={option.value} 
+                title={option.description}
+                style={{ color: option.color }}
+              >                <span style={{ color: option.color, fontWeight: 'bold' }}>
+                  {option.label}
+                </span>
+              </Option>
+            ))}
           </Select>
         </Form.Item>
 
-        <Divider />        <Form.Item
+        <Divider />
+
+        <Form.Item
           name="occurrence"
-          label="Occurrence"
+          label={<span style={{ fontWeight: 'bold' }}>Occurrence</span>}
           rules={[{ required: true, message: 'Please select an occurrence level' }]}
         >
           <Select
             placeholder="Select occurrence level"
-            style={{ 
-              width: '100%',
-              borderColor: selectedOccurrence ? getSelectedOptionColor(selectedOccurrence, OCCURRENCE_OPTIONS) : undefined
-            }}
+            style={{ width: '100%' }}
             dropdownStyle={{ minWidth: '400px' }}
-            onChange={(value) => {
-              console.log('Occurrence changed:', value);
-              setSelectedOccurrence(value);
-            }}
           >
-            {OCCURRENCE_OPTIONS.map(renderSelectOption)}
-          </Select>
+            {OCCURRENCE_OPTIONS.map(option => (
+              <Option 
+                key={option.value} 
+                value={option.value} 
+                title={option.description}
+                style={{ color: option.color }}
+              >
+                <span style={{ color: option.color, fontWeight: 'bold' }}>
+                  {option.label}
+                </span>
+              </Option>
+            ))}          </Select>
         </Form.Item>
 
-        <Divider />        <Form.Item
+        <Divider />
+
+        <Form.Item
           name="detection"
-          label="Detection"
+          label={<span style={{ fontWeight: 'bold' }}>Detection</span>}
           rules={[{ required: true, message: 'Please select a detection level' }]}
         >
           <Select
             placeholder="Select detection level"
-            style={{ 
-              width: '100%',
-              borderColor: selectedDetection ? getSelectedOptionColor(selectedDetection, DETECTION_OPTIONS) : undefined
-            }}
+            style={{ width: '100%' }}
             dropdownStyle={{ minWidth: '400px' }}
-            onChange={(value) => {
-              console.log('Detection changed:', value);
-              setSelectedDetection(value);
-            }}
           >
-            {DETECTION_OPTIONS.map(renderSelectOption)}
+            {DETECTION_OPTIONS.map(option => (
+              <Option 
+                key={option.value} 
+                value={option.value} 
+                title={option.description}
+                style={{ color: option.color }}
+              >
+                <span style={{ color: option.color, fontWeight: 'bold' }}>
+                  {option.label}
+                </span>
+              </Option>
+            ))}
           </Select>
         </Form.Item>
 
@@ -205,8 +219,148 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
             showCount
             maxLength={500}
           />
-        </Form.Item>
-      </Form>
+        </Form.Item>      </Form>
+    );
+  };
+
+  const renderModalContent = () => {
+    if (mode === 'tabs' && existingRiskRatings.length > 1) {
+      const tabItems = existingRiskRatings.map((rating, index) => ({
+        key: index.toString(),
+        label: `Risk Rating ${index + 1}`,
+        children: renderFormContent()
+      }));
+
+      return (
+        <Tabs
+          activeKey={activeTabIndex.toString()}
+          onChange={(key) => onTabChange && onTabChange(parseInt(key))}
+          items={tabItems}
+        />
+      );
+    }
+    
+    return renderFormContent();
+  };const getModalFooter = () => {
+    const buttons = [
+      <Button key="cancel" onClick={handleCancel} disabled={loading} size="small">
+        Cancel
+      </Button>
+    ];
+
+    // Add "Delete" button for edit and tabs modes (when editing existing risk ratings)
+    if ((mode === 'edit' || mode === 'tabs') && activeRiskRating && onDelete) {
+      buttons.push(
+        <Popconfirm
+          key="delete"
+          title="Delete Risk Rating"
+          description={`Are you sure you want to delete "${activeRiskRating.name}"? This action cannot be undone.`}
+          onConfirm={onDelete}
+          okText="Delete"
+          cancelText="Cancel"
+          okType="danger"
+          disabled={loading}
+        >
+          <Button
+            danger
+            disabled={loading}
+            icon={<DeleteOutlined />}
+            size="small"
+          >
+            Delete
+          </Button>
+        </Popconfirm>
+      );
+    }
+
+    // Add "Create New" button for edit and tabs modes
+    if ((mode === 'edit' || mode === 'tabs') && onCreateNew) {
+      buttons.push(
+        <Button
+          key="createNew"          onClick={onCreateNew}
+          disabled={loading}
+          icon={<PlusOutlined />}
+          size="small"
+        >
+          New Rating Version
+        </Button>
+      );
+    }
+
+    // Add Save/Update button
+    buttons.push(      <Button
+        key="save"
+        type="primary"
+        onClick={handleOk}
+        loading={loading}
+        size="small"      >
+        {mode === 'create' ? 'Create Rating' : 'Update Rating'}
+      </Button>
+    );
+
+    return buttons;
+  };
+
+  return (
+    <Modal
+      title={getModalTitle()}
+      open={visible}
+      onCancel={handleCancel}
+      footer={
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '16px' }}>
+          {getModalFooter()}
+        </div>
+      }
+      width={600}
+      destroyOnHidden
+    >
+      <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <BugOutlined style={{ color: '#fa8c16', fontSize: '18px' }} />
+            <Text style={{ fontSize: '16px', fontWeight: 'bold' }}>
+              {failureName}
+            </Text>
+          </div>
+          
+          {mode === 'edit' && activeRiskRating && (
+            <Text type="secondary" style={{ fontSize: '12px' }}>
+              Editing: {activeRiskRating.name}
+            </Text>
+          )}
+            {mode === 'tabs' && activeRiskRating && failureDescription && (
+            <Text style={{ fontSize: '12px', color: '#595959' }}>
+              {failureDescription}
+            </Text>
+          )}
+          
+          {mode === 'create' && existingRiskRatings.length > 0 && (
+            <Text type="secondary" style={{ fontSize: '12px' }}>
+              Creating additional risk rating ({existingRiskRatings.length} existing)
+            </Text>
+          )}
+        </div>
+
+        {/* Timestamp Information for Edit and Tabs modes */}
+        {(mode === 'edit' || mode === 'tabs') && activeRiskRating && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <ClockCircleOutlined style={{ color: '#8c8c8c', fontSize: '14px' }} />
+              <Text type="secondary" style={{ fontSize: '12px' }}>
+                Created: {activeRiskRating.created ? new Date(activeRiskRating.created).toLocaleString() : 'N/A'}
+              </Text>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <EditOutlined style={{ color: '#8c8c8c', fontSize: '14px' }} />
+              <Text type="secondary" style={{ fontSize: '12px' }}>
+                Modified: {activeRiskRating.lastModified ? new Date(activeRiskRating.lastModified).toLocaleString() : 'N/A'}
+              </Text>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {renderModalContent()}
     </Modal>
   );
 };

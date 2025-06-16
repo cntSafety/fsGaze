@@ -1,12 +1,10 @@
 import React from 'react';
-import { Card, Typography, Button, message } from 'antd';
+import { Button } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
-import CoreSafetyTable, { SafetyTableColumn } from '../CoreSafetyTable';
+import { SafetyTableColumn } from '../CoreSafetyTable';
 import { useSwFailureModes } from './hooks/useSwFailureModes';
 import { SwComponent, Failure } from './types';
-import { createRiskRatingNode } from '@/app/services/neo4j/queries/safety';
-
-const { Title } = Typography;
+import { BaseFailureModeTable } from './BaseFailureModeTable';
 
 interface SwFailureModesTableProps {
   swComponentUuid: string;
@@ -42,26 +40,18 @@ export default function SwFailureModesTable({
     handleSave,
     handleCancel,
     handleDelete,
-    handleAddFailure  } = useSwFailureModes(swComponentUuid, swComponent, failures, setFailures);
+    handleAddFailure
+  } = useSwFailureModes(swComponentUuid, swComponent, failures, setFailures);
 
-  // Risk rating handler
-  const handleRiskRating = async (failureUuid: string, severity: number, occurrence: number, detection: number, ratingComment?: string) => {
-    try {
-      const result = await createRiskRatingNode(failureUuid, severity, occurrence, detection, ratingComment);
-      
-      if (result.success) {
-        message.success('Risk rating saved successfully!');
-      } else {
-        message.error(`Error saving risk rating: ${result.message}`);
-      }
-    } catch (error) {
-      console.error('Error saving risk rating:', error);
-      message.error('Failed to save risk rating');
-    }
-  };
-
-  // Define columns for the failure modes table
+  // Define columns for the SW failure modes table
   const columns: SafetyTableColumn[] = [
+    {
+      key: 'swComponentName',
+      title: 'SW Component',
+      dataIndex: 'swComponentName',
+      searchable: true,
+      width: 200,
+    },
     {
       key: 'failureName',
       title: 'Failure Name',
@@ -78,7 +68,7 @@ export default function SwFailureModesTable({
       editable: true,
       searchable: true,
       ellipsis: true,
-      minWidth: 250,
+      minWidth: 200,
       render: (text: unknown) => String(text || '-'),
     },
     {
@@ -100,83 +90,61 @@ export default function SwFailureModesTable({
   ];
 
   return (
-    <Card>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <Title level={3} style={{ margin: 0 }}>
-          Failure Modes for SW Component
-        </Title>
-        <Button 
-          type="primary" 
-          icon={<PlusOutlined />} 
-          onClick={handleAddFailure}
-          disabled={editingKey !== ''}
-        >
-          Add Failure Mode
-        </Button>
-      </div>
-      
-      {tableData.length > 0 ? (        <CoreSafetyTable
-          dataSource={tableData}
-          columns={columns}
-          loading={false}
-          editingKey={editingKey}
-          onEdit={handleEdit}
-          onSave={handleSave}
-          onCancel={handleCancel}
-          onDelete={handleDelete}
-          onRiskRating={handleRiskRating}
-          isSaving={isSaving}
-          form={form}
-          onFailureSelect={onFailureSelect}
-          selectedFailures={selectedFailures}
-          pagination={{
-            current: currentPage,
-            pageSize: pageSize,
-            showSizeChanger: true,
-            showQuickJumper: true,
-            showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} failure modes`,
-            pageSizeOptions: ['10', '20', '50'],
-            onChange: (page, size) => {
-              // Cancel editing if we're changing pages while editing
-              if (editingKey !== '') {
-                handleCancel();
-              }
-              setCurrentPage(page);
-              if (size !== pageSize) {
-                setPageSize(size);
-              }
-            },
-            onShowSizeChange: (current, size) => {
-              // Cancel editing if we're changing page size while editing
-              if (editingKey !== '') {
-                handleCancel();
-              }
-              setCurrentPage(1); // Reset to first page when changing page size
-              setPageSize(size);
-            },
-          }}
-        />
-      ) : (
-        <div style={{ 
-          textAlign: 'center', 
-          padding: '40px',
-          backgroundColor: '#fafafa',
-          borderRadius: '8px'
-        }}>
-          <Typography.Text type="secondary" style={{ fontSize: '16px' }}>
-            No failure modes defined for this component
-          </Typography.Text>
-          <br />
-          <Button 
+    <BaseFailureModeTable
+      title={
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+          <span>SW Failure Modes</span>          <Button 
             type="primary" 
             icon={<PlusOutlined />} 
-            onClick={handleAddFailure}
-            style={{ marginTop: '16px' }}
+            onClick={() => handleAddFailure()}
+            size="small"
           >
-            Add First Failure Mode
+            Add Failure Mode
           </Button>
         </div>
-      )}
-    </Card>
+      }
+      dataSource={tableData}
+      columns={columns}
+      loading={false}
+      editingKey={editingKey}
+      onEdit={handleEdit}
+      onSave={handleSave}
+      onCancel={handleCancel}
+      onAdd={handleAddFailure}
+      onDelete={handleDelete}
+      isSaving={isSaving}
+      showComponentActions={true}
+      form={form}
+      onFailureSelect={onFailureSelect}
+      selectedFailures={selectedFailures}
+      pagination={{
+        current: currentPage,
+        pageSize: pageSize,
+        showSizeChanger: true,
+        showQuickJumper: true,
+        showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} failure modes`,
+        pageSizeOptions: ['10', '20', '50'],
+        onChange: (page, size) => {
+          if (editingKey !== '') {
+            handleCancel();
+          }
+          setCurrentPage(page);
+          if (size !== pageSize) {
+            setPageSize(size);
+          }
+        },
+        onShowSizeChange: (current, size) => {
+          if (editingKey !== '') {
+            handleCancel();
+          }
+          setCurrentPage(1);
+          setPageSize(size);
+        },
+      }}
+      emptyStateConfig={{
+        primaryMessage: 'No failure modes defined for this SW component',
+        secondaryMessage: `Component: ${swComponent.name}`,
+      }}
+    />
   );
 }
