@@ -38,7 +38,6 @@ interface FMFlowProps {
     first: { uuid: string; name: string } | null;
     second: { uuid: string; name: string } | null;
   };
-  onRefresh?: () => void;
 }
 
 interface NodeData {
@@ -169,14 +168,14 @@ export default function FMFlow({
   receiverPorts,
   receiverPortFailures,
   onFailureSelect,
-  selectedFailures,
-  onRefresh
+  selectedFailures
 }: FMFlowProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [isAutoLayout, setIsAutoLayout] = useState(false); // Disabled by default for simple layout
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isCreatingCausation, setIsCreatingCausation] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0); // Trigger to refresh causation data
   
   // Context menu state for edge deletion
   const [contextMenu, setContextMenu] = useState<{
@@ -248,10 +247,8 @@ export default function FMFlow({
       if (result.success) {
         message.success(`Causation created: "${sourceNode.data.label}" → "${targetNode.data.label}"`);
         
-        // Refresh the data to get the new causation edge
-        if (onRefresh) {
-          onRefresh();
-        }
+        // Trigger internal refresh of causation data
+        setRefreshTrigger(prev => prev + 1);
       } else {
         message.error(`Failed to create causation: ${result.message}`);
       }
@@ -261,7 +258,7 @@ export default function FMFlow({
     } finally {
       setIsCreatingCausation(false);
     }
-  }, [nodes, onRefresh, isCreatingCausation]);
+  }, [nodes, isCreatingCausation]);
 
   // Handle right-click on edges (for causation deletion)
   const onEdgeContextMenu = useCallback((event: React.MouseEvent, edge: Edge) => {
@@ -295,13 +292,11 @@ export default function FMFlow({
       if (result.success) {
         message.success(`Causation "${contextMenu.causationName}" deleted successfully`);
         
-        // Remove the edge from the diagram
+        // Remove the edge from the diagram immediately
         setEdges((edges) => edges.filter(edge => edge.id !== contextMenu.edgeId));
         
-        // Optionally refresh the data
-        if (onRefresh) {
-          onRefresh();
-        }
+        // Trigger internal refresh to ensure data consistency
+        setRefreshTrigger(prev => prev + 1);
       } else {
         message.error(`Failed to delete causation: ${result.message}`);
       }
@@ -311,7 +306,7 @@ export default function FMFlow({
     } finally {
       hideContextMenu();
     }
-  }, [contextMenu, hideContextMenu, onRefresh, setEdges]);
+  }, [contextMenu, hideContextMenu, setEdges]);
 
   // Auto-layout function using ELK
   const getLayoutedElements = useCallback(async (nodes: Node[], edges: Edge[]) => {
@@ -515,7 +510,8 @@ export default function FMFlow({
     getLayoutedElements,
     setNodes,
     setEdges,
-    fetchCausationRelationships, // Add this dependency
+    fetchCausationRelationships,
+    refreshTrigger, // Add this to trigger refresh after causation creation
   ]);
 
   const handleNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
@@ -557,22 +553,21 @@ export default function FMFlow({
   };
 
   const handleRefresh = async () => {
-    if (onRefresh) {
-      setIsRefreshing(true);
-      try {
-        await onRefresh();
-        Modal.success({
-          title: 'Data Refreshed',
-          content: 'Failure mode data has been refreshed successfully!',
-        });
-      } catch (error) {
-        Modal.error({
-          title: 'Refresh Failed',
-          content: 'Failed to refresh failure mode data. Please try again.',
-        });
-      } finally {
-        setIsRefreshing(false);
-      }
+    setIsRefreshing(true);
+    try {
+      // Trigger internal refresh of causation data
+      setRefreshTrigger(prev => prev + 1);
+      Modal.success({
+        title: 'Data Refreshed',
+        content: 'Failure mode data has been refreshed successfully!',
+      });
+    } catch (error) {
+      Modal.error({
+        title: 'Refresh Failed',
+        content: 'Failed to refresh failure mode data. Please try again.',
+      });
+    } finally {
+      setIsRefreshing(false);
     }
   };
 

@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Button, Spin, Card, Typography, Modal, Tabs } from 'antd';
-import { ArrowLeftOutlined, TableOutlined, ApartmentOutlined } from '@ant-design/icons';
+import { Button, Spin, Card, Typography, Modal } from 'antd';
+import { ArrowLeftOutlined, TableOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import { useSwSafetyData } from './safety-analysis/hooks/useSwSafetyData';
 import SwComponentInfo from './safety-analysis/SwComponentInfo';
@@ -182,70 +182,53 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
         providerPorts={providerPorts}
       />
 
-      <Tabs
-        defaultActiveKey="tables"
-        items={[
-          {
-            key: 'tables',
-            label: (
-              <span>
-                <TableOutlined />
-                Tables View
-              </span>
-            ),
-            children: (
-              <>
-                <SwFailureModesTable 
-                  swComponentUuid={swComponentUuid}
-                  swComponent={swComponent}
-                  failures={failures}
-                  setFailures={setFailures}
-                  onFailureSelect={handleFailureSelection}
-                  selectedFailures={selectedFailures}
-                />
-
-                <ProviderPortsFailureModesTable 
-                  providerPorts={providerPorts}
-                  portFailures={portFailures}
-                  setPortFailures={setPortFailures}
-                  onFailureSelect={handleFailureSelection}
-                  selectedFailures={selectedFailures}
-                />
-
-                <ReceiverPortsFailureModesTable 
-                  receiverPorts={receiverPorts}
-                  portFailures={receiverPortFailures}
-                  setPortFailures={setReceiverPortFailures}
-                  onFailureSelect={handleFailureSelection}
-                  selectedFailures={selectedFailures}
-                />
-              </>
-            ),
-          },
-          {
-            key: 'flow',
-            label: (
-              <span>
-                <ApartmentOutlined />
-                Flow Diagram
-              </span>
-            ),
-            children: (
-              <FMFlow
-                swComponent={swComponent}
-                failures={failures}
-                providerPorts={providerPorts}
-                portFailures={portFailures}
-                receiverPorts={receiverPorts}
-                receiverPortFailures={receiverPortFailures}
-                onFailureSelect={handleFailureSelection}
-                selectedFailures={selectedFailures}
-                onRefresh={refreshData}
-              />
-            ),
-          },
-        ]}
+      {/* Flow Diagram */}
+      <FMFlow
+        swComponent={swComponent}
+        failures={failures}
+        providerPorts={providerPorts}
+        portFailures={portFailures}
+        receiverPorts={receiverPorts}
+        receiverPortFailures={receiverPortFailures}
+        onFailureSelect={handleFailureSelection}
+        selectedFailures={selectedFailures}
       />
+
+      {/* Tables Section */}
+      <Card 
+        title={
+          <span>
+            <TableOutlined style={{ marginRight: 8 }} />
+            Failure Mode Tables
+          </span>
+        }
+        style={{ marginTop: '16px' }}
+      >
+        <SwFailureModesTable 
+          swComponentUuid={swComponentUuid}
+          swComponent={swComponent}
+          failures={failures}
+          setFailures={setFailures}
+          onFailureSelect={handleFailureSelection}
+          selectedFailures={selectedFailures}
+        />
+
+        <ProviderPortsFailureModesTable 
+          providerPorts={providerPorts}
+          portFailures={portFailures}
+          setPortFailures={setPortFailures}
+          onFailureSelect={handleFailureSelection}
+          selectedFailures={selectedFailures}
+        />
+
+        <ReceiverPortsFailureModesTable 
+          receiverPorts={receiverPorts}
+          portFailures={receiverPortFailures}
+          setPortFailures={setReceiverPortFailures}
+          onFailureSelect={handleFailureSelection}
+          selectedFailures={selectedFailures}
+        />
+      </Card>
     </div>
   );
 }
