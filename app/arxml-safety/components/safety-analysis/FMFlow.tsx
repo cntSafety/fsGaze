@@ -19,8 +19,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { Button, Card, Typography, Space, Tag, Modal, message } from 'antd';
-import { NodeCollapseOutlined, SaveOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
-import ELK from 'elkjs/lib/elk.bundled.js';
+import { NodeCollapseOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import { SwComponent, Failure, PortFailure, ProviderPort } from './types';
 import { getSafetyGraph, deleteCausationNode, createCausationBetweenFailures } from '@/app/services/neo4j/queries/safety';
 
@@ -51,15 +50,17 @@ interface NodeData {
 
 // Custom node component for SW Component failures (center)
 function SwFailureNode({ data }: { data: NodeData }) {
+  const showBorder = ['A', 'B', 'C', 'D'].includes(data.asil);
+  
   return (
     <div style={{
       padding: '12px 16px',
       borderRadius: '8px',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      border: '2px solid #4C51BF',
+      background: 'rgba(248, 250, 252, 1)', // Light gray/white background
+      border: showBorder ? '3px solid #F59E0B' : 'none', // Orange border for ASIL A-D
       boxShadow: '0 4px 8px rgba(0, 0, 0, 0.15)',
       minWidth: '180px',
-      color: 'white',
+      color: '#1F2937', // Dark gray text
       textAlign: 'center',
       position: 'relative'
     }}>
@@ -68,7 +69,7 @@ function SwFailureNode({ data }: { data: NodeData }) {
         type="target"
         position={Position.Left}
         id="left"
-        style={{ background: '#FFA726', width: '10px', height: '10px', left: '-5px' }}
+        style={{ background: '#6B7280', width: '10px', height: '10px', left: '-5px' }}
       />
       
       {/* Output handle for propagating failures */}
@@ -76,14 +77,14 @@ function SwFailureNode({ data }: { data: NodeData }) {
         type="source"
         position={Position.Right}
         id="right"
-        style={{ background: '#FFA726', width: '10px', height: '10px', right: '-5px' }}
+        style={{ background: '#6B7280', width: '10px', height: '10px', right: '-5px' }}
       />
       
       <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '4px' }}>
         {data.label}
       </div>
       <div style={{ fontSize: '11px', opacity: 0.9 }}>
-        ASIL: {data.asil}
+        <span style={{ fontWeight: 'bold' }}>ASIL:</span> <span style={{ fontWeight: 'bold' }}>{data.asil}</span>
       </div>
       {data.description && (
         <div style={{ fontSize: '10px', opacity: 0.8, marginTop: '2px' }}>
@@ -96,32 +97,41 @@ function SwFailureNode({ data }: { data: NodeData }) {
 
 // Custom node component for receiver port failures (left side)
 function ReceiverPortFailureNode({ data }: { data: NodeData }) {
+  const showBorder = ['A', 'B', 'C', 'D'].includes(data.asil);
+  
   return (
     <div style={{
       padding: '10px 14px',
       borderRadius: '6px',
-      background: 'rgba(34, 197, 94, 0.15)',
-      border: '2px solid #22C55E',
+      background: 'rgba(219, 234, 254, 1)', // Light blue background for receivers
+      border: showBorder ? '3px solid #F59E0B' : 'none', // Orange border for ASIL A-D
       boxShadow: '0 2px 6px rgba(0, 0, 0, 0.1)',
-      minWidth: '160px',
-      position: 'relative'
+      minWidth: '160px', // Minimum width, can expand for longer content
+      maxWidth: '280px', // Maximum width to prevent excessive expansion
+      position: 'relative',
+      textAlign: 'right', // Right-align the text content
+      whiteSpace: 'nowrap', // Prevent text wrapping for port names
+      overflow: 'hidden', // Hide overflow if text is too long
+      textOverflow: 'ellipsis', // Show ellipsis for very long text
+      transform: 'translateX(calc(200px - 100%))', // Move so right edge aligns at 200px (250px gap from SW at 450px)
+      marginLeft: '0'
     }}>
       {/* Output handle for propagating to SW component failures */}
       <Handle
         type="source"
         position={Position.Right}
         id="right"
-        style={{ background: '#22C55E', width: '8px', height: '8px', right: '-4px' }}
+        style={{ background: '#3B82F6', width: '8px', height: '8px', right: '-4px' }}
       />
       
-      <div style={{ fontSize: '12px', fontWeight: '600', color: '#15803d', marginBottom: '2px' }}>
+      <div style={{ fontSize: '12px', fontWeight: '600', color: '#9CA3AF', marginBottom: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {data.portName}
       </div>
-      <div style={{ fontSize: '11px', fontWeight: '500', color: '#374151' }}>
+      <div style={{ fontSize: '13px', fontWeight: '700', color: '#374151', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {data.label}
       </div>
       <div style={{ fontSize: '10px', color: '#6B7280' }}>
-        ASIL: {data.asil}
+        <span style={{ fontWeight: 'bold' }}>ASIL:</span> <span style={{ fontWeight: 'bold' }}>{data.asil}</span>
       </div>
     </div>
   );
@@ -129,12 +139,14 @@ function ReceiverPortFailureNode({ data }: { data: NodeData }) {
 
 // Custom node component for provider port failures (right side)
 function ProviderPortFailureNode({ data }: { data: NodeData }) {
+  const showBorder = ['A', 'B', 'C', 'D'].includes(data.asil);
+  
   return (
     <div style={{
       padding: '10px 14px',
       borderRadius: '6px',
-      background: 'rgba(59, 130, 246, 0.15)',
-      border: '2px solid #3B82F6',
+      background: 'rgba(254, 240, 138, 1)', // Light yellow background for providers
+      border: showBorder ? '3px solid #F59E0B' : 'none', // Orange border for ASIL A-D
       boxShadow: '0 2px 6px rgba(0, 0, 0, 0.1)',
       minWidth: '160px',
       position: 'relative'
@@ -144,21 +156,83 @@ function ProviderPortFailureNode({ data }: { data: NodeData }) {
         type="target"
         position={Position.Left}
         id="left"
-        style={{ background: '#3B82F6', width: '8px', height: '8px', left: '-4px' }}
+        style={{ background: '#F59E0B', width: '8px', height: '8px', left: '-4px' }}
       />
       
-      <div style={{ fontSize: '12px', fontWeight: '600', color: '#1d4ed8', marginBottom: '2px' }}>
+      <div style={{ fontSize: '12px', fontWeight: '600', color: '#9CA3AF', marginBottom: '2px' }}>
         {data.portName}
       </div>
-      <div style={{ fontSize: '11px', fontWeight: '500', color: '#374151' }}>
+      <div style={{ fontSize: '13px', fontWeight: '700', color: '#374151' }}>
         {data.label}
       </div>
       <div style={{ fontSize: '10px', color: '#6B7280' }}>
-        ASIL: {data.asil}
+        <span style={{ fontWeight: 'bold' }}>ASIL:</span> <span style={{ fontWeight: 'bold' }}>{data.asil}</span>
       </div>
     </div>
   );
 }
+
+// *** NEW: BARYCENTER LAYOUT ALGORITHM ***
+const layoutNodesWithBarycenter = (nodes: Node[], edges: Edge[]): Node[] => {
+  const receiverNodes = nodes.filter(n => n.type === 'receiverPortFailure');
+  const swNodes = nodes.filter(n => n.type === 'swFailure');
+  const providerNodes = nodes.filter(n => n.type === 'providerPortFailure');
+
+  if (swNodes.length === 0) return nodes; // No central nodes to align
+
+  const nodePositions = new Map(nodes.map(n => [n.id, { ...n.position }]));
+  const forwardNeighbors = new Map<string, string[]>();
+  const backwardNeighbors = new Map<string, string[]>();
+
+  edges.forEach(edge => {
+    if (!forwardNeighbors.has(edge.source)) forwardNeighbors.set(edge.source, []);
+    forwardNeighbors.get(edge.source)!.push(edge.target);
+    if (!backwardNeighbors.has(edge.target)) backwardNeighbors.set(edge.target, []);
+    backwardNeighbors.get(edge.target)!.push(edge.source);
+  });
+
+  const calculateBarycenter = (nodeId: string, neighborsMap: Map<string, string[]>) => {
+    const neighborIds = neighborsMap.get(nodeId);
+    if (!neighborIds || neighborIds.length === 0) {
+      return nodePositions.get(nodeId)?.y ?? 0;
+    }
+    const sum = neighborIds.reduce((acc, neighborId) => acc + (nodePositions.get(neighborId)?.y ?? 0), 0);
+    return sum / neighborIds.length;
+  };
+
+  const ITERATIONS = 8;
+  const V_SPACING = 120; // Vertical spacing between nodes in a column
+
+  for (let i = 0; i < ITERATIONS; i++) {
+    // Left -> Right Sweep
+    swNodes.sort((a, b) => calculateBarycenter(a.id, backwardNeighbors) - calculateBarycenter(b.id, backwardNeighbors));
+    swNodes.forEach((node, index) => {
+      const currentPos = nodePositions.get(node.id)!;
+      nodePositions.set(node.id, { x: currentPos.x, y: index * V_SPACING }); // Preserve X position
+    });
+    
+    providerNodes.sort((a, b) => calculateBarycenter(a.id, backwardNeighbors) - calculateBarycenter(b.id, backwardNeighbors));
+    providerNodes.forEach((node, index) => {
+      const currentPos = nodePositions.get(node.id)!;
+      nodePositions.set(node.id, { x: currentPos.x, y: index * V_SPACING }); // Preserve X position
+    });
+
+    // Right -> Left Sweep
+    swNodes.sort((a, b) => calculateBarycenter(a.id, forwardNeighbors) - calculateBarycenter(b.id, forwardNeighbors));
+    swNodes.forEach((node, index) => {
+      const currentPos = nodePositions.get(node.id)!;
+      nodePositions.set(node.id, { x: currentPos.x, y: index * V_SPACING }); // Preserve X position
+    });
+
+    receiverNodes.sort((a, b) => calculateBarycenter(a.id, forwardNeighbors) - calculateBarycenter(b.id, forwardNeighbors));
+    receiverNodes.forEach((node, index) => {
+      const currentPos = nodePositions.get(node.id)!;
+      nodePositions.set(node.id, { x: currentPos.x, y: index * V_SPACING }); // Preserve X position (right-aligned)
+    });
+  }
+
+  return nodes.map(node => ({ ...node, position: nodePositions.get(node.id)! }));
+};
 
 export default function FMFlow({
   swComponent,
@@ -172,7 +246,6 @@ export default function FMFlow({
 }: FMFlowProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const [isAutoLayout, setIsAutoLayout] = useState(false); // Disabled by default for simple layout
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isCreatingCausation, setIsCreatingCausation] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0); // Trigger to refresh causation data
@@ -193,9 +266,6 @@ export default function FMFlow({
     receiverPortFailure: ReceiverPortFailureNode,
     providerPortFailure: ProviderPortFailureNode,
   }), []);
-
-  // ELK layout configuration
-  const elk = useMemo(() => new ELK(), []);
 
   // Function to fetch causation relationships from Neo4j
   const fetchCausationRelationships = useCallback(async () => {
@@ -308,62 +378,16 @@ export default function FMFlow({
     }
   }, [contextMenu, hideContextMenu, setEdges]);
 
-  // Auto-layout function using ELK
-  const getLayoutedElements = useCallback(async (nodes: Node[], edges: Edge[]) => {
-    const elkGraph = {
-      id: 'root',
-      layoutOptions: {
-        'elk.algorithm': 'layered',
-        'elk.direction': 'RIGHT',
-        'elk.spacing.nodeNode': '80',
-        'elk.layered.spacing.nodeNodeBetweenLayers': '100',
-        'elk.spacing.edgeNode': '40',
-        'elk.spacing.edgeEdge': '20',
-      },
-      children: nodes.map((node) => ({
-        id: node.id,
-        width: node.width || 180,
-        height: node.height || 80,
-        layoutOptions: {
-          'elk.portConstraints': 'FIXED_SIDE',
-        },
-      })),
-      edges: edges.map((edge) => ({
-        id: edge.id,
-        sources: [edge.source],
-        targets: [edge.target],
-      })),
-    };
-
-    try {
-      const layoutedGraph = await elk.layout(elkGraph);
-      
-      const layoutedNodes = nodes.map((node) => {
-        const layoutedNode = layoutedGraph.children?.find((n) => n.id === node.id);
-        return {
-          ...node,
-          position: {
-            x: layoutedNode?.x || 0,
-            y: layoutedNode?.y || 0,
-          },
-        };
-      });
-
-      return { nodes: layoutedNodes, edges };
-    } catch (error) {
-      console.error('Layout failed:', error);
-      return { nodes, edges };
-    }
-  }, [elk]);
-
   // Generate nodes and apply layout
   useEffect(() => {
     const generateNodes = async () => {
       const newNodes: Node[] = [];
       const newEdges: Edge[] = [];
 
-      // Create receiver port failure nodes (left side)
+      // Create receiver port failure nodes (left side) - positioned for right-alignment
       let receiverYOffset = 50;
+      const receiverColumnLeft = 50; // Left position of the receiver column
+      
       receiverPorts.forEach((port) => {
         const portFailuresList = receiverPortFailures[port.uuid] || [];
         portFailuresList.forEach((failure) => {
@@ -371,7 +395,7 @@ export default function FMFlow({
             newNodes.push({
               id: `receiver-${port.uuid}-${failure.failureUuid}`,
               type: 'receiverPortFailure',
-              position: { x: 50, y: receiverYOffset },
+              position: { x: receiverColumnLeft, y: receiverYOffset },
               data: {
                 label: failure.failureName,
                 portName: port.name,
@@ -459,7 +483,7 @@ export default function FMFlow({
               id: `causation-${link.causationUuid}-${linkIndex}`,
               source: sourceNodeId,
               target: targetNodeId,
-              type: 'smoothstep',
+              type: 'straight',
               animated: true,
               style: { 
                 stroke: '#F59E0B', 
@@ -488,15 +512,10 @@ export default function FMFlow({
         console.error('❌ Error creating causation edges:', error);
       }
 
-      if (isAutoLayout && newNodes.length > 0) {
-        const { nodes: layoutedNodes, edges: layoutedEdges } = await getLayoutedElements(newNodes, newEdges);
-        setNodes(layoutedNodes);
-        setEdges(layoutedEdges);
-      } else {
-        // Use simple three-column layout
-        setNodes(newNodes);
-        setEdges(newEdges);
-      }
+      // Apply Barycenter layout to reduce edge crossings while maintaining 3-column structure
+      const layoutedNodes = layoutNodesWithBarycenter(newNodes, newEdges);
+      setNodes(layoutedNodes);
+      setEdges(newEdges);
     };
 
     generateNodes();
@@ -506,8 +525,6 @@ export default function FMFlow({
     portFailures,
     receiverPorts,
     receiverPortFailures,
-    isAutoLayout,
-    getLayoutedElements,
     setNodes,
     setEdges,
     fetchCausationRelationships,
@@ -526,30 +543,10 @@ export default function FMFlow({
     }
   }, [onFailureSelect, hideContextMenu]);
 
-  const toggleAutoLayout = async () => {
-    setIsAutoLayout(!isAutoLayout);
-    if (!isAutoLayout) {
-      const { nodes: layoutedNodes, edges: layoutedEdges } = await getLayoutedElements(nodes, edges);
-      setNodes(layoutedNodes);
-      setEdges(layoutedEdges);
-    }
-  };
-
-  const savePropagation = () => {
-    Modal.info({
-      title: 'Save Failure Propagation',
-      content: 'Failure propagation model saved successfully! (Feature to be implemented)',
-    });
-  };
-
-  const clearPropagation = () => {
-    Modal.confirm({
-      title: 'Clear All Propagation Links',
-      content: 'Are you sure you want to remove all failure propagation connections?',
-      onOk: () => {
-        setEdges([]);
-      },
-    });
+  const applyLayout = () => {
+    // Apply Barycenter layout to reduce edge crossings
+    const layoutedNodes = layoutNodesWithBarycenter(nodes, edges);
+    setNodes(layoutedNodes);
   };
 
   const handleRefresh = async () => {
@@ -572,7 +569,7 @@ export default function FMFlow({
   };
 
   return (
-    <Card style={{ marginTop: '24px', height: '600px' }}>
+    <Card style={{ marginTop: '24px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
         <Title level={3} style={{ margin: 0 }}>
           Failure Mode Propagation Flow - {swComponent.name}
@@ -588,16 +585,10 @@ export default function FMFlow({
           </Button>
           <Button
             icon={<NodeCollapseOutlined />}
-            onClick={toggleAutoLayout}
-            type={isAutoLayout ? 'primary' : 'default'}
+            onClick={applyLayout}
+            type="primary"
           >
-            Auto Layout
-          </Button>
-          <Button icon={<SaveOutlined />} onClick={savePropagation} type="primary">
-            Save
-          </Button>
-          <Button icon={<DeleteOutlined />} onClick={clearPropagation} danger>
-            Clear
+            Optimize Layout
           </Button>
         </Space>
       </div>
@@ -605,9 +596,9 @@ export default function FMFlow({
       {/* Legend */}
       <div style={{ marginBottom: '12px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
         <Space>
-          <Tag color="green">Receiver Port Failures (Input)</Tag>
-          <Tag color="purple">SW Component Failures (Internal)</Tag>
-          <Tag color="blue">Provider Port Failures (Output)</Tag>
+          <Tag color="blue">Receiver Port Failures (Input)</Tag>
+          <Tag color="default">SW Component Failures (Internal)</Tag>
+          <Tag color="gold">Provider Port Failures (Output)</Tag>
           <Tag 
             style={{ 
               borderColor: '#F59E0B', 
@@ -617,18 +608,25 @@ export default function FMFlow({
           >
             ⚡ Causation Relationships
           </Tag>
+          <Tag 
+            style={{ 
+              borderColor: '#F59E0B', 
+              color: '#F59E0B',
+              borderWidth: '2px',
+              fontWeight: 'bold'
+            }}
+          >
+            🔶 ASIL A/B/C/D Border
+          </Tag>
         </Space>
       </div>
 
       {/* Interaction help */}
       <div style={{ 
         marginBottom: '12px', 
-        padding: '8px', 
-        backgroundColor: isCreatingCausation ? '#fff7e6' : '#f6ffed', 
-        borderRadius: '4px',
-        border: isCreatingCausation ? '1px solid #ffd591' : '1px solid #b7eb8f'
+        padding: '8px'
       }}>
-        <Text style={{ fontSize: '12px', color: isCreatingCausation ? '#fa8c16' : '#52c41a' }}>
+        <Text style={{ fontSize: '12px', color: isCreatingCausation ? '#fa8c16' : '#6B7280' }}>
           {isCreatingCausation 
             ? '⏳ Creating causation...' 
             : '💡 Drag from any failure node to another to create a causation relationship'
@@ -637,12 +635,13 @@ export default function FMFlow({
       </div>
 
       <div style={{ 
-        height: '480px', 
+        height: '500px', 
         border: '1px solid #d9d9d9', 
         borderRadius: '4px',
         position: 'relative',
         opacity: isCreatingCausation ? 0.7 : 1,
-        pointerEvents: isCreatingCausation ? 'none' : 'auto'
+        pointerEvents: isCreatingCausation ? 'none' : 'auto',
+        overflow: 'hidden'
       }} onClick={hideContextMenu}>
         <ReactFlow
           nodes={nodes}
@@ -653,27 +652,12 @@ export default function FMFlow({
           onNodeClick={handleNodeClick}
           onEdgeContextMenu={onEdgeContextMenu}
           nodeTypes={nodeTypes}
-          connectionLineType={ConnectionLineType.SmoothStep}
+          connectionLineType={ConnectionLineType.Straight}
           fitView
           attributionPosition="bottom-left"
         >
           <Background />
           <Controls />
-          <Panel position="top-left">
-            <div style={{ 
-              backgroundColor: 'white', 
-              padding: '8px', 
-              borderRadius: '4px', 
-              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-              fontSize: '12px'
-            }}>
-              <div><strong>Flow Diagram:</strong></div>
-              <div>• Inputs (Left) → Internal (Center) → Outputs (Right)</div>
-              <div>• Dashed orange arrows show causations</div>
-              <div>• Drag from node to node to create causations</div>
-              <div>• Right-click causation arrows to delete</div>
-            </div>
-          </Panel>
         </ReactFlow>
       </div>
 
