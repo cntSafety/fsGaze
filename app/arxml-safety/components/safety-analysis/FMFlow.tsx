@@ -22,7 +22,7 @@ import { Button, Card, Typography, Space, Tag, Modal, message } from 'antd';
 import { NodeCollapseOutlined, SaveOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import ELK from 'elkjs/lib/elk.bundled.js';
 import { SwComponent, Failure, PortFailure, ProviderPort } from './types';
-import { getSafetyGraph, deleteCausationNode } from '@/app/services/neo4j/queries/safety';
+import { getSafetyGraph, deleteCausationNode, createCausationBetweenFailures } from '@/app/services/neo4j/queries/safety';
 
 const { Title, Text } = Typography;
 
@@ -176,6 +176,7 @@ export default function FMFlow({
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [isAutoLayout, setIsAutoLayout] = useState(false); // Disabled by default for simple layout
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isCreatingCausation, setIsCreatingCausation] = useState(false);
   
   // Context menu state for edge deletion
   const [contextMenu, setContextMenu] = useState<{
@@ -215,19 +216,52 @@ export default function FMFlow({
     }
   }, []);
 
-  const onConnect = useCallback((params: Connection) => {
-    const newEdge = {
-      ...params,
-      type: 'smoothstep',
-      animated: true,
-      style: { stroke: '#FF6B6B', strokeWidth: 2 },
-      markerEnd: {
-        type: MarkerType.ArrowClosed,
-        color: '#FF6B6B',
-      },
-    };
-    setEdges((eds) => addEdge(newEdge, eds));
-  }, [setEdges]);
+  const onConnect = useCallback(async (params: Connection) => {
+    // Prevent multiple simultaneous causation creations
+    if (isCreatingCausation) return;
+    
+    // Find the source and target nodes to get failure UUIDs
+    const sourceNode = nodes.find(node => node.id === params.source);
+    const targetNode = nodes.find(node => node.id === params.target);
+    
+    if (!sourceNode || !targetNode) {
+      message.error('Could not find source or target node');
+      return;
+    }
+    
+    const sourceFailureUuid = sourceNode.data.failureUuid;
+    const targetFailureUuid = targetNode.data.failureUuid;
+    
+    if (!sourceFailureUuid || !targetFailureUuid) {
+      message.error('Source or target node does not have a failure UUID');
+      return;
+    }
+    
+    setIsCreatingCausation(true);
+    
+    try {
+      const result = await createCausationBetweenFailures(
+        sourceFailureUuid,
+        targetFailureUuid
+      );
+      
+      if (result.success) {
+        message.success(`Causation created: "${sourceNode.data.label}" → "${targetNode.data.label}"`);
+        
+        // Refresh the data to get the new causation edge
+        if (onRefresh) {
+          onRefresh();
+        }
+      } else {
+        message.error(`Failed to create causation: ${result.message}`);
+      }
+    } catch (error) {
+      console.error('Error creating causation:', error);
+      message.error('Error creating causation');
+    } finally {
+      setIsCreatingCausation(false);
+    }
+  }, [nodes, onRefresh, isCreatingCausation]);
 
   // Handle right-click on edges (for causation deletion)
   const onEdgeContextMenu = useCallback((event: React.MouseEvent, edge: Edge) => {
@@ -591,24 +625,30 @@ export default function FMFlow({
         </Space>
       </div>
 
-      {/* Selection feedback */}
-      {selectedFailures && (selectedFailures.first || selectedFailures.second) && (
-        <div style={{ 
-          marginBottom: '12px', 
-          padding: '8px', 
-          backgroundColor: '#f0f8ff', 
-          borderRadius: '4px',
-          border: '1px solid #d0e7ff'
-        }}>
-          <Text style={{ fontSize: '12px', color: '#1890ff' }}>
-            Click nodes to create causation links: {selectedFailures.first?.name || 'Select first failure'} 
-            {selectedFailures.first && ' → '} 
-            {selectedFailures.second?.name || (selectedFailures.first ? 'Select second failure' : '')}
-          </Text>
-        </div>
-      )}
+      {/* Interaction help */}
+      <div style={{ 
+        marginBottom: '12px', 
+        padding: '8px', 
+        backgroundColor: isCreatingCausation ? '#fff7e6' : '#f6ffed', 
+        borderRadius: '4px',
+        border: isCreatingCausation ? '1px solid #ffd591' : '1px solid #b7eb8f'
+      }}>
+        <Text style={{ fontSize: '12px', color: isCreatingCausation ? '#fa8c16' : '#52c41a' }}>
+          {isCreatingCausation 
+            ? '⏳ Creating causation...' 
+            : '💡 Drag from any failure node to another to create a causation relationship'
+          }
+        </Text>
+      </div>
 
-      <div style={{ height: '480px', border: '1px solid #d9d9d9', borderRadius: '4px' }} onClick={hideContextMenu}>
+      <div style={{ 
+        height: '480px', 
+        border: '1px solid #d9d9d9', 
+        borderRadius: '4px',
+        position: 'relative',
+        opacity: isCreatingCausation ? 0.7 : 1,
+        pointerEvents: isCreatingCausation ? 'none' : 'auto'
+      }} onClick={hideContextMenu}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -632,10 +672,10 @@ export default function FMFlow({
               boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
               fontSize: '12px'
             }}>
-              <div><strong>Simple Layout:</strong></div>
+              <div><strong>Flow Diagram:</strong></div>
               <div>• Inputs (Left) → Internal (Center) → Outputs (Right)</div>
               <div>• Dashed orange arrows show causations</div>
-              <div>• Click nodes to create new causations</div>
+              <div>• Drag from node to node to create causations</div>
               <div>• Right-click causation arrows to delete</div>
             </div>
           </Panel>
