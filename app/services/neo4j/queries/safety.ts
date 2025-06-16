@@ -916,6 +916,65 @@ export const createCausationBetweenFailures = async (
 };
 
 /**
+ * Delete a CAUSATION node and its FIRST and THEN relationships
+ * @param causationUuid UUID of the CAUSATION node to delete
+ */
+export const deleteCausationNode = async (
+  causationUuid: string
+): Promise<{
+  success: boolean;
+  message: string;
+  error?: string;
+}> => {
+  const session = driver.session();
+  
+  try {
+    // First, verify that the CAUSATION node exists and get its details
+    const existingCausationResult = await session.run(
+      `MATCH (causation:CAUSATION)
+       WHERE causation.uuid = $causationUuid
+       RETURN causation.name AS causationName`,
+      { causationUuid }
+    );
+
+    if (existingCausationResult.records.length === 0) {
+      return {
+        success: false,
+        message: `No CAUSATION node found with UUID: ${causationUuid}`,
+      };
+    }
+
+    const causationName = existingCausationResult.records[0].get('causationName');
+
+    // Delete the CAUSATION node and all its relationships (FIRST and THEN)
+    // DETACH DELETE removes the node and all its relationships
+    await session.run(
+      `MATCH (causation:CAUSATION)
+       WHERE causation.uuid = $causationUuid
+       DETACH DELETE causation`,
+      { causationUuid }
+    );
+
+    return {
+      success: true,
+      message: `CAUSATION node "${causationName || causationUuid}" and its relationships deleted successfully.`,
+    };
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error(`❌ Error deleting CAUSATION node:`, errorMessage);
+    
+    return {
+      success: false,
+      message: "Error deleting CAUSATION node.",
+      error: errorMessage,
+    };
+  } finally {
+    await session.close();
+  }
+};
+
+/**
  * Get failures that have OCCURRENCE relations to P_PORT_PROTOTYPE or R_PORT_PROTOTYPE
  */
 export const getFailuresForPorts = async (portUuid: string): Promise<{

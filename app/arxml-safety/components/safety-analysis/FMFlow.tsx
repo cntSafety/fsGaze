@@ -18,11 +18,11 @@ import ReactFlow, {
     addEdge,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { Button, Card, Typography, Space, Tag, Modal } from 'antd';
+import { Button, Card, Typography, Space, Tag, Modal, message } from 'antd';
 import { NodeCollapseOutlined, SaveOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import ELK from 'elkjs/lib/elk.bundled.js';
 import { SwComponent, Failure, PortFailure, ProviderPort } from './types';
-import { getSafetyGraph } from '@/app/services/neo4j/queries/safety';
+import { getSafetyGraph, deleteCausationNode } from '@/app/services/neo4j/queries/safety';
 
 const { Title, Text } = Typography;
 
@@ -176,6 +176,16 @@ export default function FMFlow({
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [isAutoLayout, setIsAutoLayout] = useState(false); // Disabled by default for simple layout
   const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  // Context menu state for edge deletion
+  const [contextMenu, setContextMenu] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+    edgeId: string;
+    causationUuid: string;
+    causationName: string;
+  } | null>(null);
 
   // Define custom node types
   const nodeTypes: NodeTypes = useMemo(() => ({
@@ -193,7 +203,8 @@ export default function FMFlow({
       // console.log('🔍 Fetching causation relationships...');
       const result = await getSafetyGraph();
       if (result.success && result.data?.causationLinks) {
-        // console.log(`✅ Found ${result.data.causationLinks.length} causation links:`, result.data.causationLinks);
+        console.log(`✅ Found ${result.data.causationLinks.length} causation links:`, result.data.causationLinks);
+        // console.log (`data from getSafetzGraph:`, result.data);
         return result.data.causationLinks;
       }
       console.warn('⚠️ Failed to fetch causation links:', result.message);
@@ -217,6 +228,56 @@ export default function FMFlow({
     };
     setEdges((eds) => addEdge(newEdge, eds));
   }, [setEdges]);
+
+  // Handle right-click on edges (for causation deletion)
+  const onEdgeContextMenu = useCallback((event: React.MouseEvent, edge: Edge) => {
+    event.preventDefault();
+    
+    // Only show context menu for causation edges
+    if (edge.data?.type === 'causation') {
+      setContextMenu({
+        visible: true,
+        x: event.clientX,
+        y: event.clientY,
+        edgeId: edge.id,
+        causationUuid: edge.data.causationUuid,
+        causationName: edge.data.causationName
+      });
+    }
+  }, []);
+
+  // Hide context menu when clicking elsewhere
+  const hideContextMenu = useCallback(() => {
+    setContextMenu(null);
+  }, []);
+
+  // Handle causation deletion
+  const handleDeleteCausation = useCallback(async () => {
+    if (!contextMenu) return;
+
+    try {
+      const result = await deleteCausationNode(contextMenu.causationUuid);
+      
+      if (result.success) {
+        message.success(`Causation "${contextMenu.causationName}" deleted successfully`);
+        
+        // Remove the edge from the diagram
+        setEdges((edges) => edges.filter(edge => edge.id !== contextMenu.edgeId));
+        
+        // Optionally refresh the data
+        if (onRefresh) {
+          onRefresh();
+        }
+      } else {
+        message.error(`Failed to delete causation: ${result.message}`);
+      }
+    } catch (error) {
+      console.error('Error deleting causation:', error);
+      message.error('Error deleting causation');
+    } finally {
+      hideContextMenu();
+    }
+  }, [contextMenu, hideContextMenu, onRefresh, setEdges]);
 
   // Auto-layout function using ELK
   const getLayoutedElements = useCallback(async (nodes: Node[], edges: Edge[]) => {
@@ -380,6 +441,11 @@ export default function FMFlow({
                 type: MarkerType.ArrowClosed,
                 color: '#F59E0B',
               },
+              data: {
+                causationUuid: link.causationUuid,
+                causationName: link.causationName,
+                type: 'causation'
+              }
             });
             // createdEdgesCount++;
             // console.log(`✅ Created causation edge: ${sourceNodeId} → ${targetNodeId}`);
@@ -419,13 +485,16 @@ export default function FMFlow({
   ]);
 
   const handleNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+    // Hide context menu when clicking on nodes
+    hideContextMenu();
+    
     if (onFailureSelect && node.data.failureUuid) {
       onFailureSelect({
         uuid: node.data.failureUuid,
         name: node.data.label,
       });
     }
-  }, [onFailureSelect]);
+  }, [onFailureSelect, hideContextMenu]);
 
   const toggleAutoLayout = async () => {
     setIsAutoLayout(!isAutoLayout);
@@ -539,7 +608,7 @@ export default function FMFlow({
         </div>
       )}
 
-      <div style={{ height: '480px', border: '1px solid #d9d9d9', borderRadius: '4px' }}>
+      <div style={{ height: '480px', border: '1px solid #d9d9d9', borderRadius: '4px' }} onClick={hideContextMenu}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -547,6 +616,7 @@ export default function FMFlow({
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onNodeClick={handleNodeClick}
+          onEdgeContextMenu={onEdgeContextMenu}
           nodeTypes={nodeTypes}
           connectionLineType={ConnectionLineType.SmoothStep}
           fitView
@@ -566,10 +636,52 @@ export default function FMFlow({
               <div>• Inputs (Left) → Internal (Center) → Outputs (Right)</div>
               <div>• Dashed orange arrows show causations</div>
               <div>• Click nodes to create new causations</div>
+              <div>• Right-click causation arrows to delete</div>
             </div>
           </Panel>
         </ReactFlow>
       </div>
+
+      {/* Context Menu for Edge Deletion */}
+      {contextMenu && (
+        <div
+          style={{
+            position: 'fixed',
+            top: contextMenu.y,
+            left: contextMenu.x,
+            backgroundColor: 'white',
+            border: '1px solid #d9d9d9',
+            borderRadius: '4px',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+            zIndex: 1000,
+            minWidth: '180px'
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div style={{ padding: '8px 12px', borderBottom: '1px solid #f0f0f0' }}>
+            <Text strong style={{ fontSize: '12px' }}>Delete Causation</Text>
+          </div>
+          <div style={{ padding: '4px 0' }}>
+            <div style={{ padding: '6px 12px', fontSize: '11px', color: '#666' }}>
+              {contextMenu.causationName}
+            </div>
+            <Button
+              type="text"
+              icon={<DeleteOutlined />}
+              onClick={handleDeleteCausation}
+              style={{ 
+                width: '100%', 
+                textAlign: 'left',
+                color: '#ff4d4f',
+                borderRadius: 0
+              }}
+              size="small"
+            >
+              Delete Causation
+            </Button>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }
