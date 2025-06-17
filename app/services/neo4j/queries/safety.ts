@@ -316,7 +316,7 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
             await tx.run(
                 'MATCH (cause:FAILURE {uuid: $causeFailureUuid}) ' +
                 'MATCH (c:CAUSATION {uuid: $causationUuid}) ' +
-                'MERGE (cause)-[r:FIRST]->(c) ' +
+                'MERGE (cause)<-[r:FIRST]-(c) ' +
                 'ON CREATE SET r.createdAt = timestamp() ' +
                 'ON MATCH SET r.updatedAt = timestamp() ',
                 { causeFailureUuid: link.causeFailureUuid, causationUuid: link.causationUuid }
