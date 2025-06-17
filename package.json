@@ -1,7 +1,8 @@
 {
   "name": "fsgaze",
   "version": "0.1.0",
-  "private": true,  "scripts": {
+  "private": true,
+  "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -11,8 +12,10 @@
   },
   "dependencies": {
     "@ant-design/v5-patch-for-react-19": "^1.0.3",
+    "@types/archiver": "^6.0.3",
     "@types/react-resizable": "^3.0.8",
     "antd": "^5.25.1",
+    "archiver": "^7.0.1",
     "axios": "^1.8.4",
     "d3": "^7.9.0",
     "elkjs": "^0.10.0",

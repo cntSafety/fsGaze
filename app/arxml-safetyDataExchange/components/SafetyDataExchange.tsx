@@ -4,7 +4,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import { Button, Space, Typography, Spin, Alert, Card, Upload, Input, Modal } from 'antd';
 import { UploadOutlined, DatabaseOutlined, DownloadOutlined, ExportOutlined } from '@ant-design/icons';
 import { getSafetyGraph } from '@/app/services/neo4j/queries/safety'; // Assuming this path is correct
-import { exportFullGraphOptimized, importFullGraph } from '@/app/services/neo4j/queries/general';
+import { importFullGraph } from '@/app/services/neo4j/queries/general';
 import StatusDB, { StatusDBRef } from '@/app/components/statusDB';
 
 const { Title, Paragraph } = Typography;
@@ -117,197 +117,86 @@ const SafetyDataExchange: React.FC = () => {
   };
 
   // Helper function to sanitize filenames and folder names
-  const sanitizeFileName = (name: string): string => {
-    // Remove or replace invalid characters for filesystem
-    return name
-      .replace(/[<>:"/\\|?*]/g, '_') // Replace invalid characters with underscore
-      .replace(/\s+/g, '_') // Replace spaces with underscore
-      .replace(/[^\w\-_.]/g, '_') // Replace any remaining special characters
-      .replace(/_+/g, '_') // Replace multiple underscores with single
-      .replace(/^_+|_+$/g, '') // Remove leading/trailing underscores
-      .substring(0, 100); // Limit length to 100 characters
-  };
+
 
   const handleFullGraphExport = async () => {
     try {
-      // Check if File System Access API is supported
-      if (!('showDirectoryPicker' in window)) {
-        throw new Error('File System Access API is not supported in this browser. Please use Chrome or Edge.');
-      }
-
-      // Request directory picker IMMEDIATELY while user activation is fresh
-      // @ts-expect-error - TypeScript doesn't have types for File System Access API yet
-      const directoryHandle = await window.showDirectoryPicker();
-      
-      // Only now start the export UI and async operations
       setIsExportingFullGraph(true);
       setFullGraphExportLogs([
         '[INFO] Starting full graph export...',
-        `[INFO] Selected folder: ${directoryHandle.name}`,
-        '[INFO] Exporting nodes and relationships with optimized query...'
+        '[INFO] Requesting ZIP export from server...'
       ]);
       setFullGraphExportError(null);
       setShowFullGraphExportModal(true);
 
-      // Get the data from Neo4j using optimized single transaction
-      console.log('[EXPORT] Starting Neo4j data fetch...');
+      console.log('[EXPORT] Starting server-side ZIP export...');
       const startTime = Date.now();
-      const result = await exportFullGraphOptimized();
-      const fetchTime = Date.now() - startTime;
-      console.log(`[EXPORT] Neo4j data fetch completed in ${fetchTime}ms`);
 
-      if (!result.success || !result.data) {
-        throw new Error(`Failed to export data: ${result.message}`);
+      // Call the new ZIP export API
+      const response = await fetch('/api/graph/export/zip', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ format: 'graph-as-code' }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`Export failed: ${errorData.message || response.statusText}`);
       }
 
-      const { nodes, relationships } = result.data;
+      const totalTime = Date.now() - startTime;
+      console.log(`[EXPORT] Server response received in ${totalTime}ms`);
 
       setFullGraphExportLogs(prev => [
         ...prev, 
-        `[INFO] Retrieved ${nodes.length} nodes and ${relationships.length} relationships in ${fetchTime}ms`
+        `[INFO] Server processing completed in ${totalTime}ms`,
+        '[INFO] Downloading ZIP file...'
       ]);
 
-      // Create directory structure
-      console.log('[EXPORT] Creating directory structure...');
-      setFullGraphExportLogs(prev => [...prev, '[INFO] Creating directory structure...']);
-      
-      const nodesDir = await directoryHandle.getDirectoryHandle('nodes', { create: true });
-      const relationshipsDir = await directoryHandle.getDirectoryHandle('relationships', { create: true });
-      const metadataDir = await directoryHandle.getDirectoryHandle('metadata', { create: true });
+      // Get the ZIP blob
+      const blob = await response.blob();
+      const fileSize = (blob.size / 1024 / 1024).toFixed(2); // MB
 
-      // Export nodes by label with optimized batching
-      const nodesByLabel: Record<string, number> = {};
-      const nodesByLabelGroups: Record<string, any[]> = {};
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
       
-      console.log(`[EXPORT] Starting to group ${nodes.length} nodes by label...`);
-      setFullGraphExportLogs(prev => [...prev, '[INFO] Grouping nodes for optimized writing...']);
+      // Generate filename with current date
+      const date = new Date().toISOString().split('T')[0];
+      link.download = `graph-export-${date}.zip`;
       
-      // Group nodes by label first
-      for (const node of nodes) {
-        const primaryLabel = sanitizeFileName(node.labels[0] || 'UNKNOWN');
-        nodesByLabel[primaryLabel] = (nodesByLabel[primaryLabel] || 0) + 1;
-        if (!nodesByLabelGroups[primaryLabel]) {
-          nodesByLabelGroups[primaryLabel] = [];
-        }
-        nodesByLabelGroups[primaryLabel].push(node);
-      }
+      // Trigger download
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
       
-      console.log(`[EXPORT] Grouped into ${Object.keys(nodesByLabel).length} label groups. Starting parallel file writing...`);
-      setFullGraphExportLogs(prev => [...prev, `[INFO] Writing ${Object.keys(nodesByLabel).length} node label groups in parallel...`]);
-      
-      const writeStartTime = Date.now();
-      
-      // Write each label group in parallel
-      const labelWritePromises = Object.entries(nodesByLabelGroups).map(async ([labelName, labelNodes], index) => {
-        try {
-          console.log(`[EXPORT] Processing label group ${index + 1}/${Object.keys(nodesByLabelGroups).length}: ${labelName} (${labelNodes.length} nodes)`);
-          const labelDir = await nodesDir.getDirectoryHandle(labelName, { create: true });
-          
-          // Write nodes in batches of 20 for this label
-          const batchSize = 20;
-          for (let i = 0; i < labelNodes.length; i += batchSize) {
-            const batch = labelNodes.slice(i, i + batchSize);
-            
-            const batchPromises = batch.map(async (node) => {
-              const safeUuid = sanitizeFileName(node.uuid);
-              const filename = `${labelName}_${safeUuid}.json`;
-              
-              const nodeData = {
-                uuid: node.uuid,
-                labels: node.labels.sort(),
-                properties: Object.keys(node.properties)
-                  .sort()
-                  .reduce((sorted: Record<string, any>, key) => {
-                    sorted[key] = node.properties[key];
-                    return sorted;
-                  }, {})
-              };
-              
-              const fileHandle = await labelDir.getFileHandle(filename, { create: true });
-              const writable = await fileHandle.createWritable();
-              await writable.write(JSON.stringify(nodeData, null, 2));
-              await writable.close();
-            });
-            
-            await Promise.all(batchPromises);
-          }
-          console.log(`[EXPORT] Completed label group: ${labelName}`);
-        } catch (labelError) {
-          console.error(`[EXPORT] Error writing label ${labelName}:`, labelError);
-          setFullGraphExportLogs(prev => [...prev, `[WARN] Failed to write some files in label ${labelName}: ${labelError instanceof Error ? labelError.message : 'Unknown error'}`]);
-        }
-      });
-      
-      await Promise.all(labelWritePromises);
-      
-      const writeTime = Date.now() - writeStartTime;
-      console.log(`[EXPORT] All node files written in ${writeTime}ms. Starting relationships export...`);
-      setFullGraphExportLogs(prev => [...prev, `[SUCCESS] Exported ${nodes.length} nodes across ${Object.keys(nodesByLabel).length} labels in ${writeTime}ms`]);
+      // Clean up
+      window.URL.revokeObjectURL(url);
 
-      // Export relationships
-      setFullGraphExportLogs(prev => [...prev, '[INFO] Writing relationships file...']);
-      
-      const relationshipsData = relationships.map((rel: any) => ({
-        endNodeUuid: rel.endNodeUuid,
-        properties: Object.keys(rel.properties)
-          .sort()
-          .reduce((sorted: Record<string, any>, key) => {
-            sorted[key] = rel.properties[key];
-            return sorted;
-          }, {}),
-        startNodeUuid: rel.startNodeUuid,
-        type: rel.type
-      }));
-
-      const relationshipsFileHandle = await relationshipsDir.getFileHandle('relationships.json', { create: true });
-      const relationshipsWritable = await relationshipsFileHandle.createWritable();
-      await relationshipsWritable.write(JSON.stringify(relationshipsData, null, 2));
-      await relationshipsWritable.close();
-
-      console.log(`[EXPORT] Relationships file written (${relationships.length} relationships)`);
-      setFullGraphExportLogs(prev => [...prev, `[SUCCESS] Exported ${relationships.length} relationships`]);
-
-      // Create export metadata
-      console.log('[EXPORT] Writing metadata file...');
-      setFullGraphExportLogs(prev => [...prev, '[INFO] Writing metadata...']);
-      
-      const metadata = {
-        exportDate: new Date().toISOString(),
-        exportSummary: {
-          nodesExported: nodes.length,
-          relationshipsExported: relationships.length,
-          nodesByLabel
-        },
-        performance: {
-          dataFetchTime: fetchTime,
-          fileWriteTime: writeTime,
-          totalExportTime: Date.now() - startTime + fetchTime
-        }
-      };
-
-      const metadataFileHandle = await metadataDir.getFileHandle('export-info.json', { create: true });
-      const metadataWritable = await metadataFileHandle.createWritable();
-      await metadataWritable.write(JSON.stringify(metadata, null, 2));
-      await metadataWritable.close();
-
-      const totalTime = Date.now() - startTime;
-      console.log(`[EXPORT] Export completed successfully! Total time: ${totalTime}ms (Neo4j: ${fetchTime}ms, Files: ${writeTime}ms)`);
-      setFullGraphExportLogs(prev => [...prev, '[SUCCESS] Export completed successfully!']);
+      const downloadTime = Date.now() - startTime;
+      console.log(`[EXPORT] Download completed in ${downloadTime}ms`);
+      setFullGraphExportLogs(prev => [
+        ...prev, 
+        `[SUCCESS] ZIP file downloaded successfully!`,
+        `[INFO] File size: ${fileSize} MB`,
+        `[INFO] Total time: ${downloadTime}ms`
+      ]);
       
       // Show success message
       setTimeout(() => {
         Modal.success({
-          title: 'Optimized Graph Export Completed',
+          title: 'Graph Export Completed',
           content: (
             <div>
-              <p>Successfully exported the full graph as Graph-as-Code!</p>
-              <p><strong>Location:</strong> {directoryHandle.name}</p>
+              <p>Successfully exported the full graph as a ZIP file!</p>
               <div>
-                <p><strong>Nodes:</strong> {nodes.length}</p>
-                <p><strong>Relationships:</strong> {relationships.length}</p>
-                <p><strong>Node Types:</strong> {Object.keys(nodesByLabel).join(', ')}</p>
-                <p><strong>Performance:</strong> Data fetched in {fetchTime}ms, files written in {writeTime}ms</p>
-                <p><small>Files organized by label for Git-friendly diffs using optimized parallel operations</small></p>
+                <p><strong>File:</strong> graph-export-{date}.zip</p>
+                <p><strong>Size:</strong> {fileSize} MB</p>
+                <p><strong>Performance:</strong> Completed in {downloadTime}ms</p>
+                <p><small>Contains organized node files by label and relationships JSON</small></p>
               </div>
             </div>
           ),
@@ -327,29 +216,17 @@ const SafetyDataExchange: React.FC = () => {
       setFullGraphExportError(`Export failed: ${errorMessage}`);
       setFullGraphExportLogs(prev => [...prev, `[ERROR] ${errorMessage}`]);
       
-      // If File System Access API is not supported, offer alternative
-      if (errorMessage.includes('File System Access API')) {
-        setFullGraphExportLogs(prev => [
-          ...prev,
-          '[INFO] Alternative: You can still export data as JSON and manually save files',
-          '[INFO] Consider using Chrome or Edge browser for folder selection feature'
-        ]);
-      }
-      
-      // If user activation error, provide helpful message
-      if (errorMessage.includes('User activation')) {
-        setFullGraphExportLogs(prev => [
-          ...prev,
-          '[INFO] The browser requires a fresh user interaction to access the file system.',
-          '[INFO] Please try clicking the export button again.'
-        ]);
-      }
+      console.error('[EXPORT] Export failed:', error);
     } finally {
       setIsExportingFullGraph(false);
     }
   };
 
   const handleFullGraphImport = async () => {
+    console.log('[DEBUG] handleFullGraphImport called');
+    console.log('[DEBUG] selectedImportFiles.length:', selectedImportFiles.length);
+    console.log('[DEBUG] selectedImportFiles:', selectedImportFiles.map(f => ({ name: f.name, size: f.size, path: f.webkitRelativePath })));
+    
     if (selectedImportFiles.length === 0) {
       setFullGraphImportError('Please select graph data files to import');
       return;
@@ -361,13 +238,19 @@ const SafetyDataExchange: React.FC = () => {
     setShowFullGraphImportModal(true);
 
     try {
+      console.log('[DEBUG] Starting file processing...');
       setFullGraphImportLogs(prev => [...prev, `[INFO] Processing ${selectedImportFiles.length} files...`]);
       
       // Validate file structure
+      console.log('[DEBUG] Validating file structure...');
       const hasRelationships = selectedImportFiles.some(file => file.name === 'relationships.json');
       const nodeFiles = selectedImportFiles.filter(file => 
         file.webkitRelativePath?.includes('/nodes/') && file.name.endsWith('.json')
       );
+      
+      console.log('[DEBUG] hasRelationships:', hasRelationships);
+      console.log('[DEBUG] nodeFiles.length:', nodeFiles.length);
+      console.log('[DEBUG] nodeFiles:', nodeFiles.map(f => ({ name: f.name, path: f.webkitRelativePath })));
       
       if (!hasRelationships) {
         throw new Error('relationships.json file is required for import');
@@ -381,18 +264,26 @@ const SafetyDataExchange: React.FC = () => {
       setFullGraphImportLogs(prev => [...prev, '[WARNING] This operation will COMPLETELY WIPE the current database!']);
       
       // Parse files directly
+      console.log('[DEBUG] Starting file parsing...');
       setFullGraphImportLogs(prev => [...prev, '[INFO] Parsing node files...']);
       
       const nodesData: any[] = [];
       let relationshipsData: any[] = [];
       
+      console.log('[DEBUG] Processing files...');
       // Parse all files
       for (const file of selectedImportFiles) {
+        console.log(`[DEBUG] Processing file: ${file.name}, size: ${file.size}, path: ${file.webkitRelativePath}`);
+        
         const content = await file.text();
+        console.log(`[DEBUG] File content length: ${content.length}`);
+        
         const data = JSON.parse(content);
+        console.log(`[DEBUG] Parsed data for ${file.name}:`, typeof data, Array.isArray(data) ? `Array(${data.length})` : 'Object');
         
         if (file.name === 'relationships.json') {
           // This is the relationships file
+          console.log('[DEBUG] Processing relationships.json');
           if (Array.isArray(data)) {
             // Map the exported format to the import format
             relationshipsData = data.map((rel: any) => ({
@@ -401,15 +292,18 @@ const SafetyDataExchange: React.FC = () => {
               start: rel.startNodeUuid, // Map startNodeUuid to start
               end: rel.endNodeUuid      // Map endNodeUuid to end
             }));
+            console.log(`[DEBUG] Mapped ${data.length} relationships`);
             setFullGraphImportLogs(prev => [...prev, `[INFO] Found ${data.length} relationships in ${file.name}`]);
           } else {
             throw new Error(`${file.name} does not contain an array of relationships`);
           }
         } else if (file.name.endsWith('.json')) {
           // This should be a node file
+          console.log(`[DEBUG] Processing node file: ${file.name}`);
           if (data.labels && data.properties) {
             // Check if uuid is in the data, if not try to extract from filename
             let uuid = data.uuid;
+            console.log(`[DEBUG] Node UUID from data: ${uuid}`);
             
             if (!uuid) {
               // Try to extract UUID from filename
@@ -422,37 +316,54 @@ const SafetyDataExchange: React.FC = () => {
                 uuid = parts.slice(1).join('_');
               }
               
+              console.log(`[DEBUG] Extracted UUID from filename: ${uuid}`);
+              
               if (!uuid) {
+                console.log(`[DEBUG] WARN: ${file.name} has no uuid in data and couldn't extract from filename, skipping...`);
                 setFullGraphImportLogs(prev => [...prev, `[WARN] ${file.name} has no uuid in data and couldn't extract from filename, skipping...`]);
                 continue;
               }
             }
             
-            nodesData.push({
+            const nodeData = {
               uuid: uuid,
               labels: data.labels,
               properties: data.properties
-            });
+            };
+            nodesData.push(nodeData);
+            console.log(`[DEBUG] Added node: ${uuid}, labels: ${data.labels.join(',')}`);
           } else {
+            console.log(`[DEBUG] WARN: ${file.name} does not have expected node structure, skipping...`);
             setFullGraphImportLogs(prev => [...prev, `[WARN] ${file.name} does not have expected node structure (missing labels or properties), skipping...`]);
           }
         }
       }
       
+      console.log(`[DEBUG] Final parsing results:`);
+      console.log(`[DEBUG] - nodesData.length: ${nodesData.length}`);
+      console.log(`[DEBUG] - relationshipsData.length: ${relationshipsData.length}`);
+      console.log(`[DEBUG] - Sample node:`, nodesData[0]);
+      console.log(`[DEBUG] - Sample relationship:`, relationshipsData[0]);
+      
       setFullGraphImportLogs(prev => [...prev, `[INFO] Successfully parsed ${nodesData.length} nodes and ${relationshipsData.length} relationships`]);
       setFullGraphImportLogs(prev => [...prev, '[INFO] Starting database import operation...']);
       
+      console.log('[DEBUG] About to call importFullGraph...');
       const startTime = Date.now();
       
       // Call the import function directly
       const result = await importFullGraph(nodesData, relationshipsData);
       
       const duration = Date.now() - startTime;
+      console.log(`[DEBUG] importFullGraph completed in ${duration}ms`);
+      console.log('[DEBUG] importFullGraph result:', result);
       
       if (!result.success) {
+        console.log('[DEBUG] Import failed:', result);
         throw new Error(result.message || 'Import failed');
       }
       
+      console.log('[DEBUG] Import successful:', result);
       setFullGraphImportLogs(prev => [
         ...prev,
         `[SUCCESS] Import completed successfully in ${duration}ms!`,
@@ -463,6 +374,7 @@ const SafetyDataExchange: React.FC = () => {
       ]);
       
       // Clear selected files after successful import
+      console.log('[DEBUG] Clearing selected files and refreshing status...');
       setSelectedImportFiles([]);
       
       // Refresh database status
@@ -491,37 +403,77 @@ const SafetyDataExchange: React.FC = () => {
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('[DEBUG] Import error:', error);
+      console.error('[DEBUG] Error message:', errorMessage);
       setFullGraphImportError(`Import failed: ${errorMessage}`);
       setFullGraphImportLogs(prev => [...prev, `[ERROR] ${errorMessage}`]);
     } finally {
+      console.log('[DEBUG] Import process finished, setting loading to false');
       setIsImportingFullGraph(false);
     }
   };
 
   const handleImportFileSelect = (fileList: File[]) => {
+    console.log('[DEBUG] handleImportFileSelect called');
+    console.log('[DEBUG] fileList.length:', fileList.length);
+    
+    const startTime = Date.now();
+    
     setSelectedImportFiles(fileList);
     setFullGraphImportError(null);
     setFullGraphImportLogs([]);
     
-    // Validate file structure
-    const hasRelationships = fileList.some(file => file.name === 'relationships.json');
-    const nodeFiles = fileList.filter(file => 
-      file.webkitRelativePath?.includes('/nodes/') && file.name.endsWith('.json')
-    );
+    if (fileList.length === 0) {
+      console.log('[DEBUG] No files selected');
+      return;
+    }
+    
+    // More efficient validation - stop early when found
+    console.log('[DEBUG] Starting optimized file validation...');
+    
+    let hasRelationships = false;
+    let nodeFileCount = 0;
+    
+    // Single pass through files for efficiency
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i];
+      
+      if (file.name === 'relationships.json') {
+        hasRelationships = true;
+        console.log('[DEBUG] Found relationships.json');
+      }
+      
+      if (file.webkitRelativePath?.includes('/nodes/') && file.name.endsWith('.json')) {
+        nodeFileCount++;
+      }
+      
+      // Early break if we have what we need for validation (optional optimization)
+      // We can still count all files for accuracy, but this shows the principle
+    }
+    
+    const validationTime = Date.now() - startTime;
+    console.log(`[DEBUG] File validation completed in ${validationTime}ms`);
+    console.log(`[DEBUG] hasRelationships: ${hasRelationships}`);
+    console.log(`[DEBUG] nodeFileCount: ${nodeFileCount}`);
     
     if (fileList.length > 0) {
       if (!hasRelationships) {
+        console.log('[DEBUG] Missing relationships.json');
         setFullGraphImportError('Missing relationships.json file. Please select the complete graph export folder.');
-      } else if (nodeFiles.length === 0) {
+      } else if (nodeFileCount === 0) {
+        console.log('[DEBUG] No node files found');
         setFullGraphImportError('No node files found in nodes/ directory. Please select the complete graph export folder.');
       } else {
+        console.log('[DEBUG] Validation successful');
         setFullGraphImportLogs([
           `[INFO] Selected ${fileList.length} files for import`,
-          `[INFO] Found ${nodeFiles.length} node files and relationships.json`,
+          `[INFO] Found ${nodeFileCount} node files and relationships.json`,
           '[READY] Click "Import Complete Graph" to proceed with wipe-and-load operation'
         ]);
       }
     }
+    
+    console.log(`[DEBUG] handleImportFileSelect completed in ${Date.now() - startTime}ms`);
   };
 
   const handleFileSelect = (file: File) => {
@@ -660,7 +612,7 @@ const SafetyDataExchange: React.FC = () => {
           {safetyData && renderDataAsJson(safetyData, "Fetched Safety Data Preview")}
         </Card>
 
-        <Card title="Full Graph Export (Graph-as-Code)">
+        <Card title="Full Graph Export (ZIP Archive)">
           <Space direction="vertical" style={{ width: '100%' }}>
             <div>
               <Button 
@@ -669,12 +621,12 @@ const SafetyDataExchange: React.FC = () => {
                 onClick={handleFullGraphExport} 
                 loading={isExportingFullGraph}
               >
-                Export Complete Graph to Files
+                Export Complete Graph as ZIP
               </Button>
             </div>
             <Paragraph style={{ margin: 0, fontSize: '14px', color: '#666' }}>
-              Exports the entire Neo4j graph as individual files organized by node labels and relationship types. 
-              You can select a folder to save the files directly (modern browsers) or download them individually.
+              Exports the entire Neo4j graph as a ZIP archive containing organized files by node labels and relationships. 
+              Fast server-side processing with a single download. Works in all browsers.
               Uses optimized queries and parallel file writing for better performance.
               Creates a Git-friendly structure for version control and collaborative editing.
             </Paragraph>
@@ -688,8 +640,24 @@ const SafetyDataExchange: React.FC = () => {
                 multiple
                 directory
                 beforeUpload={() => false}
-                onChange={(info) => handleImportFileSelect(info.fileList.map(f => f.originFileObj!).filter(Boolean))}
+                onChange={(info) => {
+                  console.log('[DEBUG] Upload onChange triggered');
+                  console.log('[DEBUG] info.fileList.length:', info.fileList.length);
+                  
+                  // Process files more efficiently
+                  const files = info.fileList
+                    .map(f => f.originFileObj!)
+                    .filter(Boolean);
+                  
+                  console.log('[DEBUG] Filtered files count:', files.length);
+                  
+                  // Use setTimeout to avoid blocking the UI
+                  setTimeout(() => {
+                    handleImportFileSelect(files);
+                  }, 0);
+                }}
                 showUploadList={false}
+                accept=".json"
               >
                 <Button icon={<UploadOutlined />} disabled={isImportingFullGraph}>
                   {selectedImportFiles.length > 0 
@@ -793,7 +761,7 @@ const SafetyDataExchange: React.FC = () => {
 
       {/* Full Graph Export Modal */}
       <Modal
-        title="Full Graph Export Progress"
+        title="ZIP Export Progress"
         open={showFullGraphExportModal}
         onCancel={() => setShowFullGraphExportModal(false)}
         footer={[
