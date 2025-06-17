@@ -32,13 +32,11 @@ const ArxmlImporter: React.FC<ArxmlImporterProps> = () => {
   const [extractionProgress, setExtractionProgress] = useState(0);
   const [progressPhase, setProgressPhase] = useState<string>('');
   const [messageApi, contextHolder] = message.useMessage();
-  const [importLabel, setImportLabel] = useState<string>('');
   const [lastImportSummary, setLastImportSummary] = useState<{
     files: string[];
     startTime: number;
     nodeCount?: number;
     relationshipCount?: number;
-    importLabel?: string;
   } | null>(null);
 
   // Helper: Recursively scan directory for .arxml files
@@ -191,7 +189,7 @@ const ArxmlImporter: React.FC<ArxmlImporterProps> = () => {
       };
 
       // Single call to the backend with progress callback
-      const neoResult = await uploadArxmlToNeo4j(filesToUpload, progressCallback, importLabel);
+      const neoResult = await uploadArxmlToNeo4j(filesToUpload, progressCallback);
       
       // Backend processing is finished, now update progress and message
       setExtractionProgress(100); 
@@ -204,11 +202,10 @@ const ArxmlImporter: React.FC<ArxmlImporterProps> = () => {
           files: importedFileNames,
           startTime,
           nodeCount: neoResult.nodeCount,
-          relationshipCount: neoResult.relationshipCount,
-          importLabel: importLabel
+          relationshipCount: neoResult.relationshipCount
         };
         setLastImportSummary(summaryData);
-        generateImportSummary(importedFileNames, startTime, neoResult.nodeCount, neoResult.relationshipCount, importLabel);
+        generateImportSummary(importedFileNames, startTime, neoResult.nodeCount, neoResult.relationshipCount);
         
         messageApi.success({
           content: `Successfully imported ${filesToUpload.length} file(s). ${neoResult.nodeCount} nodes, ${neoResult.relationshipCount} relationships created. Import summary downloaded.`,
@@ -245,7 +242,7 @@ const ArxmlImporter: React.FC<ArxmlImporterProps> = () => {
   };
 
   // Generate and download import summary file
-  const generateImportSummary = (importedFiles: string[], startTime: number, nodeCount?: number, relationshipCount?: number, importLabelForSummary?: string) => {
+  const generateImportSummary = (importedFiles: string[], startTime: number, nodeCount?: number, relationshipCount?: number) => {
     const now = new Date();
     const endTime = Date.now();
     const processingTime = Math.round((endTime - startTime) / 1000); // Convert to seconds
@@ -269,7 +266,6 @@ const ArxmlImporter: React.FC<ArxmlImporterProps> = () => {
       `Processing Time: ${processingTime} seconds`,
       ...(nodeCount !== undefined ? [`Nodes Created: ${nodeCount}`] : []),
       ...(relationshipCount !== undefined ? [`Relationships Created: ${relationshipCount}`] : []),
-      ...(importLabelForSummary ? [`Import Label: ${importLabelForSummary}`] : []),
       ``,
       `Imported Files:`,
       importedFiles.join(', ')
@@ -386,23 +382,6 @@ const ArxmlImporter: React.FC<ArxmlImporterProps> = () => {
                 disabled={isExtracting}
               />
 
-              {/* Import Label Input */}
-              <div style={{ marginBottom: 16 }}>
-                <Text strong style={{ marginBottom: 8, display: 'block' }}>
-                  Import Label (optional):
-                </Text>
-                <Input
-                  placeholder="Enter import label (e.g., V3.33, Release_2024-01, etc.)"
-                  value={importLabel}
-                  onChange={e => setImportLabel(e.target.value)}
-                  disabled={isExtracting}
-                  style={{ maxWidth: 400 }}
-                />
-                <div style={{ fontSize: '12px', color: '#666', marginTop: 4 }}>
-                  This label will be stored with each imported model element along with a timestamp.
-                </div>
-              </div>
-
               {/* Progress bar moved here, above the table */}
               {isExtracting && (
                 <div style={{ margin: '16px 0' }}>
@@ -447,8 +426,7 @@ const ArxmlImporter: React.FC<ArxmlImporterProps> = () => {
                       lastImportSummary.files,
                       lastImportSummary.startTime,
                       lastImportSummary.nodeCount,
-                      lastImportSummary.relationshipCount,
-                      lastImportSummary.importLabel
+                      lastImportSummary.relationshipCount
                     )}
                     size="small"
                     disabled={isExtracting}

@@ -261,8 +261,7 @@ function mergeParsedArxmlObjects(parsedObjects: any[]) {
 // Full implementation of uploadArxmlToNeo4j with optimizations
 export const uploadArxmlToNeo4j = async (
   arxmlFileContents: ArxmlFileContent[], 
-  progressCallback?: (progress: number, phase: string) => void,
-  importLabel?: string
+  progressCallback?: (progress: number, phase: string) => void
 ) => {
   if (!arxmlFileContents || arxmlFileContents.length === 0) {
     return { success: false, message: "No ARXML file contents provided.", nodeCount: 0, relationshipCount: 0, error: "No content" };
@@ -321,14 +320,11 @@ export const uploadArxmlToNeo4j = async (
       }
       await session.run(`CREATE INDEX arxml_virtual_ref_uuid IF NOT EXISTS FOR (n:${SPECIFIC_NODE_LABELS.VIRTUAL_REF_NODE_LABEL}) ON (n.uuid)`);
 
-      const importTimestamp = new Date().toISOString();
-
       await session.writeTransaction(async txc => {
         if (progressCallback) progressCallback(80, 'Uploading nodes to database');
         const nodesByLabel = nodes.reduce((acc, node) => {
           acc[node.label] = acc[node.label] || [];
-          const nodePropsWithImportInfo = { ...node.props, importTimestamp, ...(importLabel && { importLabel }) };
-          acc[node.label].push({ uuid: node.uuid, props: nodePropsWithImportInfo });
+          acc[node.label].push({ uuid: node.uuid, props: node.props });
           return acc;
         }, {} as Record<string, Array<{ uuid: string, props: Record<string, any> }>>);
 
@@ -433,11 +429,6 @@ export const uploadArxmlToNeo4j = async (
             }
           }
         }
-        
-        if (progressCallback) progressCallback(92, 'Creating import metadata');
-        const importInfoNodeUuid = `IMPORT_INFO_${importTimestamp}`;
-        const importInfoNodeProps = { uuid: importInfoNodeUuid, importFileNames: fileNames, importTimestamp, nodeCountInImport: nodes.length, relationshipCountInImport: relationships.length, unresolvedReferenceCountInImport: unresolvedReferences.length };
-        await txc.run(`MERGE (i:${SPECIFIC_NODE_LABELS.IMPORT_INFO} {importTimestamp: $importTimestamp}) ON CREATE SET i = $propsValue ON MATCH SET i += $propsValue`, { importTimestamp: importTimestamp, propsValue: importInfoNodeProps });
       });
 
       if (progressCallback) progressCallback(98, 'Import completed successfully');

@@ -1,5 +1,19 @@
 import { driver } from '../config';
 
+// Type definitions for import/export
+interface ImportNodeData {
+  uuid: string;
+  labels: string[];
+  properties: Record<string, any>;
+}
+
+interface ImportRelationshipData {
+  type: string;
+  properties: Record<string, any>;
+  start: string;
+  end: string;
+}
+
 /**
  * Get all node labels for a specific node by UUID
  */
@@ -223,6 +237,673 @@ export const testDatabaseConnection = async (): Promise<{
     return {
       success: false,
       message: `Connection failed: ${errorMessage}`
+    };
+  } finally {
+    await session.close();
+  }
+};
+
+/**
+ * Export all nodes from the database with deterministic ordering
+ */
+export const exportAllNodes = async (): Promise<{
+  success: boolean;
+  data?: Array<{
+    uuid: string;
+    labels: string[];
+    properties: Record<string, any>;
+  }>;
+  message?: string;
+  error?: string;
+}> => {
+  const session = driver.session();
+  
+  try {
+    // EXPORT ALL NODES
+    const result = await session.run(`
+      MATCH (n)
+      // We can only reliably export nodes that have our stable, unique identifier.
+      WHERE n.uuid IS NOT NULL
+      // We order by the uuid to ensure the output is always in the same order
+      // for the same graph state. This is CRITICAL for clean Git diffs.
+      ORDER BY n.uuid ASC
+      RETURN
+          n.uuid AS uuid,        // The unique identifier
+          labels(n) AS labels,   // A list of all labels, e.g., ["RISKRATING", "AnotherLabel"]
+          properties(n) AS properties // A map of all properties, including the uuid itself
+    `);
+
+    const nodes = result.records.map(record => ({
+      uuid: record.get('uuid'),
+      labels: record.get('labels') as string[],
+      properties: record.get('properties') as Record<string, any>
+    }));
+
+    return {
+      success: true,
+      data: nodes,
+      message: `Successfully exported ${nodes.length} nodes`
+    };
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    
+    return {
+      success: false,
+      message: 'Error exporting nodes from database.',
+      error: errorMessage,
+    };
+  } finally {
+    await session.close();
+  }
+};
+
+/**
+ * Export all relationships from the database with deterministic ordering
+ */
+export const exportAllRelationships = async (): Promise<{
+  success: boolean;
+  data?: Array<{
+    type: string;
+    properties: Record<string, any>;
+    startNodeUuid: string;
+    endNodeUuid: string;
+  }>;
+  message?: string;
+  error?: string;
+}> => {
+  const session = driver.session();
+  
+  try {
+    // EXPORT ALL RELATIONSHIPS (Pragmatic Alternative)
+    const result = await session.run(`
+      MATCH (startNode)-[r]->(endNode)
+      // We can only export relationships connecting identifiable nodes.
+      WHERE startNode.uuid IS NOT NULL AND endNode.uuid IS NOT NULL
+      // We MUST create a deterministic order. We sort by the combination of
+      // start node, end node, and relationship type.
+      ORDER BY startNode.uuid ASC, endNode.uuid ASC, type(r) ASC
+      RETURN
+          type(r) AS type,
+          properties(r) AS properties,
+          startNode.uuid AS startNodeUuid,
+          endNode.uuid AS endNodeUuid
+    `);
+
+    const relationships = result.records.map(record => ({
+      type: record.get('type'),
+      properties: record.get('properties') as Record<string, any>,
+      startNodeUuid: record.get('startNodeUuid'),
+      endNodeUuid: record.get('endNodeUuid')
+    }));
+
+    return {
+      success: true,
+      data: relationships,
+      message: `Successfully exported ${relationships.length} relationships`
+    };
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    
+    return {
+      success: false,
+      message: 'Error exporting relationships from database.',
+      error: errorMessage,
+    };
+  } finally {
+    await session.close();
+  }
+};
+
+/**
+ * Export the entire graph to the filesystem with Graph-as-Code structure
+ */
+/**
+ * Export the full graph structure for file-based export
+ * Returns the data structure that can be written to files by a server-side API
+ */
+export const exportFullGraphToFiles = async (): Promise<{
+  success: boolean;
+  data?: {
+    nodes: Array<{
+      uuid: string;
+      labels: string[];
+      properties: Record<string, any>;
+    }>;
+    relationships: Array<{
+      type: string;
+      properties: Record<string, any>;
+      startNodeUuid: string;
+      endNodeUuid: string;
+    }>;
+  };
+  message?: string;
+  error?: string;
+}> => {
+  try {
+    // Export nodes
+    const nodesResult = await exportAllNodes();
+    if (!nodesResult.success || !nodesResult.data) {
+      return {
+        success: false,
+        message: 'Failed to export nodes',
+        error: nodesResult.error
+      };
+    }
+
+    // Export relationships
+    const relationshipsResult = await exportAllRelationships();
+    if (!relationshipsResult.success || !relationshipsResult.data) {
+      return {
+        success: false,
+        message: 'Failed to export relationships',
+        error: relationshipsResult.error
+      };
+    }
+
+    return {
+      success: true,
+      data: {
+        nodes: nodesResult.data,
+        relationships: relationshipsResult.data
+      },
+      message: `Successfully exported ${nodesResult.data.length} nodes and ${relationshipsResult.data.length} relationships`
+    };
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    
+    return {
+      success: false,
+      message: 'Error during full graph export',
+      error: errorMessage,
+    };
+  }
+};
+
+/**
+ * Optimized export all nodes with batching for better performance
+ */
+export const exportAllNodesOptimized = async (batchSize = 1000): Promise<{
+  success: boolean;
+  data?: Array<{
+    uuid: string;
+    labels: string[];
+    properties: Record<string, any>;
+  }>;
+  message?: string;
+  error?: string;
+}> => {
+  const session = driver.session();
+  let allNodes: Array<{
+    uuid: string;
+    labels: string[];
+    properties: Record<string, any>;
+  }> = [];
+  
+  try {
+    // First get the total count for progress tracking
+    const countResult = await session.run(`
+      MATCH (n)
+      WHERE n.uuid IS NOT NULL
+      RETURN count(n) as totalCount
+    `);
+    
+    const totalCount = countResult.records[0]?.get('totalCount').toNumber() || 0;
+    
+    // Process in batches for better memory management
+    let skip = 0;
+    
+    while (skip < totalCount) {
+      const result = await session.run(`
+        MATCH (n)
+        WHERE n.uuid IS NOT NULL
+        ORDER BY n.uuid ASC
+        SKIP $skip
+        LIMIT $limit
+        RETURN
+            n.uuid AS uuid,
+            labels(n) AS labels,
+            properties(n) AS properties
+      `, { skip, limit: batchSize });
+
+      const batchNodes = result.records.map(record => ({
+        uuid: record.get('uuid'),
+        labels: record.get('labels') as string[],
+        properties: record.get('properties') as Record<string, any>
+      }));
+
+      allNodes = allNodes.concat(batchNodes);
+      skip += batchSize;
+      
+      // Break if we got fewer results than batch size (end of data)
+      if (batchNodes.length < batchSize) {
+        break;
+      }
+    }
+
+    return {
+      success: true,
+      data: allNodes,
+      message: `Successfully exported ${allNodes.length} nodes`
+    };
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    
+    return {
+      success: false,
+      message: 'Error exporting nodes from database.',
+      error: errorMessage,
+    };
+  } finally {
+    await session.close();
+  }
+};
+
+/**
+ * Optimized export all relationships with batching
+ */
+export const exportAllRelationshipsOptimized = async (batchSize = 1000): Promise<{
+  success: boolean;
+  data?: Array<{
+    type: string;
+    properties: Record<string, any>;
+    startNodeUuid: string;
+    endNodeUuid: string;
+  }>;
+  message?: string;
+  error?: string;
+}> => {
+  const session = driver.session();
+  let allRelationships: Array<{
+    type: string;
+    properties: Record<string, any>;
+    startNodeUuid: string;
+    endNodeUuid: string;
+  }> = [];
+  
+  try {
+    // First get the total count
+    const countResult = await session.run(`
+      MATCH (startNode)-[r]->(endNode)
+      WHERE startNode.uuid IS NOT NULL AND endNode.uuid IS NOT NULL
+      RETURN count(r) as totalCount
+    `);
+    
+    const totalCount = countResult.records[0]?.get('totalCount').toNumber() || 0;
+    
+    // Process in batches
+    let skip = 0;
+    
+    while (skip < totalCount) {
+      const result = await session.run(`
+        MATCH (startNode)-[r]->(endNode)
+        WHERE startNode.uuid IS NOT NULL AND endNode.uuid IS NOT NULL
+        ORDER BY startNode.uuid ASC, endNode.uuid ASC, type(r) ASC
+        SKIP $skip
+        LIMIT $limit
+        RETURN
+            type(r) AS type,
+            properties(r) AS properties,
+            startNode.uuid AS startNodeUuid,
+            endNode.uuid AS endNodeUuid
+      `, { skip, limit: batchSize });
+
+      const batchRelationships = result.records.map(record => ({
+        type: record.get('type'),
+        properties: record.get('properties') as Record<string, any>,
+        startNodeUuid: record.get('startNodeUuid'),
+        endNodeUuid: record.get('endNodeUuid')
+    }));
+
+      allRelationships = allRelationships.concat(batchRelationships);
+      skip += batchSize;
+      
+      if (batchRelationships.length < batchSize) {
+        break;
+      }
+    }
+
+    return {
+      success: true,
+      data: allRelationships,
+      message: `Successfully exported ${allRelationships.length} relationships`
+    };
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    
+    return {
+      success: false,
+      message: 'Error exporting relationships from database.',
+      error: errorMessage,
+    };
+  } finally {
+    await session.close();
+  }
+};
+
+/**
+ * Single query optimized export that gets both nodes and relationships in one transaction
+ */
+export const exportFullGraphOptimized = async (): Promise<{
+  success: boolean;
+  data?: {
+    nodes: Array<{
+      uuid: string;
+      labels: string[];
+      properties: Record<string, any>;
+    }>;
+    relationships: Array<{
+      type: string;
+      properties: Record<string, any>;
+      startNodeUuid: string;
+      endNodeUuid: string;
+    }>;
+  };
+  message?: string;
+  error?: string;
+}> => {
+  const session = driver.session();
+  
+  try {
+    // Use a single transaction to get both nodes and relationships
+    const result = await session.readTransaction(async txc => {
+      // Get nodes
+      const nodesResult = await txc.run(`
+        MATCH (n)
+        WHERE n.uuid IS NOT NULL
+        ORDER BY n.uuid ASC
+        RETURN
+            n.uuid AS uuid,
+            labels(n) AS labels,
+            properties(n) AS properties
+      `);
+
+      // Get relationships  
+      const relationshipsResult = await txc.run(`
+        MATCH (startNode)-[r]->(endNode)
+        WHERE startNode.uuid IS NOT NULL AND endNode.uuid IS NOT NULL
+        ORDER BY startNode.uuid ASC, endNode.uuid ASC, type(r) ASC
+        RETURN
+            type(r) AS type,
+            properties(r) AS properties,
+            startNode.uuid AS startNodeUuid,
+            endNode.uuid AS endNodeUuid
+      `);
+
+      return {
+        nodes: nodesResult.records,
+        relationships: relationshipsResult.records
+      };
+    });
+
+    const nodes = result.nodes.map(record => ({
+      uuid: record.get('uuid'),
+      labels: record.get('labels') as string[],
+      properties: record.get('properties') as Record<string, any>
+    }));
+
+    const relationships = result.relationships.map(record => ({
+      type: record.get('type'),
+      properties: record.get('properties') as Record<string, any>,
+      startNodeUuid: record.get('startNodeUuid'),
+      endNodeUuid: record.get('endNodeUuid')
+    }));
+
+    return {
+      success: true,
+      data: {
+        nodes,
+        relationships
+      },
+      message: `Successfully exported ${nodes.length} nodes and ${relationships.length} relationships`
+    };
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    
+    return {
+      success: false,
+      message: 'Error during full graph export',
+      error: errorMessage,
+    };
+  } finally {
+    await session.close();
+  }
+};
+
+/**
+ * Create performance indexes for faster graph export
+ */
+export const createExportIndexes = async (): Promise<{
+  success: boolean;
+  message?: string;
+  error?: string;
+}> => {
+  const session = driver.session();
+  
+  try {
+    // Create index on uuid for all nodes to speed up ORDER BY uuid
+    await session.run('CREATE INDEX node_uuid_index IF NOT EXISTS FOR (n) ON (n.uuid)');
+    
+    // Create index for relationship queries
+    await session.run('CREATE INDEX rel_start_uuid_index IF NOT EXISTS FOR ()-[r]-() ON (r.startNodeUuid)');
+    await session.run('CREATE INDEX rel_end_uuid_index IF NOT EXISTS FOR ()-[r]-() ON (r.endNodeUuid)');
+
+    return {
+      success: true,
+      message: 'Export performance indexes created successfully'
+    };
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    
+    return {
+      success: false,
+      message: 'Error creating export indexes',
+      error: errorMessage,
+    };
+  } finally {
+    await session.close();
+  }
+};
+
+/**
+ * Interface for node data during import
+ */
+interface ImportNodeData {
+  uuid: string;
+  labels: string[];
+  properties: Record<string, any>;
+}
+
+/**
+ * Interface for relationship data during import
+ */
+interface ImportRelationshipData {
+  type: string;
+  properties: Record<string, any>;
+  start: string;
+  end: string;
+}
+
+/**
+ * Full graph import with three-phase wipe-and-load operation
+ * Phase 1: Wipe database and create constraints
+ * Phase 2: Import all nodes in batches
+ * Phase 3: Import all relationships in batches
+ */
+export const importFullGraph = async (
+  nodesData: ImportNodeData[],
+  relationshipsData: ImportRelationshipData[]
+): Promise<{
+  success: boolean;
+  message?: string;
+  error?: string;
+  stats?: {
+    nodesCreated: number;
+    relationshipsCreated: number;
+    constraintsCreated: number;
+    duration: number;
+  };
+}> => {
+  const session = driver.session();
+  const startTime = Date.now();
+  
+  try {
+    console.log('[IMPORT] Starting robust full graph import with separate transactions...');
+    
+    // Phase 1: Wipe database in its own transaction
+    console.log('[IMPORT] Phase 1: Wiping database...');
+    await session.writeTransaction(async tx => {
+      await tx.run('MATCH (n) DETACH DELETE n');
+    });
+    console.log('[IMPORT] Database wiped successfully');
+    
+    // Phase 2: Collect unique labels and create constraints
+    console.log('[IMPORT] Phase 2: Creating constraints...');
+    const allLabels = new Set<string>();
+    
+    nodesData.forEach(node => {
+      node.labels.forEach(label => allLabels.add(label));
+    });
+    
+    console.log(`[IMPORT] Found ${allLabels.size} unique labels: ${Array.from(allLabels).join(', ')}`);
+    
+    // Create constraints in separate transactions (one per constraint)
+    let constraintsCreated = 0;
+    for (const label of Array.from(allLabels)) {
+      try {
+        await session.writeTransaction(async tx => {
+          await tx.run(`CREATE CONSTRAINT IF NOT EXISTS FOR (n:${label}) REQUIRE n.uuid IS UNIQUE`);
+        });
+        constraintsCreated++;
+        console.log(`[IMPORT] Created constraint for ${label}`);
+      } catch (error) {
+        // Constraint might already exist, which is fine
+        console.log(`[IMPORT] Constraint for ${label} might already exist: ${error}`);
+      }
+    }
+    
+    console.log(`[IMPORT] Created ${constraintsCreated} constraints`);
+    
+    // Phase 3: Create nodes in batches
+    console.log('[IMPORT] Phase 3: Creating nodes...');
+    
+    const BATCH_SIZE = 1000;
+    let totalNodesCreated = 0;
+    
+    // Group nodes by label combinations for efficient Cypher queries
+    const labelGroups = new Map<string, ImportNodeData[]>();
+    
+    nodesData.forEach(node => {
+      const labelKey = node.labels.sort().join(':');
+      if (!labelGroups.has(labelKey)) {
+        labelGroups.set(labelKey, []);
+      }
+      labelGroups.get(labelKey)!.push(node);
+    });
+    
+    console.log(`[IMPORT] Grouped nodes into ${labelGroups.size} label combinations`);
+    
+    // Create nodes for each label group in batches
+    for (const [labelKey, groupNodes] of Array.from(labelGroups)) {
+      const labels = labelKey.split(':').filter(Boolean);
+      const labelQuery = labels.length > 0 ? ':' + labels.join(':') : '';
+      
+      console.log(`[IMPORT] Processing ${groupNodes.length} nodes with labels: ${labelKey}`);
+      
+      for (let i = 0; i < groupNodes.length; i += BATCH_SIZE) {
+        const batch = groupNodes.slice(i, i + BATCH_SIZE);
+        
+        await session.writeTransaction(async tx => {
+          const result = await tx.run(`
+            UNWIND $nodeBatch AS nodeData
+            CREATE (n${labelQuery} {uuid: nodeData.uuid})
+            SET n += nodeData.properties
+            RETURN count(n) AS created
+          `, { nodeBatch: batch });
+          
+          const created = result.records[0]?.get('created')?.toNumber() || 0;
+          totalNodesCreated += created;
+        });
+        
+        console.log(`[IMPORT] Created batch of ${batch.length} nodes for ${labelKey}`);
+      }
+    }
+    
+    console.log(`[IMPORT] Phase 3 complete: ${totalNodesCreated} nodes created`);
+    
+    // Phase 4: Create relationships in batches
+    console.log('[IMPORT] Phase 4: Creating relationships...');
+    
+    let totalRelationshipsCreated = 0;
+    
+    // Group relationships by type for efficient Cypher queries
+    const typeGroups = new Map<string, ImportRelationshipData[]>();
+    
+    relationshipsData.forEach(rel => {
+      if (!typeGroups.has(rel.type)) {
+        typeGroups.set(rel.type, []);
+      }
+      typeGroups.get(rel.type)!.push(rel);
+    });
+    
+    console.log(`[IMPORT] Grouped relationships into ${typeGroups.size} types`);
+    
+    // Create relationships for each type in batches
+    for (const [relType, groupRels] of Array.from(typeGroups)) {
+      console.log(`[IMPORT] Processing ${groupRels.length} relationships of type: ${relType}`);
+      
+      for (let i = 0; i < groupRels.length; i += BATCH_SIZE) {
+        const batch = groupRels.slice(i, i + BATCH_SIZE);
+        
+        await session.writeTransaction(async tx => {
+          const result = await tx.run(`
+            UNWIND $relBatch AS relData
+            MATCH (startNode {uuid: relData.start})
+            MATCH (endNode {uuid: relData.end})
+            CREATE (startNode)-[r:\`${relType}\`]->(endNode)
+            SET r += relData.properties
+            RETURN count(r) AS created
+          `, { relBatch: batch });
+          
+          const created = result.records[0]?.get('created')?.toNumber() || 0;
+          totalRelationshipsCreated += created;
+        });
+        
+        console.log(`[IMPORT] Created batch of ${batch.length} relationships for ${relType}`);
+      }
+    }
+    
+    console.log(`[IMPORT] Phase 4 complete: ${totalRelationshipsCreated} relationships created`);
+    
+    const duration = Date.now() - startTime;
+    console.log(`[IMPORT] Full graph import completed successfully in ${duration}ms`);
+    
+    return {
+      success: true,
+      message: `Successfully imported ${totalNodesCreated} nodes and ${totalRelationshipsCreated} relationships`,
+      stats: {
+        nodesCreated: totalNodesCreated,
+        relationshipsCreated: totalRelationshipsCreated,
+        constraintsCreated,
+        duration
+      }
+    };
+    
+  } catch (error) {
+    console.error('[IMPORT] Error during import:', error);
+    
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    
+    return {
+      success: false,
+      message: 'Error during full graph import',
+      error: errorMessage,
     };
   } finally {
     await session.close();
