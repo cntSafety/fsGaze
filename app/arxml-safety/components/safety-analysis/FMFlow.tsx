@@ -51,6 +51,8 @@ interface NodeData {
 // Custom node component for SW Component failures (center)
 function SwFailureNode({ data }: { data: NodeData }) {
   const showBorder = ['A', 'B', 'C', 'D'].includes(data.asil);
+  const isQM = data.asil === 'QM';
+  const textColor = isQM ? '#9CA3AF' : '#1F2937'; // Medium gray for QM, dark gray for ASIL
   
   return (
     <div style={{
@@ -60,7 +62,7 @@ function SwFailureNode({ data }: { data: NodeData }) {
       border: showBorder ? '3px solid #F59E0B' : 'none', // Orange border for ASIL A-D
       boxShadow: '0 4px 8px rgba(0, 0, 0, 0.15)',
       minWidth: '180px',
-      color: '#1F2937', // Dark gray text
+      color: textColor,
       textAlign: 'center',
       position: 'relative'
     }}>
@@ -80,14 +82,14 @@ function SwFailureNode({ data }: { data: NodeData }) {
         style={{ background: '#6B7280', width: '10px', height: '10px', right: '-5px' }}
       />
       
-      <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '4px' }}>
+      <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '4px', color: textColor }}>
         {data.label}
       </div>
       <div style={{ fontSize: '11px', opacity: 0.9 }}>
-        <span style={{ fontWeight: 'bold' }}>ASIL:</span> <span style={{ fontWeight: 'bold' }}>{data.asil}</span>
+        <span style={{ fontWeight: 'bold', color: textColor }}>ASIL:</span> <span style={{ fontWeight: 'bold', color: textColor }}>{data.asil}</span>
       </div>
       {data.description && (
-        <div style={{ fontSize: '10px', opacity: 0.8, marginTop: '2px' }}>
+        <div style={{ fontSize: '10px', opacity: 0.8, marginTop: '2px', color: textColor }}>
           {data.description.length > 30 ? `${data.description.substring(0, 30)}...` : data.description}
         </div>
       )}
@@ -98,6 +100,9 @@ function SwFailureNode({ data }: { data: NodeData }) {
 // Custom node component for receiver port failures (left side)
 function ReceiverPortFailureNode({ data }: { data: NodeData }) {
   const showBorder = ['A', 'B', 'C', 'D'].includes(data.asil);
+  const isQM = data.asil === 'QM';
+  const labelTextColor = isQM ? '#9CA3AF' : '#374151'; // Medium gray for QM, darker for ASIL
+  const asilTextColor = isQM ? '#9CA3AF' : '#6B7280'; // Medium gray for QM, gray for ASIL
   
   return (
     <div style={{
@@ -127,10 +132,10 @@ function ReceiverPortFailureNode({ data }: { data: NodeData }) {
       <div style={{ fontSize: '12px', fontWeight: '600', color: '#9CA3AF', marginBottom: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {data.portName}
       </div>
-      <div style={{ fontSize: '13px', fontWeight: '700', color: '#374151', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      <div style={{ fontSize: '13px', fontWeight: '700', color: labelTextColor, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {data.label}
       </div>
-      <div style={{ fontSize: '10px', color: '#6B7280' }}>
+      <div style={{ fontSize: '10px', color: asilTextColor }}>
         <span style={{ fontWeight: 'bold' }}>ASIL:</span> <span style={{ fontWeight: 'bold' }}>{data.asil}</span>
       </div>
     </div>
@@ -140,6 +145,9 @@ function ReceiverPortFailureNode({ data }: { data: NodeData }) {
 // Custom node component for provider port failures (right side)
 function ProviderPortFailureNode({ data }: { data: NodeData }) {
   const showBorder = ['A', 'B', 'C', 'D'].includes(data.asil);
+  const isQM = data.asil === 'QM';
+  const labelTextColor = isQM ? '#9CA3AF' : '#374151'; // Medium gray for QM, darker for ASIL
+  const asilTextColor = isQM ? '#9CA3AF' : '#6B7280'; // Medium gray for QM, gray for ASIL
   
   return (
     <div style={{
@@ -162,10 +170,10 @@ function ProviderPortFailureNode({ data }: { data: NodeData }) {
       <div style={{ fontSize: '12px', fontWeight: '600', color: '#9CA3AF', marginBottom: '2px' }}>
         {data.portName}
       </div>
-      <div style={{ fontSize: '13px', fontWeight: '700', color: '#374151' }}>
+      <div style={{ fontSize: '13px', fontWeight: '700', color: labelTextColor }}>
         {data.label}
       </div>
-      <div style={{ fontSize: '10px', color: '#6B7280' }}>
+      <div style={{ fontSize: '10px', color: asilTextColor }}>
         <span style={{ fontWeight: 'bold' }}>ASIL:</span> <span style={{ fontWeight: 'bold' }}>{data.asil}</span>
       </div>
     </div>

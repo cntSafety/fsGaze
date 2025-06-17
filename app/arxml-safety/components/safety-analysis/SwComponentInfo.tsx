@@ -12,15 +12,15 @@ interface SwComponentInfoProps {
 
 export default function SwComponentInfo({ swComponent, failures, providerPorts }: SwComponentInfoProps) {
   return (
-    <Card style={{ marginBottom: '24px' }}>
-      <Title level={2} style={{ marginBottom: '16px' }}>
+    <Card style={{ marginBottom: '16px' }} bodyStyle={{ padding: '16px' }}>
+      <Title level={3} style={{ marginBottom: '12px', marginTop: '0' }}>
         SW Component Safety Analysis
       </Title>
       
       <Descriptions 
         bordered 
         column={1} 
-        size="middle"
+        size="small"
         styles={{ label: { fontWeight: 'bold', width: '150px' } }}
       >
         <Descriptions.Item label="Component Name">

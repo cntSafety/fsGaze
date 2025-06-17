@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Modal, Form, Select, Button, Space, Typography, Divider, Input, Tabs, Popconfirm } from 'antd';
 import { PlusOutlined, DeleteOutlined, ClockCircleOutlined, EditOutlined, BugOutlined } from '@ant-design/icons';
 import { 
@@ -13,6 +13,97 @@ import {
 const { Option } = Select;
 const { Text } = Typography;
 const { TextArea } = Input;
+
+// Pressure Gauge Component
+const PressureGauge: React.FC<{ value: number; maxValue: number }> = ({ value, maxValue }) => {
+  const percentage = Math.min((value / maxValue) * 100, 100);
+  
+  const getColor = (val: number) => {
+    if (val >= 17) return '#ff4d4f'; // Red for high risk
+    if (val >= 9) return '#faad14'; // Yellow for medium risk
+    return '#52c41a'; // Green for low risk
+  };
+
+  const color = getColor(value);
+
+  return (
+    <div style={{ width: '100%', marginTop: '8px' }}>
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center',
+        marginBottom: '8px'
+      }}>
+        <Text strong style={{ color }}>Overall Risk: {value}</Text>
+        <Text type="secondary">Max: {maxValue}</Text>
+      </div>
+      
+      {/* Gauge Background */}
+      <div style={{
+        width: '100%',
+        height: '24px',
+        backgroundColor: '#f0f0f0',
+        borderRadius: '12px',
+        border: '2px solid #d9d9d9',
+        position: 'relative',
+        overflow: 'hidden'
+      }}>
+        {/* Gauge Fill */}
+        <div style={{
+          width: `${percentage}%`,
+          height: '100%',
+          backgroundColor: color,
+          borderRadius: '10px',
+          transition: 'all 0.3s ease',
+          position: 'relative'
+        }}>
+          {/* Shine Effect */}
+          <div style={{
+            position: 'absolute',
+            top: '2px',
+            left: '2px',
+            right: '2px',
+            height: '6px',
+            background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)',
+            borderRadius: '6px'
+          }} />
+        </div>
+        
+        {/* Gauge Markers */}
+        <div style={{
+          position: 'absolute',
+          top: '0',
+          left: '33.33%',
+          width: '2px',
+          height: '100%',
+          backgroundColor: '#bfbfbf',
+          opacity: 0.7
+        }} />
+        <div style={{
+          position: 'absolute',
+          top: '0',
+          left: '62.96%',
+          width: '2px',
+          height: '100%',
+          backgroundColor: '#bfbfbf',
+          opacity: 0.7
+        }} />
+      </div>
+      
+      {/* Risk Level Indicators */}
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        marginTop: '4px',
+        fontSize: '12px'
+      }}>
+        <Text style={{ color: '#52c41a' }}>Low (1-8)</Text>
+        <Text style={{ color: '#faad14' }}>Medium (9-16)</Text>
+        <Text style={{ color: '#ff4d4f' }}>High (17-27)</Text>
+      </div>
+    </div>
+  );
+};
 
 interface RiskRatingModalProps {
   visible: boolean;
@@ -63,24 +154,35 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
   onTabChange
 }) => {
   const [form] = Form.useForm<RiskRatingFormData>();
+  const [formValues, setFormValues] = useState<{
+    severity?: number;
+    occurrence?: number;
+    detection?: number;
+  }>({});
+
+  // Calculate overall risk
+  const overallRisk = (formValues.severity || 0) * (formValues.occurrence || 0) * (formValues.detection || 0);
 
   // Effect to populate form when editing existing risk rating
   useEffect(() => {
     if (mode === 'edit' || mode === 'tabs') {
       if (activeRiskRating) {
         // Use the integer values directly
-        form.setFieldsValue({
+        const values = {
           severity: activeRiskRating.severity,
           occurrence: activeRiskRating.occurrence,
           detection: activeRiskRating.detection,
           ratingComment: activeRiskRating.ratingComment || ''
-        });
+        };
+        form.setFieldsValue(values);
+        setFormValues(values);
       }
     } else {
       // Reset form for create mode
       form.resetFields();
+      setFormValues({});
     }
-  }, [mode, activeRiskRating, form]);
+  }, [form, mode, activeRiskRating]);
 
   const handleOk = async () => {
     try {
@@ -129,6 +231,9 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
         form={form}
         layout="vertical"
         requiredMark={false}
+        onValuesChange={(changedValues, allValues) => {
+          setFormValues(allValues);
+        }}
       >
         <Form.Item
           name="severity"
@@ -205,6 +310,25 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
               </Option>
             ))}
           </Select>
+        </Form.Item>
+
+        <Divider />
+
+        {/* Overall Risk Display */}
+        <Form.Item label={<span style={{ fontWeight: 'bold' }}>Overall Risk Assessment</span>}>
+          <div style={{ 
+            padding: '16px', 
+            backgroundColor: '#fafafa', 
+            borderRadius: '8px',
+            border: '1px solid #d9d9d9'
+          }}>
+            <PressureGauge value={overallRisk} maxValue={27} />
+            <div style={{ marginTop: '12px', textAlign: 'center' }}>
+              <Text type="secondary" style={{ fontSize: '12px' }}>
+                Calculation: Severity ({formValues.severity || 0}) × Occurrence ({formValues.occurrence || 0}) × Detection ({formValues.detection || 0}) = {overallRisk}
+              </Text>
+            </div>
+          </div>
         </Form.Item>
 
         <Divider />

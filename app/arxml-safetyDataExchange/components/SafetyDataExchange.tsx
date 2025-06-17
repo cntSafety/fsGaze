@@ -35,11 +35,20 @@ interface CausationLinkInfo {
   effectFailureName: string;
 }
 
+interface RiskRatingLink {
+  failureUuid: string;
+  failureName: string;
+  riskRatingUuid: string;
+  riskRatingName: string;
+}
+
 interface SafetyGraphData {
   failures: SafetyGraphNode[];
   causations: SafetyGraphNode[];
+  riskRatings: SafetyGraphNode[];
   occurrences: OccurrenceLink[];
   causationLinks: CausationLinkInfo[];
+  riskRatingLinks: RiskRatingLink[];
 }
 
 const SafetyDataExchange: React.FC = () => {
@@ -530,10 +539,17 @@ const SafetyDataExchange: React.FC = () => {
         const parsedData: SafetyGraphData = JSON.parse(text);
         // Basic validation (can be more thorough)
         if (parsedData && parsedData.failures && parsedData.causations && parsedData.occurrences && parsedData.causationLinks) {
+          // Allow riskRatings and riskRatingLinks to be optional for backward compatibility
+          if (!parsedData.riskRatings) {
+            parsedData.riskRatings = [];
+          }
+          if (!parsedData.riskRatingLinks) {
+            parsedData.riskRatingLinks = [];
+          }
           setImportedData(parsedData);
           setImportedFileName(file.name);
         } else {
-          setImportError('Invalid JSON structure for safety data.');
+          setImportError('Invalid JSON structure for safety data. Required fields: failures, causations, occurrences, causationLinks.');
         }
       } catch (err: unknown) {
         setImportError(`Error parsing JSON file: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -695,7 +711,7 @@ const SafetyDataExchange: React.FC = () => {
             )}
             <Paragraph style={{ margin: 0, fontSize: '14px', color: '#666' }}>
               <strong>⚠️ WARNING:</strong> This will COMPLETELY WIPE the current database and import the selected graph files.
-              Select the folder that contains the "nodes/" directory and "relationships.json" file from a previous export.
+              Select the folder that contains the &ldquo;nodes/&rdquo; directory and &ldquo;relationships.json&rdquo; file from a previous export.
               This is a three-phase atomic operation: (1) Wipe database, (2) Create nodes, (3) Create relationships.
             </Paragraph>
             {fullGraphImportError && (

@@ -51,7 +51,7 @@ export const OCCURRENCE_OPTIONS: RiskRatingOption[] = [
 
 export const DETECTION_OPTIONS: RiskRatingOption[] = [
   {
-    value: 1,
+    value: 3,
     label: 'Low Confidence',
     description: 'Difficult to detect potential failures in the component',
     color: '#ff4d4f' // Red (low confidence in detection is bad)
@@ -63,7 +63,7 @@ export const DETECTION_OPTIONS: RiskRatingOption[] = [
     color: '#fadb14' // Light yellow
   },
   {
-    value: 3,
+    value: 1,
     label: 'High Confidence',
     description: 'Easy to detect potential failures in the component',
     color: '#52c41a' // Green (high confidence in detection is good)

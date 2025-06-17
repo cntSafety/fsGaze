@@ -55,7 +55,7 @@ export default function ReceiverPortsFailureModesTable({
       editable: true,
       searchable: true,
       minWidth: 150,
-      render: (text: unknown) => String(text || '-'),
+      render: (text: unknown) => <strong>{String(text || '-')}</strong>,
     },
     {
       key: 'failureDescription',
@@ -86,7 +86,18 @@ export default function ReceiverPortsFailureModesTable({
   ];
 
   return (
-    <BaseFailureModeTable
+    <div style={{ 
+      fontSize: '14px' // Base font size for the table
+    }}>
+      <style dangerouslySetInnerHTML={{
+        __html: `
+          .ant-table-tbody tr td:first-child {
+            font-size: 13px !important;
+            font-weight: normal !important;
+          }
+        `
+      }} />
+      <BaseFailureModeTable
       title="Receiver Ports Failure Modes"
       dataSource={portTableData}
       columns={portColumns}
@@ -135,5 +146,6 @@ export default function ReceiverPortsFailureModesTable({
           : undefined,
       }}
     />
+    </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Button, Spin, Card, Typography, Modal } from 'antd';
-import { ArrowLeftOutlined, TableOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import { useSwSafetyData } from './safety-analysis/hooks/useSwSafetyData';
 import SwComponentInfo from './safety-analysis/SwComponentInfo';
@@ -194,16 +194,8 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
         selectedFailures={selectedFailures}
       />
 
-      {/* Tables Section */}
-      <Card 
-        title={
-          <span>
-            <TableOutlined style={{ marginRight: 8 }} />
-            Failure Mode Tables
-          </span>
-        }
-        style={{ marginTop: '16px' }}
-      >
+      {/* Tables Section - Direct Display */}
+      <div style={{ marginTop: '16px' }}>
         <SwFailureModesTable 
           swComponentUuid={swComponentUuid}
           swComponent={swComponent}
@@ -228,7 +220,7 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
           onFailureSelect={handleFailureSelection}
           selectedFailures={selectedFailures}
         />
-      </Card>
+      </div>
     </div>
   );
 }

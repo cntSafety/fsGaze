@@ -498,7 +498,7 @@ export default function CoreSafetyTable({
                 name: text,
                 type: 'component',
                 additionalInfo: {
-                  failureCount: 1 // This could be enhanced to show actual failure count
+                  failureCount: dataSource.filter(row => row.swComponentUuid === record.swComponentUuid).length
                 }
               })}
             >
@@ -576,7 +576,7 @@ export default function CoreSafetyTable({
                 name: text,
                 type: 'component',
                 additionalInfo: {
-                  failureCount: 1 // This could be enhanced to show actual failure count
+                  failureCount: dataSource.filter(row => row.swComponentUuid === record.swComponentUuid).length
                 }
               })}
             >

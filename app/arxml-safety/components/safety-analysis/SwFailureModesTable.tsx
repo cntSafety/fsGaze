@@ -1,6 +1,6 @@
 import React from 'react';
 import { Button } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined, CodeOutlined } from '@ant-design/icons';
 import { SafetyTableColumn } from '../CoreSafetyTable';
 import { useSwFailureModes } from './hooks/useSwFailureModes';
 import { SwComponent, Failure } from './types';
@@ -59,7 +59,7 @@ export default function SwFailureModesTable({
       editable: true,
       searchable: true,
       minWidth: 150,
-      render: (text: unknown) => String(text || '-'),
+      render: (text: unknown) => <strong>{String(text || '-')}</strong>,
     },
     {
       key: 'failureDescription',
@@ -93,7 +93,11 @@ export default function SwFailureModesTable({
     <BaseFailureModeTable
       title={
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-          <span>SW Failure Modes</span>          <Button 
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <CodeOutlined style={{ fontSize: '18px', color: '#1890ff' }} />
+            <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#262626' }}>SW Failure Modes</span>
+          </div>
+          <Button 
             type="primary" 
             icon={<PlusOutlined />} 
             onClick={() => handleAddFailure()}

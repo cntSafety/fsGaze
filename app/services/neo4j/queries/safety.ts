@@ -24,11 +24,20 @@ export interface CausationLinkInfo {
     effectFailureName: string; // For logging/verification
 }
 
+export interface RiskRatingLink {
+    failureUuid: string;
+    failureName: string; // For logging/verification
+    riskRatingUuid: string;
+    riskRatingName: string; // For logging/verification
+}
+
 export interface SafetyGraphData {
     failures: SafetyGraphNode[];
     causations: SafetyGraphNode[];
+    riskRatings: SafetyGraphNode[];
     occurrences: OccurrenceLink[];
     causationLinks: CausationLinkInfo[];
+    riskRatingLinks: RiskRatingLink[];
 }
 
 export async function getSafetyGraph(): Promise<{
@@ -94,13 +103,37 @@ export async function getSafetyGraph(): Promise<{
             effectFailureName: record.get('effectFailureName'),
         }));
 
+        // 5. Get all RISKRATING nodes and their properties
+        const riskRatingsResult = await session.run(
+            'MATCH (r:RISKRATING) RETURN r.uuid AS uuid, properties(r) AS properties'
+        );
+        const riskRatings = riskRatingsResult.records.map(record => ({
+            uuid: record.get('uuid'),
+            properties: record.get('properties'),
+        }));
+
+        // 6. Get all RATED relationships between FAILURE and RISKRATING nodes
+        const riskRatingLinksResult = await session.run(`
+            MATCH (f:FAILURE)-[r:RATED]->(rr:RISKRATING)
+            RETURN f.uuid AS failureUuid, f.name AS failureName,
+                   rr.uuid AS riskRatingUuid, rr.name AS riskRatingName
+        `);
+        const riskRatingLinks = riskRatingLinksResult.records.map(record => ({
+            failureUuid: record.get('failureUuid'),
+            failureName: record.get('failureName'),
+            riskRatingUuid: record.get('riskRatingUuid'),
+            riskRatingName: record.get('riskRatingName'),
+        }));
+
         return {
             success: true,
             data: {
                 failures,
                 causations,
+                riskRatings,
                 occurrences,
                 causationLinks,
+                riskRatingLinks,
             },
         };
     } catch (error: any) {
@@ -333,6 +366,82 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 { causationUuid: link.causationUuid, effectFailureUuid: link.effectFailureUuid }
             );
             logs.push(`[SUCCESS] THEN relationship linked: (CAUSATION ${link.causationName || link.causationUuid})-[THEN]->(FAILURE ${link.effectFailureName || link.effectFailureUuid}).`);
+        }
+
+        // Import/Update RISK RATINGS
+        const riskRatingNodeType = "RISKRATING";
+        for (const riskRating of data.riskRatings) {
+            if (!riskRating.uuid || !riskRating.properties || !riskRating.properties.name) {
+                logs.push(`[ERROR] Skipping ${riskRatingNodeType} due to missing uuid or name: ${JSON.stringify(riskRating)}`);
+                continue;
+            }
+            const { uuid, properties: rawProperties } = riskRating;
+            const propsToSet = { ...rawProperties };
+            delete propsToSet.uuid;       // Handled by MERGE key
+            delete propsToSet.createdAt;  // We set this explicitly
+            delete propsToSet.updatedAt;  // We set this explicitly
+
+            const result = await tx.run(
+                'MERGE (r:RISKRATING {uuid: $uuid}) ' +
+                'ON CREATE SET r = $propsToSet, r.uuid = $uuid, r.createdAt = timestamp(), r.updatedAt = r.createdAt ' +
+                'ON MATCH SET r += $propsToSet, r.updatedAt = CASE WHEN r.createdAt IS NULL THEN r.updatedAt ELSE timestamp() END ' +
+                'RETURN r.name AS name, r.createdAt AS createdAt, r.updatedAt AS updatedAt',
+                { uuid, propsToSet }
+            );
+            const record = result.records[0];
+            if (record) {
+                const name = record.get('name');
+                const createdAtRaw = record.get('createdAt');
+                const updatedAtRaw = record.get('updatedAt');
+                let action = 'processed';
+
+                const createdAtNum = convertNeo4jTimestampToNumber(createdAtRaw);
+                const updatedAtNum = convertNeo4jTimestampToNumber(updatedAtRaw);
+
+                if (createdAtNum !== null && updatedAtNum !== null) {
+                    if (createdAtNum === updatedAtNum) {
+                        action = 'created';
+                    } else {
+                        action = 'updated (timestamps refreshed)';
+                    }
+                }
+                logs.push(`[SUCCESS] ${riskRatingNodeType} node '${name || uuid}' (uuid: ${uuid}) ${action}.`);
+            } else {
+                logs.push(`[WARNING] No information returned for ${riskRatingNodeType} node merge (uuid: ${uuid}).`);
+            }
+        }
+
+        // Import RISK RATING links (RATED)
+        for (const link of data.riskRatingLinks) {
+            if (!link.failureUuid || !link.riskRatingUuid) {
+                logs.push(`[ERROR] Skipping RATED link due to missing UUIDs: ${JSON.stringify(link)}`);
+                continue;
+            }
+
+            // Check if FAILURE exists
+            const failureCheck = await tx.run('MATCH (f:FAILURE {uuid: $uuid}) RETURN f.uuid', { uuid: link.failureUuid });
+            if (failureCheck.records.length === 0) {
+                logs.push(`[ERROR] FAILURE ${link.failureName || link.failureUuid} not found for RATED link. Skipping.`);
+                continue;
+            }
+
+            // Check if RISKRATING exists
+            const riskRatingCheck = await tx.run('MATCH (r:RISKRATING {uuid: $uuid}) RETURN r.uuid', { uuid: link.riskRatingUuid });
+            if (riskRatingCheck.records.length === 0) {
+                logs.push(`[ERROR] RISKRATING ${link.riskRatingName || link.riskRatingUuid} not found for RATED link. Skipping.`);
+                continue;
+            }
+
+            // Link FAILURE -> RISKRATING
+            await tx.run(
+                'MATCH (f:FAILURE {uuid: $failureUuid}) ' +
+                'MATCH (r:RISKRATING {uuid: $riskRatingUuid}) ' +
+                'MERGE (f)-[rel:RATED]->(r) ' +
+                'ON CREATE SET rel.createdAt = timestamp() ' +
+                'ON MATCH SET rel.updatedAt = timestamp() ',
+                { failureUuid: link.failureUuid, riskRatingUuid: link.riskRatingUuid }
+            );
+            logs.push(`[SUCCESS] RATED relationship linked: (FAILURE ${link.failureName || link.failureUuid})-[RATED]->(RISKRATING ${link.riskRatingName || link.riskRatingUuid}).`);
         }
 
         await tx.commit();
