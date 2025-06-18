@@ -106,7 +106,7 @@ const PressureGauge: React.FC<{ value: number; maxValue: number }> = ({ value, m
 };
 
 interface RiskRatingModalProps {
-  visible: boolean;
+  open: boolean;
   onCancel: () => void;
   onSave?: (severity: number, occurrence: number, detection: number, ratingComment?: string) => Promise<void>;
   onOk?: (values: { severity: number; occurrence: number; detection: number; ratingComment?: string }) => Promise<void>;  onCreateNew?: () => void; // New callback for creating additional risk ratings
@@ -139,7 +139,7 @@ interface RiskRatingFormData {
 }
 
 const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
-  visible,
+  open: visible, // Rename prop but keep internal variable name for compatibility
   onCancel,
   onSave,  onOk,
   onCreateNew,

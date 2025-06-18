@@ -41,11 +41,15 @@ export default function SafetyNoteManager({
   const loadSafetyNotes = async () => {
     try {
       const result = await getSafetyNotesForNode(nodeUuid);
+
       if (result.success && result.data) {
         setSafetyNotes(result.data);
+      } else {
+        setSafetyNotes([]);
       }
     } catch (error) {
       console.error('Error loading safety notes:', error);
+      setSafetyNotes([]);
     }
   };
 
@@ -122,24 +126,66 @@ export default function SafetyNoteManager({
   };
 
   const renderNoteControls = () => {
-    // Only show "Add Note" button when there are no notes and not showing inline
-    if (safetyNotes.length === 0 && !showInline) {
-      return (
-        <Tooltip title="Add safety note">
+    // When showing inline, don't show controls here (they're handled in renderInlineNotes)
+    if (showInline) return null;
+    
+    // For modal mode (showInline=false), always show the interface
+    return (
+      <div>
+        {/* Add Note Button */}
+        <div style={{ marginBottom: safetyNotes.length > 0 ? '16px' : '0' }}>
           <Button 
-            type="link" 
+            type="primary" 
             icon={<PlusOutlined />} 
             onClick={handleAddNote}
             size="small"
           >
-            Add Note
+            Add New Note
           </Button>
-        </Tooltip>
-      );
-    }
-
-    // When showing inline or when notes exist, don't show any controls here
-    return null;
+        </div>
+        
+        {/* Existing Notes List for Modal Mode */}
+        {safetyNotes.length > 0 && (
+          <div>
+            <Text strong style={{ marginBottom: '8px', display: 'block' }}>
+              Existing Notes ({safetyNotes.length}):
+            </Text>
+            {safetyNotes.map((note, index) => (
+              <Card 
+                key={note.uuid}
+                size="small"
+                style={{ 
+                  marginBottom: index < safetyNotes.length - 1 ? '8px' : '0',
+                }}
+                actions={[
+                  <Button 
+                    key="edit"
+                    type="link" 
+                    icon={<EditOutlined />} 
+                    onClick={() => handleEditNote(note)}
+                    size="small"
+                  >
+                    Edit
+                  </Button>,
+                  <Button 
+                    key="delete"
+                    type="link" 
+                    icon={<DeleteOutlined />} 
+                    onClick={() => handleDeleteNote(note)}
+                    size="small"
+                    danger
+                  >
+                    Delete
+                  </Button>
+                ]}
+              >
+                <Text>{note.note}</Text>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    );
   };
 
   const renderInlineNotes = () => {

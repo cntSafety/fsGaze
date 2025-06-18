@@ -29,7 +29,7 @@ export default function SwComponentInfo({
   
   return (
     <div>
-      <Card style={{ marginBottom: '16px' }} bodyStyle={{ padding: '16px' }}>
+      <Card style={{ marginBottom: '16px' }} styles={{ body: { padding: '16px' } }}>
         <Title level={3} style={{ marginBottom: '12px', marginTop: '0' }}>
           SW Component Safety Analysis
         </Title>

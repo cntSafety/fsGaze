@@ -6,7 +6,7 @@ interface RiskRatingManagerProps {
   children: (riskRatingHandlers: {
     handleRiskRatingClick: (failureUuid: string, failureName: string, failureDescription?: string) => Promise<void>;
     riskRatingModalProps: {
-      visible: boolean;
+      open: boolean;
       onCancel: () => void;
       onOk: (values: { severity: number; occurrence: number; detection: number; ratingComment?: string }) => Promise<void>;
       onCreateNew: () => void;
@@ -37,7 +37,7 @@ export const RiskRatingManager: React.FC<RiskRatingManagerProps> = ({ children }
   } = useRiskRatingManager();
 
   const riskRatingModalProps = {
-    visible: riskRatingModalVisible,
+    open: riskRatingModalVisible,
     onCancel: closeModal,
     onOk: modalState.mode === 'create' ? handleCreateRiskRating : handleUpdateRiskRating,
     onCreateNew: handleCreateNewRiskRating,

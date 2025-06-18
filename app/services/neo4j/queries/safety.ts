@@ -31,13 +31,22 @@ export interface RiskRatingLink {
     riskRatingName: string; // For logging/verification
 }
 
+export interface SafetyNoteLink {
+    nodeUuid: string;
+    nodeName: string; // For logging/verification
+    safetyNoteUuid: string;
+    safetyNoteName: string; // For logging/verification
+}
+
 export interface SafetyGraphData {
     failures: SafetyGraphNode[];
     causations: SafetyGraphNode[];
     riskRatings: SafetyGraphNode[];
+    safetyNotes?: SafetyGraphNode[];
     occurrences: OccurrenceLink[];
     causationLinks: CausationLinkInfo[];
     riskRatingLinks: RiskRatingLink[];
+    safetyNoteLinks?: SafetyNoteLink[];
 }
 
 export async function getSafetyGraph(): Promise<{
@@ -125,15 +134,39 @@ export async function getSafetyGraph(): Promise<{
             riskRatingName: record.get('riskRatingName'),
         }));
 
+        // 7. Get all SAFETYNOTE nodes and their properties
+        const safetyNotesResult = await session.run(
+            'MATCH (note:SAFETYNOTE) RETURN note.uuid AS uuid, properties(note) AS properties'
+        );
+        const safetyNotes = safetyNotesResult.records.map(record => ({
+            uuid: record.get('uuid'),
+            properties: record.get('properties'),
+        }));
+
+        // 8. Get all NOTEREF relationships between any node and SAFETYNOTE nodes
+        const safetyNoteLinksResult = await session.run(`
+            MATCH (n)-[ref:NOTEREF]->(note:SAFETYNOTE)
+            RETURN n.uuid AS nodeUuid, n.name AS nodeName,
+                   note.uuid AS safetyNoteUuid, note.note AS safetyNoteName
+        `);
+        const safetyNoteLinks = safetyNoteLinksResult.records.map(record => ({
+            nodeUuid: record.get('nodeUuid'),
+            nodeName: record.get('nodeName'),
+            safetyNoteUuid: record.get('safetyNoteUuid'),
+            safetyNoteName: record.get('safetyNoteName'),
+        }));
+
         return {
             success: true,
             data: {
                 failures,
                 causations,
                 riskRatings,
+                safetyNotes,
                 occurrences,
                 causationLinks,
                 riskRatingLinks,
+                safetyNoteLinks,
             },
         };
     } catch (error: any) {
@@ -173,7 +206,7 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
     try {
         // Import/Update FAILURES
         const failureNodeType = "FAILURE";
-        for (const failure of data.failures) {
+        for (const failure of data.failures || []) {
             if (!failure.uuid || !failure.properties || !failure.properties.name) {
                 logs.push(`[ERROR] Skipping ${failureNodeType} due to missing uuid or name: ${JSON.stringify(failure)}`);
                 continue;
@@ -226,7 +259,7 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
 
         // Import/Update CAUSATIONS
         const causationNodeType = "CAUSATION";
-        for (const causation of data.causations) {
+        for (const causation of data.causations || []) {
             if (!causation.uuid || !causation.properties || !causation.properties.name) {
                 logs.push(`[ERROR] Skipping ${causationNodeType} due to missing uuid or name: ${JSON.stringify(causation)}`);
                 continue;
@@ -278,7 +311,7 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
         }
 
         // Import OCCURRENCE relationships
-        for (const occ of data.occurrences) {
+        for (const occ of data.occurrences || []) {
             if (!occ.failureUuid || !occ.occuranceSourceUuid) {
                 logs.push(`[ERROR] Skipping OCCURRENCE link due to missing failureUuid or occuranceSourceUuid: ${JSON.stringify(occ)}`);
                 continue;
@@ -318,7 +351,7 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
         }
 
         // Import CAUSATION links (FIRST, THEN)
-        for (const link of data.causationLinks) {
+        for (const link of data.causationLinks || []) {
             if (!link.causeFailureUuid || !link.causationUuid || !link.effectFailureUuid) {
                 logs.push(`[ERROR] Skipping CAUSATION link due to missing UUIDs: ${JSON.stringify(link)}`);
                 continue;
@@ -370,7 +403,7 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
 
         // Import/Update RISK RATINGS
         const riskRatingNodeType = "RISKRATING";
-        for (const riskRating of data.riskRatings) {
+        for (const riskRating of data.riskRatings || []) {
             if (!riskRating.uuid || !riskRating.properties || !riskRating.properties.name) {
                 logs.push(`[ERROR] Skipping ${riskRatingNodeType} due to missing uuid or name: ${JSON.stringify(riskRating)}`);
                 continue;
@@ -412,7 +445,7 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
         }
 
         // Import RISK RATING links (RATED)
-        for (const link of data.riskRatingLinks) {
+        for (const link of data.riskRatingLinks || []) {
             if (!link.failureUuid || !link.riskRatingUuid) {
                 logs.push(`[ERROR] Skipping RATED link due to missing UUIDs: ${JSON.stringify(link)}`);
                 continue;
@@ -442,6 +475,83 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 { failureUuid: link.failureUuid, riskRatingUuid: link.riskRatingUuid }
             );
             logs.push(`[SUCCESS] RATED relationship linked: (FAILURE ${link.failureName || link.failureUuid})-[RATED]->(RISKRATING ${link.riskRatingName || link.riskRatingUuid}).`);
+        }
+
+        // Import/Update SAFETY NOTES
+        const safetyNoteNodeType = "SAFETYNOTE";
+        for (const safetyNote of data.safetyNotes || []) {
+            if (!safetyNote.uuid || !safetyNote.properties) {
+                logs.push(`[ERROR] Skipping ${safetyNoteNodeType} due to missing uuid or properties: ${JSON.stringify(safetyNote)}`);
+                continue;
+            }
+            const { uuid, properties: rawProperties } = safetyNote;
+            const propsToSet = { ...rawProperties };
+            delete propsToSet.uuid;       // Handled by MERGE key
+            delete propsToSet.createdAt;  // We set this explicitly
+            delete propsToSet.updatedAt;  // We set this explicitly
+
+            const result = await tx.run(
+                'MERGE (note:SAFETYNOTE {uuid: $uuid}) ' +
+                'ON CREATE SET note = $propsToSet, note.uuid = $uuid, note.createdAt = timestamp(), note.updatedAt = note.createdAt ' +
+                'ON MATCH SET note += $propsToSet, note.updatedAt = CASE WHEN note.createdAt IS NULL THEN note.updatedAt ELSE timestamp() END ' +
+                'RETURN note.note AS noteContent, note.createdAt AS createdAt, note.updatedAt AS updatedAt',
+                { uuid, propsToSet }
+            );
+            const record = result.records[0];
+            if (record) {
+                const noteContent = record.get('noteContent');
+                const createdAtRaw = record.get('createdAt');
+                const updatedAtRaw = record.get('updatedAt');
+                let action = 'processed';
+
+                const createdAtNum = convertNeo4jTimestampToNumber(createdAtRaw);
+                const updatedAtNum = convertNeo4jTimestampToNumber(updatedAtRaw);
+
+                if (createdAtNum !== null && updatedAtNum !== null) {
+                    if (createdAtNum === updatedAtNum) {
+                        action = 'created';
+                    } else {
+                        action = 'updated (timestamps refreshed)';
+                    }
+                }
+                logs.push(`[SUCCESS] ${safetyNoteNodeType} node '${noteContent || uuid}' (uuid: ${uuid}) ${action}.`);
+            } else {
+                logs.push(`[WARNING] No information returned for ${safetyNoteNodeType} node merge (uuid: ${uuid}).`);
+            }
+        }
+
+        // Import SAFETY NOTE links (NOTEREF)
+        for (const link of data.safetyNoteLinks || []) {
+            if (!link.nodeUuid || !link.safetyNoteUuid) {
+                logs.push(`[ERROR] Skipping NOTEREF link due to missing UUIDs: ${JSON.stringify(link)}`);
+                continue;
+            }
+
+            // Check if the source node exists (can be any node type)
+            const nodeCheck = await tx.run('MATCH (n {uuid: $uuid}) RETURN n.uuid, labels(n) as labels', { uuid: link.nodeUuid });
+            if (nodeCheck.records.length === 0) {
+                logs.push(`[ERROR] Source node ${link.nodeName || link.nodeUuid} not found for NOTEREF link. Skipping.`);
+                continue;
+            }
+            const nodeLabels = nodeCheck.records[0].get('labels').join(':');
+
+            // Check if SAFETYNOTE exists
+            const safetyNoteCheck = await tx.run('MATCH (note:SAFETYNOTE {uuid: $uuid}) RETURN note.uuid', { uuid: link.safetyNoteUuid });
+            if (safetyNoteCheck.records.length === 0) {
+                logs.push(`[ERROR] SAFETYNOTE ${link.safetyNoteName || link.safetyNoteUuid} not found for NOTEREF link. Skipping.`);
+                continue;
+            }
+
+            // Link Node -> SAFETYNOTE
+            await tx.run(
+                'MATCH (n {uuid: $nodeUuid}) ' +
+                'MATCH (note:SAFETYNOTE {uuid: $safetyNoteUuid}) ' +
+                'MERGE (n)-[rel:NOTEREF]->(note) ' +
+                'ON CREATE SET rel.createdAt = timestamp() ' +
+                'ON MATCH SET rel.updatedAt = timestamp() ',
+                { nodeUuid: link.nodeUuid, safetyNoteUuid: link.safetyNoteUuid }
+            );
+            logs.push(`[SUCCESS] NOTEREF relationship linked: (${nodeLabels} ${link.nodeName || link.nodeUuid})-[NOTEREF]->(SAFETYNOTE ${link.safetyNoteName || link.safetyNoteUuid}).`);
         }
 
         await tx.commit();

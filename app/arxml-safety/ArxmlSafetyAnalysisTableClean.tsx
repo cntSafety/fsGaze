@@ -552,7 +552,7 @@ export default function ArxmlSafetyAnalysisTable() {
       
       {/* Risk Rating Modal */}
       <RiskRatingModal
-        visible={isRiskRatingModalVisible}
+        open={isRiskRatingModalVisible}
         onCancel={handleRiskRatingCancel}
         onSave={handleRiskRatingSave}
         failureName={selectedFailureForRiskRating?.failureName || ''}

@@ -42,13 +42,22 @@ interface RiskRatingLink {
   riskRatingName: string;
 }
 
+interface SafetyNoteLink {
+  nodeUuid: string;
+  nodeName: string;
+  safetyNoteUuid: string;
+  safetyNoteName: string;
+}
+
 interface SafetyGraphData {
   failures: SafetyGraphNode[];
   causations: SafetyGraphNode[];
   riskRatings: SafetyGraphNode[];
+  safetyNotes?: SafetyGraphNode[];
   occurrences: OccurrenceLink[];
   causationLinks: CausationLinkInfo[];
   riskRatingLinks: RiskRatingLink[];
+  safetyNoteLinks?: SafetyNoteLink[];
 }
 
 const SafetyDataExchange: React.FC = () => {
@@ -491,12 +500,18 @@ const SafetyDataExchange: React.FC = () => {
         const parsedData: SafetyGraphData = JSON.parse(text);
         // Basic validation (can be more thorough)
         if (parsedData && parsedData.failures && parsedData.causations && parsedData.occurrences && parsedData.causationLinks) {
-          // Allow riskRatings and riskRatingLinks to be optional for backward compatibility
+          // Allow riskRatings, riskRatingLinks, safetyNotes, and safetyNoteLinks to be optional for backward compatibility
           if (!parsedData.riskRatings) {
             parsedData.riskRatings = [];
           }
           if (!parsedData.riskRatingLinks) {
             parsedData.riskRatingLinks = [];
+          }
+          if (!parsedData.safetyNotes) {
+            parsedData.safetyNotes = [];
+          }
+          if (!parsedData.safetyNoteLinks) {
+            parsedData.safetyNoteLinks = [];
           }
           setImportedData(parsedData);
           setImportedFileName(file.name);

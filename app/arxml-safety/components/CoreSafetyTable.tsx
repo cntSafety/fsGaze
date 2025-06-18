@@ -1,14 +1,15 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Table, Form, Input, Select, Button, Space, Tooltip, Dropdown, Menu, Modal, Popconfirm } from 'antd';
-import { SearchOutlined, DeleteOutlined, EditOutlined, PlusOutlined, LinkOutlined, DashboardOutlined, MoreOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
+import { Table, Form, Input, Select, Button, Space, Tooltip, Dropdown, Modal, Popconfirm } from 'antd';
+import { SearchOutlined, DeleteOutlined, EditOutlined, PlusOutlined, LinkOutlined, DashboardOutlined, MoreOutlined, ExclamationCircleOutlined, FileTextOutlined } from '@ant-design/icons';
 import type { TableProps, ColumnType } from 'antd/es/table';
 import type { FormInstance } from 'antd/es/form';
 import type { FilterDropdownProps } from 'antd/es/table/interface';
 import { Resizable } from 'react-resizable';
 import ElementDetailsModal, { ElementDetails } from './ElementDetailsModal';
 import RiskRatingModal from './RiskRatingModal';
+import SafetyNoteManager from './safety-analysis/SafetyNoteManager';
 
 const { Option } = Select;
 
@@ -236,6 +237,10 @@ export default function CoreSafetyTable({
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [failureToDelete, setFailureToDelete] = useState<SafetyTableRow | null>(null);
   
+  // Safety notes modal state
+  const [isSafetyNotesModalVisible, setIsSafetyNotesModalVisible] = useState(false);
+  const [selectedFailureForNotes, setSelectedFailureForNotes] = useState<SafetyTableRow | null>(null);
+  
   // Helper function to check if a failure is selected
   const isFailureSelected = (failureUuid: string) => {
     return selectedFailures?.first?.uuid === failureUuid || 
@@ -325,6 +330,22 @@ export default function CoreSafetyTable({
   const handleDeleteCancel = () => {
     setIsDeleteModalVisible(false);
     setFailureToDelete(null);
+  };
+
+  // Safety notes handlers
+  const handleSafetyNotesClick = (record: SafetyTableRow) => {
+    console.log('Safety Notes clicked for record:', {
+      failureUuid: record.failureUuid,
+      failureName: record.failureName,
+      record: record
+    });
+    setSelectedFailureForNotes(record);
+    setIsSafetyNotesModalVisible(true);
+  };
+
+  const handleSafetyNotesClose = () => {
+    setIsSafetyNotesModalVisible(false);
+    setSelectedFailureForNotes(null);
   };
 
   // State for managing column widths
@@ -709,19 +730,13 @@ export default function CoreSafetyTable({
             {(canLink || canRiskRating || (onDelete && record.failureName !== 'No failures defined' && !record.isNewRow && record.failureUuid)) && (
               <Dropdown
                 disabled={editingKey !== ''}
-                overlay={
-                  <Menu>
-                    {/* Link Icon for Causation Creation */}
-                    {canLink && (
-                      <Menu.Item 
-                        key="link"
-                        icon={<LinkOutlined />}
-                        onClick={() => handleLinkClick(record)}
-                        style={{
-                          color: selectionState === 'first' ? '#1890ff' : 
-                                 selectionState === 'second' ? '#ff7875' : undefined
-                        }}
-                      >
+                menu={{
+                  items: [
+                    // Link Icon for Causation Creation
+                    ...(canLink ? [{
+                      key: 'link',
+                      icon: <LinkOutlined />,
+                      label: (
                         <Tooltip 
                           key={`tooltip-${record.failureUuid}-${selectionState || 'none'}`}
                           title={
@@ -736,34 +751,42 @@ export default function CoreSafetyTable({
                            selectedFailures?.first ? 'Set as Effect' :
                            'Set as Cause'}
                         </Tooltip>
-                      </Menu.Item>
-                    )}
+                      ),
+                      onClick: () => handleLinkClick(record),
+                      style: {
+                        color: selectionState === 'first' ? '#1890ff' : 
+                               selectionState === 'second' ? '#ff7875' : undefined
+                      }
+                    }] : []),
                     
-                    {/* Risk Rating Icon */}
-                    {canRiskRating && (
-                      <Menu.Item 
-                        key="risk-rating"
-                        icon={<DashboardOutlined />}
-                        onClick={() => handleRiskRatingClick(record)}
-                        style={{ color: '#52c41a' }}
-                      >
-                        Set Risk Rating
-                      </Menu.Item>
-                    )}
+                    // Risk Rating
+                    ...(canRiskRating ? [{
+                      key: 'risk-rating',
+                      icon: <DashboardOutlined />,
+                      label: 'Set Risk Rating',
+                      onClick: () => handleRiskRatingClick(record),
+                      style: { color: '#52c41a' }
+                    }] : []),
                     
-                    {/* Delete Action */}
-                    {onDelete && record.failureName !== 'No failures defined' && !record.isNewRow && record.failureUuid && (
-                      <Menu.Item 
-                        key="delete"
-                        icon={<DeleteOutlined />}
-                        danger
-                        onClick={() => handleDeleteClick(record)}
-                      >
-                        Delete
-                      </Menu.Item>
-                    )}
-                  </Menu>
-                }
+                    // Safety Notes
+                    ...(record.failureName !== 'No failures defined' && record.failureUuid ? [{
+                      key: 'safety-notes',
+                      icon: <FileTextOutlined />,
+                      label: 'Safety Notes',
+                      onClick: () => handleSafetyNotesClick(record),
+                      style: { color: '#1890ff' }
+                    }] : []),
+                    
+                    // Delete Action
+                    ...(onDelete && record.failureName !== 'No failures defined' && !record.isNewRow && record.failureUuid ? [{
+                      key: 'delete',
+                      icon: <DeleteOutlined />,
+                      label: 'Delete',
+                      onClick: () => handleDeleteClick(record),
+                      danger: true
+                    }] : [])
+                  ]
+                }}
                 trigger={['click']}
                 placement="bottomRight"
               >
@@ -850,7 +873,7 @@ export default function CoreSafetyTable({
       
       {/* Risk Rating Modal */}
       <RiskRatingModal
-        visible={isRiskRatingModalVisible}
+        open={isRiskRatingModalVisible}
         onCancel={handleRiskRatingCancel}
         onSave={handleRiskRatingSave}
         failureName={selectedFailureForRiskRating?.failureName || ''}        loading={isRiskRatingSaving}
@@ -859,7 +882,7 @@ export default function CoreSafetyTable({
       {/* Delete Confirmation Modal */}
       <Modal
         title="Confirm Deletion"
-        visible={isDeleteModalVisible}
+        open={isDeleteModalVisible}
         onOk={handleDeleteConfirm}
         onCancel={handleDeleteCancel}
         okText="Delete"
@@ -871,13 +894,34 @@ export default function CoreSafetyTable({
           <ExclamationCircleOutlined style={{ color: '#ff4d4f', fontSize: '22px', marginTop: '2px' }} />
           <div>
             <p style={{ margin: '0 0 8px 0', fontSize: '16px', fontWeight: 500 }}>
-              Are you sure you want to delete the failure "<strong>{failureToDelete?.failureName}</strong>"?
+              Are you sure you want to delete the failure &ldquo;<strong>{failureToDelete?.failureName}</strong>&rdquo;?
             </p>
             <p style={{ margin: 0, color: '#8c8c8c', fontSize: '14px' }}>
               This action cannot be undone.
             </p>
           </div>
         </div>
+      </Modal>
+      
+      {/* Safety Notes Modal */}
+      <Modal
+        title={`Safety Notes - ${selectedFailureForNotes?.failureName}`}
+        open={isSafetyNotesModalVisible}
+        onCancel={handleSafetyNotesClose}
+        footer={null}
+        width={800}
+        centered
+      >
+        {selectedFailureForNotes && selectedFailureForNotes.failureUuid ? (
+          <SafetyNoteManager
+            nodeUuid={selectedFailureForNotes.failureUuid}
+            nodeType="Failure Mode"
+            nodeName={selectedFailureForNotes.failureName}
+            showInline={false}
+          />
+        ) : (
+          <div>Error: No failure UUID available for safety notes</div>
+        )}
       </Modal>
     </Form>
   );
