@@ -14,7 +14,7 @@ export const useProviderPortFailures = (
   const [editingPortKey, setEditingPortKey] = useState('');
   const [isSavingPort, setIsSavingPort] = useState(false);
   const [portCurrentPage, setPortCurrentPage] = useState(1);
-  const [portPageSize, setPortPageSize] = useState(10);
+  const [portPageSize, setPortPageSize] = useState(50);
 
   // Update port table data when portFailures or providerPorts change
   useEffect(() => {

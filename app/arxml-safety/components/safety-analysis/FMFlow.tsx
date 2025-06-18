@@ -121,6 +121,14 @@ function ReceiverPortFailureNode({ data }: { data: NodeData }) {
       transform: 'translateX(calc(200px - 100%))', // Move so right edge aligns at 200px (250px gap from SW at 450px)
       marginLeft: '0'
     }}>
+      {/* Input handle for receiving from other failure modes */}
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="left"
+        style={{ background: '#3B82F6', width: '8px', height: '8px', left: '-4px' }}
+      />
+      
       {/* Output handle for propagating to SW component failures */}
       <Handle
         type="source"
@@ -165,6 +173,14 @@ function ProviderPortFailureNode({ data }: { data: NodeData }) {
         position={Position.Left}
         id="left"
         style={{ background: '#F59E0B', width: '8px', height: '8px', left: '-4px' }}
+      />
+      
+      {/* Output handle for propagating to other failure modes */}
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="right"
+        style={{ background: '#F59E0B', width: '8px', height: '8px', right: '-4px' }}
       />
       
       <div style={{ fontSize: '12px', fontWeight: '600', color: '#9CA3AF', marginBottom: '2px' }}>
@@ -293,6 +309,60 @@ export default function FMFlow({
     }
   }, []);
 
+  // Function to refresh only causation edges without affecting layout
+  const refreshCausationEdges = useCallback(async () => {
+    try {
+      const causationLinks = await fetchCausationRelationships();
+      
+      // Create a map of failure UUID to node ID for efficient lookups
+      const failureUuidToNodeId = new Map<string, string>();
+      nodes.forEach(node => {
+        if (node.data.failureUuid) {
+          failureUuidToNodeId.set(node.data.failureUuid, node.id);
+        }
+      });
+
+      // Create new causation edges
+      const newCausationEdges: Edge[] = [];
+      causationLinks.forEach((link, linkIndex) => {
+        const sourceNodeId = failureUuidToNodeId.get(link.causeFailureUuid);
+        const targetNodeId = failureUuidToNodeId.get(link.effectFailureUuid);
+        
+        if (sourceNodeId && targetNodeId) {
+          newCausationEdges.push({
+            id: `causation-${link.causationUuid}-${linkIndex}`,
+            source: sourceNodeId,
+            target: targetNodeId,
+            type: 'straight',
+            animated: true,
+            style: { 
+              stroke: '#F59E0B', 
+              strokeWidth: 3,
+              strokeDasharray: '5,5'
+            },
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              color: '#F59E0B',
+            },
+            data: {
+              causationUuid: link.causationUuid,
+              causationName: link.causationName,
+              type: 'causation'
+            }
+          });
+        }
+      });
+
+      // Update edges by removing old causation edges and adding new ones
+      setEdges(currentEdges => {
+        const nonCausationEdges = currentEdges.filter(edge => edge.data?.type !== 'causation');
+        return [...nonCausationEdges, ...newCausationEdges];
+      });
+    } catch (error) {
+      console.error('Error refreshing causation edges:', error);
+    }
+  }, [nodes, fetchCausationRelationships, setEdges]);
+
   const onConnect = useCallback(async (params: Connection) => {
     // Prevent multiple simultaneous causation creations
     if (isCreatingCausation) return;
@@ -325,8 +395,8 @@ export default function FMFlow({
       if (result.success) {
         message.success(`Causation created: "${sourceNode.data.label}" → "${targetNode.data.label}"`);
         
-        // Trigger internal refresh of causation data
-        setRefreshTrigger(prev => prev + 1);
+        // Refresh causation edges to show new causation (without layout)
+        refreshCausationEdges();
       } else {
         message.error(`Failed to create causation: ${result.message}`);
       }
@@ -373,8 +443,8 @@ export default function FMFlow({
         // Remove the edge from the diagram immediately
         setEdges((edges) => edges.filter(edge => edge.id !== contextMenu.edgeId));
         
-        // Trigger internal refresh to ensure data consistency
-        setRefreshTrigger(prev => prev + 1);
+        // Refresh causation edges to ensure data consistency (without layout)
+        refreshCausationEdges();
       } else {
         message.error(`Failed to delete causation: ${result.message}`);
       }
@@ -520,9 +590,8 @@ export default function FMFlow({
         console.error('❌ Error creating causation edges:', error);
       }
 
-      // Apply Barycenter layout to reduce edge crossings while maintaining 3-column structure
-      const layoutedNodes = layoutNodesWithBarycenter(newNodes, newEdges);
-      setNodes(layoutedNodes);
+      // Set nodes and edges without automatic layout (layout only on startup and manual trigger)
+      setNodes(newNodes);
       setEdges(newEdges);
     };
 
@@ -536,7 +605,7 @@ export default function FMFlow({
     setNodes,
     setEdges,
     fetchCausationRelationships,
-    refreshTrigger, // Add this to trigger refresh after causation creation
+    // refreshTrigger removed - we don't want auto-layout after causation creation
   ]);
 
   const handleNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
@@ -551,17 +620,28 @@ export default function FMFlow({
     }
   }, [onFailureSelect, hideContextMenu]);
 
-  const applyLayout = () => {
+  const applyLayout = useCallback(() => {
     // Apply Barycenter layout to reduce edge crossings
     const layoutedNodes = layoutNodesWithBarycenter(nodes, edges);
     setNodes(layoutedNodes);
-  };
+  }, [nodes, edges, setNodes]);
+
+  // Apply initial layout only when nodes are first loaded
+  const [hasAppliedInitialLayout, setHasAppliedInitialLayout] = useState(false);
+  
+  useEffect(() => {
+    if (nodes.length > 0 && !hasAppliedInitialLayout) {
+      // Use the same applyLayout function as the button
+      applyLayout();
+      setHasAppliedInitialLayout(true);
+    }
+  }, [nodes, hasAppliedInitialLayout, applyLayout]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      // Trigger internal refresh of causation data
-      setRefreshTrigger(prev => prev + 1);
+      // Refresh causation edges without affecting layout
+      await refreshCausationEdges();
       Modal.success({
         title: 'Data Refreshed',
         content: 'Failure mode data has been refreshed successfully!',

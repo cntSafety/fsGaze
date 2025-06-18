@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Table, Form, Input, Select, Popconfirm, Button, Space, Tooltip } from 'antd';
-import { SearchOutlined, DeleteOutlined, EditOutlined, PlusOutlined, LinkOutlined, DashboardOutlined } from '@ant-design/icons';
+import { Table, Form, Input, Select, Button, Space, Tooltip, Dropdown, Menu, Modal, Popconfirm } from 'antd';
+import { SearchOutlined, DeleteOutlined, EditOutlined, PlusOutlined, LinkOutlined, DashboardOutlined, MoreOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import type { TableProps, ColumnType } from 'antd/es/table';
 import type { FormInstance } from 'antd/es/form';
 import type { FilterDropdownProps } from 'antd/es/table/interface';
@@ -215,7 +215,7 @@ export default function CoreSafetyTable({
   onRiskRating,
   onRiskRatingClick,
   isSaving = false,
-  pagination = { pageSize: 10 },
+  pagination = { pageSize: 50 },
   showComponentActions = false,
   form,
   onFailureSelect,
@@ -231,6 +231,10 @@ export default function CoreSafetyTable({
   const [isRiskRatingModalVisible, setIsRiskRatingModalVisible] = useState(false);
   const [selectedFailureForRiskRating, setSelectedFailureForRiskRating] = useState<SafetyTableRow | null>(null);
   const [isRiskRatingSaving, setIsRiskRatingSaving] = useState(false);
+  
+  // Delete confirmation modal state
+  const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
+  const [failureToDelete, setFailureToDelete] = useState<SafetyTableRow | null>(null);
   
   // Helper function to check if a failure is selected
   const isFailureSelected = (failureUuid: string) => {
@@ -304,6 +308,25 @@ export default function CoreSafetyTable({
     }
   };
 
+  // Delete confirmation handlers
+  const handleDeleteClick = (record: SafetyTableRow) => {
+    setFailureToDelete(record);
+    setIsDeleteModalVisible(true);
+  };
+
+  const handleDeleteConfirm = () => {
+    if (failureToDelete && onDelete) {
+      onDelete(failureToDelete);
+    }
+    setIsDeleteModalVisible(false);
+    setFailureToDelete(null);
+  };
+
+  const handleDeleteCancel = () => {
+    setIsDeleteModalVisible(false);
+    setFailureToDelete(null);
+  };
+
   // State for managing column widths
   const [columnWidths, setColumnWidths] = useState<{ [key: string]: number }>(() => {
     // Initialize with default widths from column configuration
@@ -353,6 +376,7 @@ export default function CoreSafetyTable({
       case 'C': return { backgroundColor: '#fff7e6', color: '#d46b08', border: '1px solid #ffd591' };
       case 'B': return { backgroundColor: '#feffe6', color: '#7cb305', border: '1px solid #eaff8f' };
       case 'A': return { backgroundColor: '#f6ffed', color: '#52c41a', border: '1px solid #b7eb8f' };
+      case 'TBC': return { backgroundColor: '#fff7e6', color: '#fa8c16', border: '1px solid #ffb366', fontWeight: 'bold' };
       default: return { backgroundColor: '#fafafa', color: '#666', border: '1px solid #d9d9d9' };
     }
   };
@@ -616,9 +640,9 @@ export default function CoreSafetyTable({
       title: 'Actions',
       dataIndex: 'actions',
       key: 'actions',
-      width: columnWidths['actions'] || (onFailureSelect || onRiskRating || onRiskRatingClick ? 180 : 120), // Wider if link or risk rating icons are present
+      width: columnWidths['actions'] || 120, // Reduced width since we have fewer visible buttons
       onHeaderCell: () => ({
-        width: columnWidths['actions'] || (onFailureSelect || onRiskRating || onRiskRatingClick ? 180 : 120),
+        width: columnWidths['actions'] || 120,
         onResize: handleResize(columns.length, 'actions'),
       } as any),
       render: (_: unknown, record: SafetyTableRow, index: number) => {
@@ -657,48 +681,7 @@ export default function CoreSafetyTable({
           </Space>
         ) : (
           <Space size="small">
-            {/* Link Icon for Causation Creation */}
-            {canLink && (
-              <Tooltip 
-                key={`tooltip-${record.failureUuid}-${selectionState || 'none'}`}
-                title={
-                  selectionState === 'first' ? 'Selected as Cause - Click another to set Effect' :
-                  selectionState === 'second' ? 'Selected as Effect' :
-                  selectedFailures?.first ? 'Click to set as Effect' :
-                  'Click to set as Cause'
-                }
-                open={editingKey === '' ? undefined : false}
-              >
-                <Button 
-                  type={selectionState ? "primary" : "text"}
-                  size="small"
-                  disabled={editingKey !== ''} 
-                  onClick={() => handleLinkClick(record)}
-                  icon={<LinkOutlined />}
-                  style={{
-                    backgroundColor: selectionState === 'first' ? '#1890ff' : 
-                                   selectionState === 'second' ? '#ff7875' : undefined,
-                    borderColor: selectionState === 'first' ? '#1890ff' : 
-                               selectionState === 'second' ? '#ff7875' : undefined,
-                    color: selectionState ? '#fff' : undefined
-                  }}
-                />              </Tooltip>
-            )}
-            
-            {/* Risk Rating Icon */}
-            {canRiskRating && (
-              <Tooltip title="Set Risk Rating">
-                <Button 
-                  type="text"
-                  size="small"
-                  disabled={editingKey !== ''} 
-                  onClick={() => handleRiskRatingClick(record)}
-                  icon={<DashboardOutlined />}
-                  style={{ color: '#52c41a' }}
-                />
-              </Tooltip>
-            )}
-            
+            {/* Always visible: Edit Button */}
             {onEdit && record.failureName !== 'No failures defined' && (
               <Button 
                 type="text"
@@ -709,24 +692,8 @@ export default function CoreSafetyTable({
                 title="Edit"
               />
             )}
-            {onDelete && record.failureName !== 'No failures defined' && !record.isNewRow && record.failureUuid && (
-              <Popconfirm 
-                title="Are you sure you want to delete this failure?"
-                onConfirm={() => onDelete(record)}
-                okText="Yes, Delete"
-                cancelText="Cancel"
-                okType="danger"
-              >
-                <Button 
-                  type="text"
-                  size="small"
-                  disabled={editingKey !== ''} 
-                  icon={<DeleteOutlined />}
-                  danger
-                  title="Delete"
-                />
-              </Popconfirm>
-            )}
+            
+            {/* Always visible: Add Button */}
             {onAdd && isFirstRowForComponent && record.swComponentUuid && record.swComponentName && (
               <Button 
                 type="text"
@@ -736,6 +703,77 @@ export default function CoreSafetyTable({
                 icon={<PlusOutlined />}
                 title="Add Failure"
               />
+            )}
+
+            {/* More actions dropdown - only show if there are additional actions available */}
+            {(canLink || canRiskRating || (onDelete && record.failureName !== 'No failures defined' && !record.isNewRow && record.failureUuid)) && (
+              <Dropdown
+                disabled={editingKey !== ''}
+                overlay={
+                  <Menu>
+                    {/* Link Icon for Causation Creation */}
+                    {canLink && (
+                      <Menu.Item 
+                        key="link"
+                        icon={<LinkOutlined />}
+                        onClick={() => handleLinkClick(record)}
+                        style={{
+                          color: selectionState === 'first' ? '#1890ff' : 
+                                 selectionState === 'second' ? '#ff7875' : undefined
+                        }}
+                      >
+                        <Tooltip 
+                          key={`tooltip-${record.failureUuid}-${selectionState || 'none'}`}
+                          title={
+                            selectionState === 'first' ? 'Selected as Cause - Click another to set Effect' :
+                            selectionState === 'second' ? 'Selected as Effect' :
+                            selectedFailures?.first ? 'Click to set as Effect' :
+                            'Click to set as Cause'
+                          }
+                        >
+                          {selectionState === 'first' ? 'Selected as Cause' :
+                           selectionState === 'second' ? 'Selected as Effect' :
+                           selectedFailures?.first ? 'Set as Effect' :
+                           'Set as Cause'}
+                        </Tooltip>
+                      </Menu.Item>
+                    )}
+                    
+                    {/* Risk Rating Icon */}
+                    {canRiskRating && (
+                      <Menu.Item 
+                        key="risk-rating"
+                        icon={<DashboardOutlined />}
+                        onClick={() => handleRiskRatingClick(record)}
+                        style={{ color: '#52c41a' }}
+                      >
+                        Set Risk Rating
+                      </Menu.Item>
+                    )}
+                    
+                    {/* Delete Action */}
+                    {onDelete && record.failureName !== 'No failures defined' && !record.isNewRow && record.failureUuid && (
+                      <Menu.Item 
+                        key="delete"
+                        icon={<DeleteOutlined />}
+                        danger
+                        onClick={() => handleDeleteClick(record)}
+                      >
+                        Delete
+                      </Menu.Item>
+                    )}
+                  </Menu>
+                }
+                trigger={['click']}
+                placement="bottomRight"
+              >
+                <Button 
+                  type="text"
+                  size="small"
+                  icon={<MoreOutlined />}
+                  title="More actions"
+                />
+              </Dropdown>
             )}
           </Space>
         );
@@ -817,6 +855,30 @@ export default function CoreSafetyTable({
         onSave={handleRiskRatingSave}
         failureName={selectedFailureForRiskRating?.failureName || ''}        loading={isRiskRatingSaving}
       />
+      
+      {/* Delete Confirmation Modal */}
+      <Modal
+        title="Confirm Deletion"
+        visible={isDeleteModalVisible}
+        onOk={handleDeleteConfirm}
+        onCancel={handleDeleteCancel}
+        okText="Delete"
+        cancelText="Cancel"
+        okButtonProps={{ danger: true }}
+        centered
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+          <ExclamationCircleOutlined style={{ color: '#ff4d4f', fontSize: '22px', marginTop: '2px' }} />
+          <div>
+            <p style={{ margin: '0 0 8px 0', fontSize: '16px', fontWeight: 500 }}>
+              Are you sure you want to delete the failure "<strong>{failureToDelete?.failureName}</strong>"?
+            </p>
+            <p style={{ margin: 0, color: '#8c8c8c', fontSize: '14px' }}>
+              This action cannot be undone.
+            </p>
+          </div>
+        </div>
+      </Modal>
     </Form>
   );
 }

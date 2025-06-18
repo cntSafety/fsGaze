@@ -15,7 +15,7 @@ export const useSwFailureModes = (
   const [editingKey, setEditingKey] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(50);
 
   // Update table data when failures or component changes
   useEffect(() => {

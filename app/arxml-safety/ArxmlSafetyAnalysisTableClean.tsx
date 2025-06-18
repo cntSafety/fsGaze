@@ -107,7 +107,7 @@ export default function ArxmlSafetyAnalysisTable() {
   const [loading, setLoading] = useState(true);
   const [editingKey, setEditingKey] = useState('');  const [isAddingFailure, setIsAddingFailure] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(50);
   
   // Risk rating modal state
   const [isRiskRatingModalVisible, setIsRiskRatingModalVisible] = useState(false);
