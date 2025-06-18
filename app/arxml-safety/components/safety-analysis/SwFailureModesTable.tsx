@@ -59,6 +59,7 @@ export default function SwFailureModesTable({
       editable: true,
       searchable: true,
       minWidth: 150,
+      multiLine: true, // Enable multi-line editing for failure name field
       render: (text: unknown) => <strong>{String(text || '-')}</strong>,
     },
     {
@@ -69,6 +70,7 @@ export default function SwFailureModesTable({
       searchable: true,
       ellipsis: true,
       minWidth: 200,
+      multiLine: true, // Enable multi-line editing for description field
       render: (text: unknown) => String(text || '-'),
     },
     {

@@ -71,6 +71,7 @@ export interface SafetyTableColumn {
   ellipsis?: boolean;
   minWidth?: number;
   maxWidth?: number;
+  multiLine?: boolean; // New property to indicate if this column should use textarea when editing
 }
 
 interface EditableCellProps extends React.HTMLAttributes<HTMLElement> {
@@ -81,6 +82,7 @@ interface EditableCellProps extends React.HTMLAttributes<HTMLElement> {
   record: SafetyTableRow;
   index: number;
   selectOptions?: Array<{ value: string; label: string }>;
+  multiLine?: boolean; // New property for multi-line editing
 }
 
 const EditableCell: React.FC<React.PropsWithChildren<EditableCellProps>> = ({
@@ -92,6 +94,7 @@ const EditableCell: React.FC<React.PropsWithChildren<EditableCellProps>> = ({
   record: _record,
   index: _index,
   selectOptions,
+  multiLine = false,
   children,
   ...restProps
 }) => {
@@ -103,6 +106,12 @@ const EditableCell: React.FC<React.PropsWithChildren<EditableCellProps>> = ({
         </Option>
       ))}
     </Select>
+  ) : multiLine ? (
+    <Input.TextArea 
+      autoSize={{ minRows: 2, maxRows: 6 }}
+      style={{ width: '100%' }}
+      placeholder={`Enter ${title.toLowerCase()}...`}
+    />
   ) : (
     <Input />
   );
@@ -596,6 +605,7 @@ export default function CoreSafetyTable({
         title: col.title,
         editing: isEditing(record),
         selectOptions: col.selectOptions,
+        multiLine: col.multiLine || false,
       });
     }    return baseColumn;
   });
@@ -767,14 +777,31 @@ export default function CoreSafetyTable({
         size="small"
       />
       
-      {/* Add CSS for selected row styling */}
+      {/* Add CSS for selected row styling and multi-line editing */}
       <style jsx>{`
         :global(.selected-failure-row) {
           background-color: #f0f8ff !important;
         }
         :global(.selected-failure-row:hover) {
           background-color: #e6f3ff !important;
-        }        `}</style>
+        }
+        /* Improve textarea editing experience */
+        :global(.ant-table-tbody .ant-form-item-control .ant-input) {
+          transition: all 0.3s ease;
+        }
+        :global(.ant-table-tbody .ant-form-item-control .ant-input:focus) {
+          box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+        }
+        /* Ensure table cells accommodate textarea height */
+        :global(.ant-table-tbody > tr > td) {
+          vertical-align: top;
+          padding: 8px 16px;
+        }
+        /* Style for multi-line input in edit mode */
+        :global(.ant-table-tbody .ant-form-item) {
+          margin-bottom: 0;
+        }
+      `}</style>
         
         {/* Element Details Modal */}
       <ElementDetailsModal
