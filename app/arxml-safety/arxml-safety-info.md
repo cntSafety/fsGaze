@@ -1,6 +1,16 @@
 # ARXML Safety Analysis Subsystem
 
-## Overview
+## Ov### 2. **Three-Level Safety Analysis**
+-### 6. **Smart UI Behavior**
+- "No failures defined" placeholder management
+- Optimized state updates to prevent flickering
+- Form validation with error messages
+- Loading states and user feedback
+- Real-time selection state management across tables
+
+### 7. **ASIL Classification**nent Level**: Failure modes directly associated with SW components
+- **Provider Port Level**: Failure modes associated with specific provider ports
+- **Receiver Port Level**: Failure modes associated with specific receiver portsiew
 
 The ARXML Safety Analysis subsystem is a comprehensive tool for managing and analyzing safety-related failure modes in automotive software components. It provides a user-friendly interface for viewing, creating, editing, and managing failure modes at both the software component level and provider port level. The system now includes advanced causation analysis capabilities for creating relationships between failure modes.
 
@@ -10,11 +20,11 @@ The subsystem follows a modular architecture with clear separation of concerns:
 
 ### Core Components
 
-1. **ArxmlSafetyAnalysisTable** - Main overview table showing all SW components and their failure modes
+1. **ArxmlSafetyAnalysisTableClean** - Main overview table showing all SW components and their failure modes
 2. **SwSafetyAnalysisComponent** - Detailed component-specific safety analysis view with causation linking
 3. **CoreSafetyTable** - Reusable table component with editing capabilities and link icons
 4. **Safety Analysis Module** - Modular components for specific functionality
-5. **CreateCausationModal** - Modal for creating causation relationships between failure modes
+5. **FMFlow** - React Flow-based visualization component for failure mode relationships and flow diagrams
 
 ### Modular Safety Analysis Components
 
@@ -23,12 +33,18 @@ The `safety-analysis/` directory contains specialized components:
 - **SwComponentInfo** - Displays component metadata and statistics
 - **SwFailureModesTable** - Manages SW component failure modes with causation linking
 - **ProviderPortsFailureModesTable** - Manages provider port failure modes with causation linking
+- **ReceiverPortsFailureModesTable** - Manages receiver port failure modes with causation linking
+- **BaseFailureModeTable** - Base table component with shared functionality
+- **FMFlow** - React Flow visualization for failure mode relationships and causation flows
+- **RiskRatingManager** - Component for managing risk ratings and assessments
 
 ### Custom Hooks
 
 - **useSwSafetyData** - Central data loading and management
 - **useSwFailureModes** - SW component failure operations
 - **useProviderPortFailures** - Provider port failure operations
+- **useReceiverPortFailures** - Receiver port failure operations
+- **useRiskRatingManager** - Risk rating management and operations
 
 ## Key Features
 
@@ -50,9 +66,10 @@ The `safety-analysis/` directory contains specialized components:
 - **Two-Step Selection Process**:
   1. Click link icon on first failure mode (cause)
   2. Click link icon on second failure mode (effect)
-  3. Modal automatically opens for causation creation
-- **Causation Creation Modal**: Comprehensive form for defining causation relationships
-- **Cross-Table Linking**: Create causations between SW component failures and provider port failures
+  3. Causation created automatically with confirmation modal
+- **Inline Causation Creation**: Direct API calls without separate modal component
+- **Cross-Table Linking**: Create causations between SW component failures, provider port failures, and receiver port failures
+- **Flow Visualization**: FMFlow component provides React Flow-based visualization of failure mode relationships
 
 ### 4. **Advanced Table Features**
 - Resizable columns with persistent state
@@ -62,7 +79,13 @@ The `safety-analysis/` directory contains specialized components:
 - Icon-only action buttons (edit, delete, add, **link**)
 - Visual feedback for selected failure modes
 
-### 5. **Smart UI Behavior**
+### 5. **Flow Visualization** 🆕
+- **React Flow Integration**: Interactive node-based visualization of failure modes
+- **Multi-Port Support**: Visualizes both provider and receiver port failures
+- **Causation Mapping**: Shows relationships between failure modes graphically
+- **Interactive Selection**: Click nodes to select for causation creation
+
+### 6. **Smart UI Behavior**
 - "No failures defined" placeholder management
 - Optimized state updates to prevent flickering
 - Form validation with error messages
@@ -99,6 +122,15 @@ interface ProviderPort {
   name: string;
   uuid: string;
   type: string;
+}
+
+interface PortFailure {
+  failureUuid: string;
+  failureName: string | null;
+  failureDescription: string | null;
+  asil: string | null;
+  failureType: string | null;
+  relationshipType: string;
 }
 
 // 🆕 Causation Selection State
@@ -147,6 +179,32 @@ flowchart TD
    - Probability (optional)
    - Name and description
 5. **Create**: System creates CAUSATION node in Neo4j with FIRST→THEN relationships
+
+## FMFlow Visualization Component 🆕
+
+### Overview
+The `FMFlow` component provides an interactive React Flow-based visualization for failure mode relationships and causation analysis. It offers a graphical representation of SW components, provider ports, receiver ports, and their associated failure modes.
+
+### Key Features
+- **Interactive Node Graph**: Visual representation of failure modes as interconnected nodes
+- **Multi-Level Visualization**: Shows SW component, provider port, and receiver port failures
+- **Causation Mapping**: Displays existing causation relationships between failure modes
+- **Interactive Selection**: Click nodes to participate in causation creation workflow
+- **Dynamic Layout**: Automatic positioning and layout of nodes based on relationships
+- **Real-time Updates**: Responds to data changes and selection state updates
+
+### Technical Implementation
+- Built with React Flow library for high-performance node-based interfaces
+- Integrates with the same causation selection state as table components
+- Supports drag-and-drop node positioning
+- Provides zoom and pan controls for large diagrams
+- Includes background grid and mini-map for navigation
+
+### Integration with Safety Analysis
+- Shares selection state with table components
+- Participates in the same two-step causation creation workflow
+- Provides visual feedback for selected failure modes
+- Supports cross-component causation creation
 
 ## Data Flow Architecture
 
@@ -254,12 +312,14 @@ flowchart TD
 
 ### 2. **Detailed Component Analysis**
 1. User clicks on a component or navigates to `/arxml-safety/[uuid]`
-2. System loads component details, failures, and provider ports
-3. User sees two separate tables:
+2. System loads component details, failures, provider ports, and receiver ports
+3. User sees three separate tables:
    - SW Component failure modes with link icons
    - Provider port failure modes with link icons
-4. User can perform CRUD operations on both levels
-5. **🆕 User can create causations between any failure modes**
+   - Receiver port failure modes with link icons
+4. User can view FMFlow visualization of failure mode relationships
+5. User can perform CRUD operations on all levels
+6. **🆕 User can create causations between any failure modes across all tables**
 
 ### 3. **Failure Mode Management**
 1. **Add**: Click "Add Failure Mode" → Fill form → Save
@@ -274,15 +334,15 @@ flowchart TD
    - Tooltip shows "Selected as Cause"
 2. **Step 2**: Click link icon on second failure mode
    - Second failure highlighted in red
-   - Modal opens automatically
-3. **Step 3**: Fill causation details in modal
-   - Select causation type
-   - Optional probability value
-   - Provide name and description
-4. **Step 4**: Click "Create Causation"
-   - System creates relationship in Neo4j
-   - Success confirmation
-   - Selection state resets
+   - Causation created automatically via API call
+3. **Step 3**: System confirmation
+   - Success/error modal displays result
+   - API creates relationship in Neo4j
+   - Selection state resets automatically
+4. **Alternative**: Use FMFlow visualization
+   - Click nodes in flow diagram
+   - Visual causation creation interface
+   - Interactive relationship mapping
 
 ## Technical Implementation
 
@@ -298,15 +358,18 @@ SwSafetyAnalysisComponent
 ├── selectedFailures: SelectedFailures
 ├── handleFailureSelection: (failure) => void
 └── Components:
+    ├── FMFlow
+    │   ├── onFailureSelect={handleFailureSelection}
+    │   └── selectedFailures={selectedFailures}
     ├── SwFailureModesTable
     │   ├── onFailureSelect={handleFailureSelection}
     │   └── selectedFailures={selectedFailures}
     ├── ProviderPortsFailureModesTable
     │   ├── onFailureSelect={handleFailureSelection}
     │   └── selectedFailures={selectedFailures}
-    └── CreateCausationModal
-        ├── firstFailure={selectedFailures.first}
-        └── secondFailure={selectedFailures.second}
+    └── ReceiverPortsFailureModesTable
+        ├── onFailureSelect={handleFailureSelection}
+        └── selectedFailures={selectedFailures}
 ```
 
 ### Performance Optimizations
@@ -327,7 +390,7 @@ SwSafetyAnalysisComponent
 
 ```
 app/arxml-safety/
-├── ArxmlSafetyAnalysisTable.tsx           # Main overview table
+├── ArxmlSafetyAnalysisTableClean.tsx      # Main overview table
 ├── page.tsx                               # Main page component
 ├── [uuid]/
 │   └── page.tsx                           # Component detail page
@@ -337,16 +400,19 @@ app/arxml-safety/
     └── safety-analysis/
         ├── SwComponentInfo.tsx            # Component info display
         ├── SwFailureModesTable.tsx        # SW failure table with linking
-        ├── ProviderPortsFailureModesTable.tsx # Port failure table with linking
+        ├── ProviderPortsFailureModesTable.tsx # Provider port failure table with linking
+        ├── ReceiverPortsFailureModesTable.tsx # Receiver port failure table with linking
+        ├── BaseFailureModeTable.tsx       # Base table component with shared functionality
+        ├── FMFlow.tsx                     # 🆕 React Flow visualization component
+        ├── RiskRatingManager.tsx          # Risk rating management component
         ├── hooks/
         │   ├── useSwSafetyData.ts         # Data loading hook
         │   ├── useSwFailureModes.ts       # SW failure operations
-        │   └── useProviderPortFailures.ts # Port failure operations
+        │   ├── useProviderPortFailures.ts # Provider port failure operations
+        │   ├── useReceiverPortFailures.ts # Receiver port failure operations
+        │   └── useRiskRatingManager.ts    # Risk rating management operations
         └── types/
             └── index.ts                   # TypeScript interfaces
-
-app/safety/components/
-└── CreateCausationModal.tsx               # 🆕 Causation creation modal
 
 app/services/
 └── ArxmlToNeoService.ts                   # 🆕 Includes createCausationBetweenFailures API
@@ -363,17 +429,19 @@ app/services/
 
 ## Future Enhancements
 
-1. **Causation Visualization** 🆕 - Graph visualization of failure mode relationships
-2. **Causation Analytics** 🆕 - Analysis of causation chains and impact assessment
+1. **Enhanced Flow Visualization** 🆕 - Expand FMFlow with more interactive features and layout options
+2. **Causation Analytics** 🆕 - Analysis of causation chains and impact assessment with metrics
 3. **Bulk Causation Operations** 🆕 - Create multiple causations at once
-4. **Causation Templates** 🆕 - Predefined causation patterns
-5. **Bulk Operations** - Support for bulk failure mode operations
-6. **Export/Import** - Export safety analysis to various formats including causations
-7. **Reporting** - Generate safety analysis reports with causation diagrams
-8. **Advanced Filtering** - Filter by causation relationships
-9. **Real-time Updates** - WebSocket support for collaborative editing
-10. **Audit Trail** - Track changes and maintain history
-11. **Risk Assessment** - Integration with risk assessment tools using causation data
+4. **Causation Templates** 🆕 - Predefined causation patterns for common failure scenarios
+5. **Enhanced Risk Rating** - Expand risk rating management capabilities
+6. **Receiver Port Analysis** - Enhanced receiver port failure analysis features
+7. **Bulk Operations** - Support for bulk failure mode operations across all levels
+8. **Export/Import** - Export safety analysis to various formats including causations and visualizations
+9. **Reporting** - Generate safety analysis reports with causation diagrams and flow charts
+10. **Advanced Filtering** - Filter by causation relationships and flow patterns
+11. **Real-time Updates** - WebSocket support for collaborative editing
+12. **Audit Trail** - Track changes and maintain history
+13. **Risk Assessment** - Integration with risk assessment tools using causation data
 
 ## Integration Points
 

@@ -422,7 +422,8 @@ export default function ArxmlSafetyAnalysisTable() {
         selectOptions: ASIL_OPTIONS,
       }),
     },
-    {      title: 'Actions',
+    {
+      title: 'Actions',
       key: 'actions',
       fixed: 'right',
       width: 220,

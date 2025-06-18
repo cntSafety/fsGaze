@@ -180,6 +180,9 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
         swComponent={swComponent}
         failures={failures}
         providerPorts={providerPorts}
+        receiverPorts={receiverPorts}
+        portFailures={portFailures}
+        receiverPortFailures={receiverPortFailures}
       />
 
       {/* Flow Diagram */}

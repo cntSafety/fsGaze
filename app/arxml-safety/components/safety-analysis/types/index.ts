@@ -32,3 +32,10 @@ export interface ProviderPort {
 export interface SwSafetyAnalysisProps {
   swComponentUuid: string;
 }
+
+export interface SafetyNote {
+  uuid: string;
+  note: string;
+  created: string;
+  lastModified: string;
+}

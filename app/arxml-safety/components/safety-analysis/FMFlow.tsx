@@ -578,27 +578,42 @@ export default function FMFlow({
 
   return (
     <Card style={{ marginTop: '24px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <Title level={3} style={{ margin: 0 }}>
-          Failure Mode Propagation Flow - {swComponent.name}
-        </Title>
-        <Space>
-          <Button
-            icon={<ReloadOutlined />}
-            onClick={handleRefresh}
-            loading={isRefreshing}
-            type="default"
-          >
-            Refresh Data
-          </Button>
-          <Button
-            icon={<NodeCollapseOutlined />}
-            onClick={applyLayout}
-            type="primary"
-          >
-            Optimize Layout
-          </Button>
-        </Space>
+      <div style={{ 
+        display: 'flex', 
+        flexDirection: 'column',
+        gap: '12px',
+        marginBottom: '16px'
+      }}>
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'flex-start',
+          flexWrap: 'wrap',
+          gap: '8px'
+        }}>
+          <Title level={3} style={{ margin: 0, flex: '1 1 auto', minWidth: '200px' }}>
+            Failure Mode Propagation Flow - {swComponent.name}
+          </Title>
+          <Space style={{ flexShrink: 0 }}>
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={handleRefresh}
+              loading={isRefreshing}
+              type="default"
+              size="small"
+            >
+              Refresh Data
+            </Button>
+            <Button
+              icon={<NodeCollapseOutlined />}
+              onClick={applyLayout}
+              type="primary"
+              size="small"
+            >
+              Optimize Layout
+            </Button>
+          </Space>
+        </div>
       </div>
 
       {/* Legend */}
@@ -643,7 +658,7 @@ export default function FMFlow({
       </div>
 
       <div style={{ 
-        height: '500px', 
+        height: '700px', 
         border: '1px solid #d9d9d9', 
         borderRadius: '4px',
         position: 'relative',
