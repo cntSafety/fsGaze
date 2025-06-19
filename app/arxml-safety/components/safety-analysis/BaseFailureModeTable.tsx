@@ -3,6 +3,7 @@ import { Card, Typography } from 'antd';
 import CoreSafetyTable, { SafetyTableColumn, SafetyTableRow } from '../CoreSafetyTable';
 import { RiskRatingManager } from './RiskRatingManager';
 import { SafetyTaskManager } from './SafetyTaskManager';
+import SafetyReqManager from './SafetyReqManager';
 import type { FormInstance } from 'antd/es/form';
 import type { TableProps } from 'antd/es/table';
 
@@ -55,22 +56,23 @@ export const BaseFailureModeTable: React.FC<BaseFailureModeTableProps> = ({
   pagination,
   emptyStateConfig,
   onSafetyTaskClick,
-}) => {
-  return (
+}) => {  return (
     <RiskRatingManager>
       {({ handleRiskRatingClick }) => (
         <SafetyTaskManager>
           {({ handleSafetyTaskClick }) => (
-            <Card style={{ marginTop: '24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                {typeof title === 'string' ? (
-                  <Title level={3} style={{ margin: 0 }}>
-                    {title}
-                  </Title>
-                ) : (
-                  title
-                )}
-              </div>
+            <SafetyReqManager>
+              {({ handleSafetyReqClick }) => (
+                <Card style={{ marginTop: '24px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    {typeof title === 'string' ? (
+                      <Title level={3} style={{ margin: 0 }}>
+                        {title}
+                      </Title>
+                    ) : (
+                      title
+                    )}
+                  </div>
               
               {dataSource.length > 0 ? (
                 <CoreSafetyTable
@@ -82,9 +84,9 @@ export const BaseFailureModeTable: React.FC<BaseFailureModeTableProps> = ({
                   onSave={onSave}
                   onCancel={onCancel}
                   onAdd={onAdd}
-                  onDelete={onDelete}
-                  onRiskRatingClick={handleRiskRatingClick}
+                  onDelete={onDelete}                  onRiskRatingClick={handleRiskRatingClick}
                   onSafetyTaskClick={onSafetyTaskClick || handleSafetyTaskClick}
+                  onSafetyReqClick={handleSafetyReqClick}
                   isSaving={isSaving}
                   showComponentActions={showComponentActions}
                   form={form}
@@ -117,10 +119,11 @@ export const BaseFailureModeTable: React.FC<BaseFailureModeTableProps> = ({
                         {emptyStateConfig.itemsList.join(', ')}
                       </Typography.Text>
                     </>
-                  )}
-                </div>
+                  )}                </div>
               )}
             </Card>
+              )}
+            </SafetyReqManager>
           )}
         </SafetyTaskManager>
       )}

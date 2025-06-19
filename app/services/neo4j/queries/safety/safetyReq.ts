@@ -72,7 +72,7 @@ export const createSafetyReq = async (
         error: 'Missing required fields: name, reqID, reqText, and reqASIL are required'
       };
     }    const now = new Date().toISOString();
-    const uuid = `safetyreq_${generateUUID()}`;
+    const uuid = generateUUID();
 
     const query = `
       MATCH (f:FAILURE {uuid: $failureUuid})

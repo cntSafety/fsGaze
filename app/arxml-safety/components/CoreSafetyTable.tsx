@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Table, Form, Input, Select, Button, Space, Tooltip, Dropdown, Modal, Popconfirm } from 'antd';
-import { SearchOutlined, DeleteOutlined, EditOutlined, PlusOutlined, LinkOutlined, DashboardOutlined, MoreOutlined, ExclamationCircleOutlined, FileTextOutlined, CheckSquareOutlined } from '@ant-design/icons';
+import { SearchOutlined, DeleteOutlined, EditOutlined, PlusOutlined, LinkOutlined, DashboardOutlined, MoreOutlined, ExclamationCircleOutlined, FileTextOutlined, CheckSquareOutlined, EditFilled } from '@ant-design/icons';
 import type { TableProps, ColumnType } from 'antd/es/table';
 import type { FormInstance } from 'antd/es/form';
 import type { FilterDropdownProps } from 'antd/es/table/interface';
@@ -150,6 +150,7 @@ interface CoreSafetyTableProps {
   onDelete?: (record: SafetyTableRow) => Promise<void>;  onRiskRating?: (failureUuid: string, severity: number, occurrence: number, detection: number) => Promise<void>;
   onRiskRatingClick?: (failureUuid: string, failureName: string, failureDescription?: string) => Promise<void>; // New enhanced handler
   onSafetyTaskClick?: (failureUuid: string, failureName: string, failureDescription?: string) => Promise<void>; // New safety task handler
+  onSafetyReqClick?: (failureUuid: string, failureName: string, failureDescription?: string) => Promise<void>; // New safety requirement handler
   isSaving?: boolean;
   pagination?: false | TableProps<SafetyTableRow>['pagination'];
   showComponentActions?: boolean;
@@ -212,10 +213,10 @@ export default function CoreSafetyTable({
   onSave,
   onCancel,
   onAdd,
-  onDelete,
-  onRiskRating,
+  onDelete,  onRiskRating,
   onRiskRatingClick,
   onSafetyTaskClick,
+  onSafetyReqClick,
   isSaving = false,
   pagination = { pageSize: 50 },
   showComponentActions = false,
@@ -332,6 +333,14 @@ export default function CoreSafetyTable({
   const handleSafetyTaskCancel = () => {
     setIsSafetyTaskModalVisible(false);
     setSelectedFailureForSafetyTask(null);
+  };
+
+  // Safety requirements handlers
+  const handleSafetyReqClick = async (record: SafetyTableRow) => {
+    if (onSafetyReqClick && record.failureUuid) {
+      // Use the enhanced handler from SafetyReqManager
+      await onSafetyReqClick(record.failureUuid, record.failureName, record.failureDescription);
+    }
   };
 
   // Delete confirmation handlers
@@ -785,8 +794,7 @@ export default function CoreSafetyTable({
                       onClick: () => handleRiskRatingClick(record),
                       style: { color: '#52c41a' }
                     }] : []),
-                    
-                    // Safety Tasks
+                      // Safety Tasks
                     ...(onSafetyTaskClick && record.failureName !== 'No failures defined' && record.failureUuid ? [{
                       key: 'safety-tasks',
                       icon: <CheckSquareOutlined />,
@@ -795,10 +803,18 @@ export default function CoreSafetyTable({
                       style: { color: '#1890ff' }
                     }] : []),
                     
-                    // Safety Notes
+                    // Safety Requirements
+                    ...(onSafetyReqClick && record.failureName !== 'No failures defined' && record.failureUuid ? [{
+                      key: 'safety-requirements',
+                      icon: <FileTextOutlined />,
+                      label: 'Manage Requirements',
+                      onClick: () => handleSafetyReqClick(record),
+                      style: { color: '#722ed1' }
+                    }] : []),
+                      // Safety Notes
                     ...(record.failureName !== 'No failures defined' && record.failureUuid ? [{
                       key: 'safety-notes',
-                      icon: <FileTextOutlined />,
+                      icon: <EditFilled />,
                       label: 'Safety Notes',
                       onClick: () => handleSafetyNotesClick(record),
                       style: { color: '#1890ff' }
