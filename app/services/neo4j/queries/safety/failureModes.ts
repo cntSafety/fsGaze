@@ -2,17 +2,17 @@ import { driver } from '@/app/services/neo4j/config';
 import { generateUUID } from '../../utils';
 
 /**
- * Create a failure node and link it to an existing element via an "OCCURRENCE" relationship
+ * Create a failure mode node and link it to an existing element via an "OCCURRENCE" relationship
  * @param existingElementUuid UUID of the existing element to link the failure to
- * @param failureName Name of the failure
- * @param failureDescription Description of the failure
+ * @param failureModeName Name of the failure
+ * @param failureModeDescription Description of the failure
  * @param asil ASIL (Automotive Safety Integrity Level) rating
  * @param progressCallback Optional callback for progress updates
  */
-export const createFailureNode = async (
+export const createFailureModeNode = async (
   existingElementUuid: string,
-  failureName: string,
-  failureDescription: string,
+  failureModeName: string,
+  failureModeDescription: string,
   asil: string,
   progressCallback?: (progress: number, message: string) => void
 ): Promise<{
@@ -44,18 +44,18 @@ export const createFailureNode = async (
     const elementName = existingElementResult.records[0].get('elementName');
     const elementType = existingElementResult.records[0].get('elementType');
 
-    if (progressCallback) progressCallback(30, 'Creating failure node');
+    if (progressCallback) progressCallback(30, 'Creating failure mode node');
     
-    // Generate a UUID for the new failure node
-    const failureUuid = generateUUID();
+    // Generate a UUID for the new failure mode node
+    const failureModeUuid = generateUUID();
     const currentTimestamp = new Date().toISOString();
     
-    // Create the failure node and establish the relationship
+    // Create the failure mode node and establish the relationship
     const queryParams = {
       existingElementUuid,
-      failureUuid,
-      failureName,
-      failureDescription,
+      failureModeUuid,
+      failureModeName,
+      failureModeDescription,
       asil,
       created: currentTimestamp,
       lastModified: currentTimestamp,
@@ -64,49 +64,47 @@ export const createFailureNode = async (
     const createResult = await session.run(
       `MATCH (element) 
        WHERE element.uuid = $existingElementUuid
-       CREATE (failure:FAILURE {
-         uuid: $failureUuid,
-         name: $failureName,
-         description: $failureDescription,
+       CREATE (failureMode:FAILUREMODE {
+         uuid: $failureModeUuid,
+         name: $failureModeName,
+         description: $failureModeDescription,
          asil: $asil,
          Created: $created,
          LastModified: $lastModified
        })
-       CREATE (failure)-[r:OCCURRENCE]->(element)
-       RETURN failure.uuid AS createdFailureUuid, failure.name AS createdFailureName`,
+       CREATE (failureMode)-[r:OCCURRENCE]->(element)
+       RETURN failureMode.uuid AS createdFailureModeUuid, failureMode.name AS createdFailureModeName`,
       queryParams
     );
 
-    if (progressCallback) progressCallback(90, 'Finalizing failure node creation');
+    if (progressCallback) progressCallback(90, 'Finalizing failure mode node creation');
 
     if (createResult.records.length === 0) {
       throw new Error('No records returned from CREATE query');
     }
 
-    const createdFailureUuid = createResult.records[0].get('createdFailureUuid');
-    const createdFailureName = createResult.records[0].get('createdFailureName');
+    const createdFailureModeUuid = createResult.records[0].get('createdFailureModeUuid');
+    const createdFailureModeName = createResult.records[0].get('createdFailureModeName');
 
-    if (progressCallback) progressCallback(100, 'Failure node created successfully');
-
-    return {
+    if (progressCallback) progressCallback(100, 'Failure node created successfully');    return {
       success: true,
-      message: `Failure "${createdFailureName}" created and linked to ${elementType} "${elementName}".`,
-      failureUuid: createdFailureUuid,
+      message: `Failure mode "${createdFailureModeName}" created and linked to ${elementType} "${elementName}".`,
+      failureUuid: createdFailureModeUuid,
     };
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    console.error(`❌ Error creating failure node:`, error);
+    console.error(`❌ Error creating failure mode mode node:`, error);
     console.error(`❌ Error details:`, {
       message: errorMessage,
       stack: error instanceof Error ? error.stack : 'No stack trace',
       existingElementUuid,
-      failureName,
+      failureModeName,
     });
     
     return {
       success: false,
-      message: "Error creating failure node.",
+      message: "Error creating failure mode mode node.",
       error: errorMessage,
     };
   } finally {
@@ -115,17 +113,17 @@ export const createFailureNode = async (
 };
 
 /**
- * Update an existing failure node's properties
- * @param failureUuid UUID of the failure node to update
- * @param failureName New name of the failure
- * @param failureDescription New description of the failure
+ * Update an existing failure mode node's properties
+ * @param failureModeUuid UUID of the failure mode node to update
+ * @param failureModeName New name of the failure
+ * @param failureModeDescription New description of the failure
  * @param asil New ASIL (Automotive Safety Integrity Level) rating
  * @param progressCallback Optional callback for progress updates
  */
-export const updateFailureNode = async (
-  failureUuid: string,
-  failureName: string,
-  failureDescription: string,
+export const updateFailureModeNode = async (
+  failureModeUuid: string,
+  failureModeName: string,
+  failureModeDescription: string,
   asil: string,
   progressCallback?: (progress: number, message: string) => void
 ): Promise<{
@@ -136,46 +134,46 @@ export const updateFailureNode = async (
   const session = driver.session();
   
   try {
-    if (progressCallback) progressCallback(10, 'Validating failure node');
+    if (progressCallback) progressCallback(10, 'Validating failure mode node');
     
-    // First, verify that the failure node exists
+    // First, verify that the failure mode node exists
     const existingFailureResult = await session.run(
-      `MATCH (failure:FAILURE) 
-       WHERE failure.uuid = $failureUuid 
+      `MATCH (failure:FAILUREMODE) 
+       WHERE failure.uuid = $failureModeUuid 
        RETURN failure.name AS currentName, failure.description AS currentDescription, failure.asil AS currentAsil`,
-      { failureUuid }
+      { failureModeUuid }
     );
 
     if (existingFailureResult.records.length === 0) {
       return {
         success: false,
-        message: `No failure node found with UUID: ${failureUuid}`,
+        message: `No failure mode node found with UUID: ${failureModeUuid}`,
       };
     }
 
-    if (progressCallback) progressCallback(50, 'Updating failure node properties');
+    if (progressCallback) progressCallback(50, 'Updating failure mode node properties');
     
     const currentTimestamp = new Date().toISOString();
     
-    // Update the failure node properties
+    // Update the failure mode node properties
     const updateResult = await session.run(
-      `MATCH (failure:FAILURE) 
-       WHERE failure.uuid = $failureUuid
-       SET failure.name = $failureName,
-           failure.description = $failureDescription,
+      `MATCH (failure:FAILUREMODE) 
+       WHERE failure.uuid = $failureModeUuid
+       SET failure.name = $failureModeName,
+           failure.description = $failureModeDescription,
            failure.asil = $asil,
            failure.updatedAt = $updatedAt
        RETURN failure.uuid AS updatedFailureUuid, failure.name AS updatedFailureName`,
       {
-        failureUuid,
-        failureName,
-        failureDescription,
+        failureModeUuid,
+        failureModeName,
+        failureModeDescription,
         asil,
         updatedAt: currentTimestamp
       }
     );
 
-    if (progressCallback) progressCallback(90, 'Finalizing failure node update');
+    if (progressCallback) progressCallback(90, 'Finalizing failure mode node update');
 
     if (updateResult.records.length === 0) {
       throw new Error('No records returned from UPDATE query');
@@ -187,23 +185,23 @@ export const updateFailureNode = async (
 
     return {
       success: true,
-      message: `Failure "${updatedFailureName}" updated successfully.`,
+      message: `Failure mode "${updatedFailureName}" updated successfully.`,
     };
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    console.error(`❌ Error updating failure node:`, error);
+    console.error(`❌ Error updating failure mode node:`, error);
     
     console.error(`❌ Error details:`, {
       message: errorMessage,
       stack: error instanceof Error ? error.stack : 'No stack trace',
-      failureUuid,
-      failureName,
+      failureModeUuid,
+      failureModeName,
     });
     
     return {
       success: false,
-      message: "Error updating failure node.",
+      message: "Error updating failure mode node.",
       error: errorMessage,
     };
   } finally {
@@ -212,12 +210,12 @@ export const updateFailureNode = async (
 };
 
 /**
- * Delete a failure node and its relationships
- * @param failureUuid UUID of the failure node to delete
+ * Delete a failure mode node and its relationships
+ * @param failureModeUuid UUID of the failure mode node to delete
  * @param progressCallback Optional callback for progress updates
  */
-export const deleteFailureNode = async (
-  failureUuid: string,
+export const deleteFailureModeNode = async (
+  failureModeUuid: string,
   progressCallback?: (progress: number, message: string) => void
 ): Promise<{
   success: boolean;
@@ -227,34 +225,33 @@ export const deleteFailureNode = async (
   const session = driver.session();
   
   try {
-    if (progressCallback) progressCallback(10, 'Validating failure node');
+    if (progressCallback) progressCallback(10, 'Validating failure mode node');
     
-    // First, verify that the failure node exists
-    const existingFailureResult = await session.run(
-      `MATCH (failure:FAILURE) 
-       WHERE failure.uuid = $failureUuid 
-       RETURN failure.name AS failureName`,
-      { failureUuid }
+    // First, verify that the failure mode node exists
+    const existingFailureResult = await session.run(      `MATCH (failure:FAILUREMODE) 
+       WHERE failure.uuid = $failureModeUuid 
+       RETURN failure.name AS failureModeName`,
+      { failureModeUuid }
     );
 
     if (existingFailureResult.records.length === 0) {
       return {
         success: false,
-        message: `No failure node found with UUID: ${failureUuid}`,
+        message: `No failure mode node found with UUID: ${failureModeUuid}`,
       };
     }
 
-    const failureName = existingFailureResult.records[0].get('failureName');
+    const failureModeName = existingFailureResult.records[0].get('failureModeName');
 
-    if (progressCallback) progressCallback(50, 'Deleting failure node and relationships');
+    if (progressCallback) progressCallback(50, 'Deleting failure mode node and relationships');
     
-    // Delete the failure node and all its relationships
+    // Delete the failure mode node and all its relationships
     const deleteResult = await session.run(
-      `MATCH (failure:FAILURE) 
-       WHERE failure.uuid = $failureUuid
+      `MATCH (failure:FAILUREMODE) 
+       WHERE failure.uuid = $failureModeUuid
        DETACH DELETE failure
        RETURN count(failure) AS deletedCount`,
-      { failureUuid }
+      { failureModeUuid }
     );
 
     // Get deleted count for potential logging
@@ -264,16 +261,16 @@ export const deleteFailureNode = async (
 
     return {
       success: true,
-      message: `Failure "${failureName}" deleted successfully.`,
+      message: `Failure mode "${failureModeName}" deleted successfully.`,
     };
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    console.error(`❌ Error deleting failure node:`, errorMessage);
+    console.error(`❌ Error deleting failure mode node:`, errorMessage);
     
     return {
       success: false,
-      message: "Error deleting failure node.",
+      message: "Error deleting failure mode node.",
       error: errorMessage,
     };
   } finally {
@@ -299,15 +296,14 @@ export const getFailuresForPorts = async (portUuid: string): Promise<{
 }> => {
   const session = driver.session();
   
-  try {
-    const result = await session.run(
-      `MATCH (port)-[r]-(failure:FAILURE)
+  try {    const result = await session.run(
+      `MATCH (port)-[r]-(failure:FAILUREMODE)
        WHERE port.uuid = $portUuid 
        AND (port:P_PORT_PROTOTYPE OR port:R_PORT_PROTOTYPE)
        RETURN 
-         failure.uuid AS failureUuid,
-         failure.name AS failureName,
-         failure.description AS failureDescription,
+         failure.uuid AS failureModeUuid,
+         failure.name AS failureModeName,
+         failure.description AS failureModeDescription,
          failure.asil AS asil,
          labels(failure) AS failureLabels,
          type(r) AS relationshipType
@@ -321,12 +317,10 @@ export const getFailuresForPorts = async (portUuid: string): Promise<{
         data: [],
         message: `No failures found for port: ${portUuid}`,
       };
-    }
-
-    const failures = result.records.map(record => ({
-      failureUuid: record.get('failureUuid'),
-      failureName: record.get('failureName'),
-      failureDescription: record.get('failureDescription'),
+    }    const failures = result.records.map(record => ({
+      failureUuid: record.get('failureModeUuid'),
+      failureName: record.get('failureModeName'),
+      failureDescription: record.get('failureModeDescription'),
       asil: record.get('asil'),
       failureType: record.get('failureLabels')?.join(', ') || 'FAILURE',
       relationshipType: record.get('relationshipType'),
@@ -368,14 +362,13 @@ export const getFailuresForSwComponents = async (swComponentUuid: string): Promi
 }> => {
   const session = driver.session();
   
-  try {
-    const result = await session.run(
-      `MATCH (swComponent:APPLICATION_SW_COMPONENT_TYPE)-[r]-(failure:FAILURE)
+  try {    const result = await session.run(
+      `MATCH (swComponent:APPLICATION_SW_COMPONENT_TYPE)-[r]-(failure:FAILUREMODE)
        WHERE swComponent.uuid = $swComponentUuid 
        RETURN 
-         failure.uuid AS failureUuid,
-         failure.name AS failureName,
-         failure.description AS failureDescription,
+         failure.uuid AS failureModeUuid,
+         failure.name AS failureModeName,
+         failure.description AS failureModeDescription,
          failure.asil AS asil,
          type(r) AS relationshipType
        ORDER BY failure.name`,
@@ -388,12 +381,10 @@ export const getFailuresForSwComponents = async (swComponentUuid: string): Promi
         data: [],
         message: `No failures found for SW component: ${swComponentUuid}`,
       };
-    }
-
-    const failures = result.records.map(record => ({
-      failureUuid: record.get('failureUuid'),
-      failureName: record.get('failureName'),
-      failureDescription: record.get('failureDescription'),
+    }    const failures = result.records.map(record => ({
+      failureUuid: record.get('failureModeUuid'),
+      failureName: record.get('failureModeName'),
+      failureDescription: record.get('failureModeDescription'),
       asil: record.get('asil'),
       relationshipType: record.get('relationshipType'),
     }));

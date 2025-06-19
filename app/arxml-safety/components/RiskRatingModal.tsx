@@ -183,9 +183,7 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
       form.resetFields();
       setFormValues({});
     }
-  }, [form, mode, activeRiskRating]);
-
-  const handleOk = async () => {
+  }, [form, mode, activeRiskRating]);  const handleOk = async () => {
     try {
       const values = await form.validateFields();
       
@@ -198,7 +196,8 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
           occurrence: values.occurrence,
           detection: values.detection,
           ratingComment: values.ratingComment
-        });      } else if (onSave) {
+        });
+      } else if (onSave) {
         await onSave(values.severity, values.occurrence, values.detection, values.ratingComment);
       }
       
@@ -225,22 +224,20 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
       default:
         return 'Risk Rating Assessment';    }
   };
-
   const renderFormContent = () => {
-    return (
-      <Form
+    return (      <Form
         form={form}
         layout="vertical"
         requiredMark={false}
         onValuesChange={(changedValues, allValues) => {
           setFormValues(allValues);
         }}
-      >
-        <Form.Item
+      >        <Form.Item
           name="severity"
           label={<span style={{ fontWeight: 'bold' }}>Severity</span>}
           rules={[{ required: true, message: 'Please select a severity level' }]}
-        >          <Select
+        >
+          <Select
             placeholder="Select severity level"
             style={{ width: '100%' }}
             styles={{ popup: { root: { minWidth: '400px' } } }}
@@ -251,7 +248,8 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
                 value={option.value} 
                 title={option.description}
                 style={{ color: option.color }}
-              >                <span style={{ color: option.color, fontWeight: 'bold' }}>
+              >
+                <span style={{ color: option.color, fontWeight: 'bold' }}>
                   {option.label}
                 </span>
               </Option>
@@ -259,14 +257,13 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
           </Select>
         </Form.Item>
 
-        <Divider />
-
-        <Form.Item
+        <Divider />        <Form.Item
           name="occurrence"
           label={<span style={{ fontWeight: 'bold' }}>Occurrence</span>}
           rules={[{ required: true, message: 'Please select an occurrence level' }]}
         >
-          <Select            placeholder="Select occurrence level"
+          <Select
+            placeholder="Select occurrence level"
             style={{ width: '100%' }}
             styles={{ popup: { root: { minWidth: '400px' } } }}
           >
@@ -281,17 +278,17 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
                   {option.label}
                 </span>
               </Option>
-            ))}          </Select>
+            ))}
+          </Select>
         </Form.Item>
 
-        <Divider />
-
-        <Form.Item
+        <Divider />        <Form.Item
           name="detection"
           label={<span style={{ fontWeight: 'bold' }}>Detection</span>}
           rules={[{ required: true, message: 'Please select a detection level' }]}
         >
-          <Select            placeholder="Select detection level"
+          <Select
+            placeholder="Select detection level"
             style={{ width: '100%' }}
             styles={{ popup: { root: { minWidth: '400px' } } }}
           >

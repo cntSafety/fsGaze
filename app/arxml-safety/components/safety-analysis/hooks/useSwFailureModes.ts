@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Form, message } from 'antd';
-import { createFailureNode, deleteFailureNode, updateFailureNode } from '../../../../services/neo4j/queries/safety/failureModes';
+import { createFailureModeNode, deleteFailureModeNode, updateFailureModeNode } from '../../../../services/neo4j/queries/safety/failureModes';
 import { SwComponent, Failure } from '../types';
 import { SafetyTableRow } from '../../CoreSafetyTable';
 
 export const useSwFailureModes = (
   swComponentUuid: string,
   swComponent: SwComponent | null,
-  failures: Failure[],
-  setFailures: (failures: Failure[]) => void
+  failureModes: Failure[],
+  setFailureModes: (failureModes: Failure[]) => void
 ) => {
   const [form] = Form.useForm();
   const [tableData, setTableData] = useState<SafetyTableRow[]>([]);
@@ -17,21 +17,21 @@ export const useSwFailureModes = (
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
 
-  // Update table data when failures or component changes
+  // Update table data when failureModes or component changes
   useEffect(() => {
     if (!swComponent) return;
     
-    if (failures.length === 0) {
+    if (failureModes.length === 0) {
       setTableData([{
         key: `${swComponentUuid}-empty`,
         swComponentUuid,
         swComponentName: swComponent.name,
-        failureName: 'No failures defined',
+        failureName: 'No failureModes defined',
         failureDescription: '-',
         asil: '-'
       }]);
     } else {
-      const tableRows: SafetyTableRow[] = failures.map(failure => ({
+      const tableRows: SafetyTableRow[] = failureModes.map(failure => ({
         key: failure.failureUuid,
         swComponentUuid: swComponentUuid,
         swComponentName: swComponent.name,
@@ -42,7 +42,7 @@ export const useSwFailureModes = (
       }));
       setTableData(tableRows);
     }
-  }, [failures, swComponent, swComponentUuid]);
+  }, [failureModes, swComponent, swComponentUuid]);
 
   const handleEdit = (record: SafetyTableRow) => {
     form.setFieldsValue({
@@ -64,7 +64,7 @@ export const useSwFailureModes = (
       
       if (record.isNewRow) {
         // Create new failure
-        const result = await createFailureNode(
+        const result = await createFailureModeNode(
           swComponentUuid,
           row.failureName,
           row.failureDescription,
@@ -81,8 +81,8 @@ export const useSwFailureModes = (
             relationshipType: 'HAS_FAILURE'
           };
           
-          // Update failures array
-          setFailures([...failures, newFailure]);
+          // Update failureModes array
+          setFailureModes([...failureModes, newFailure]);
           
           // Update table data with the new failure
           const newTableRow: SafetyTableRow = {
@@ -95,10 +95,10 @@ export const useSwFailureModes = (
             failureUuid: result.failureUuid
           };
           
-          // Replace the temporary row with the real one, or remove "No failures defined" if this is the first failure
+          // Replace the temporary row with the real one, or remove "No failureModes defined" if this is the first failure
           setTableData(prev => {
-            // If this was the first failure and we only had "No failures defined", replace the placeholder
-            if (prev.length === 1 && prev[0].failureName === 'No failures defined') {
+            // If this was the first failure and we only had "No failureModes defined", replace the placeholder
+            if (prev.length === 1 && prev[0].failureName === 'No failureModes defined') {
               return [newTableRow];
             }
             // Otherwise, replace the temporary new row
@@ -119,7 +119,7 @@ export const useSwFailureModes = (
           return;
         }
 
-        const result = await updateFailureNode(
+        const result = await updateFailureModeNode(
           record.failureUuid,
           row.failureName,
           row.failureDescription,
@@ -127,8 +127,8 @@ export const useSwFailureModes = (
         );
 
         if (result.success) {
-          // Update local failures array
-          const updatedFailures = failures.map(failure => 
+          // Update local failureModes array
+          const updatedFailures = failureModes.map(failure => 
             failure.failureUuid === record.failureUuid 
               ? {
                   ...failure,
@@ -138,7 +138,7 @@ export const useSwFailureModes = (
                 }
               : failure
           );
-          setFailures(updatedFailures);
+          setFailureModes(updatedFailures);
 
           // Update table data
           const newData = [...tableData];
@@ -167,17 +167,17 @@ export const useSwFailureModes = (
   };
 
   const handleCancel = () => {
-    // Remove temporary new rows or restore "No failures defined" if needed
+    // Remove temporary new rows or restore "No failureModes defined" if needed
     setTableData(prev => {
       const filtered = prev.filter(row => !row.isNewRow || row.key !== editingKey);
       
-      // If we removed the only row and there are no real failures, add back "No failures defined"
-      if (filtered.length === 0 && failures.length === 0 && swComponent) {
+      // If we removed the only row and there are no real failureModes, add back "No failureModes defined"
+      if (filtered.length === 0 && failureModes.length === 0 && swComponent) {
         return [{
           key: `${swComponentUuid}-empty`,
           swComponentUuid,
           swComponentName: swComponent.name,
-          failureName: 'No failures defined',
+          failureName: 'No failureModes defined',
           failureDescription: '-',
           asil: '-'
         }];
@@ -197,24 +197,24 @@ export const useSwFailureModes = (
     try {
       setIsSaving(true);
       
-      const result = await deleteFailureNode(record.failureUuid);
+      const result = await deleteFailureModeNode(record.failureUuid);
       
       if (result.success) {
         // Update local state instead of reloading everything
-        const newFailures = failures.filter(f => f.failureUuid !== record.failureUuid);
-        setFailures(newFailures);
+        const newFailures = failureModes.filter(f => f.failureUuid !== record.failureUuid);
+        setFailureModes(newFailures);
         
-        // Update table data and check if we need to add "No failures defined"
+        // Update table data and check if we need to add "No failureModes defined"
         setTableData(prev => {
           const filtered = prev.filter(row => row.failureUuid !== record.failureUuid);
           
-          // If this was the last failure for the component, add "No failures defined"
+          // If this was the last failure for the component, add "No failureModes defined"
           if (newFailures.length === 0 && swComponent) {
             return [{
               key: `${swComponentUuid}-empty`,
               swComponentUuid,
               swComponentName: swComponent.name,
-              failureName: 'No failures defined',
+              failureName: 'No failureModes defined',
               failureDescription: '-',
               asil: '-'
             }];
@@ -257,9 +257,9 @@ export const useSwFailureModes = (
       isNewRow: true
     };
     
-    // If we currently have "No failures defined", replace it, otherwise add to the end
+    // If we currently have "No failureModes defined", replace it, otherwise add to the end
     setTableData(prev => {
-      if (prev.length === 1 && prev[0].failureName === 'No failures defined') {
+      if (prev.length === 1 && prev[0].failureName === 'No failureModes defined') {
         return [newRow];
       }
       return [...prev, newRow];

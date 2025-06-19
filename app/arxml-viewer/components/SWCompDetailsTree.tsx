@@ -5,9 +5,9 @@ import { Tree, Input, Modal, Spin, Alert, Typography, Table, Dropdown, Button } 
 import type { GetProps, MenuProps } from 'antd';
 import { DataNode as AntDataNode } from 'antd/es/tree';
 import { PlusOutlined, DeleteOutlined, ExclamationCircleOutlined, ReloadOutlined } from '@ant-design/icons';
-import { getComponentRelations, getAssemblyContextForPPort, getAssemblyContextForRPort, AssemblyContextInfo, deleteFailureNode, getNodeLabels } from '@/app/services/ArxmlToNeoService';
+import { getComponentRelations, getAssemblyContextForPPort, getAssemblyContextForRPort, AssemblyContextInfo, deleteFailureModeNode, getNodeLabels } from '@/app/services/ArxmlToNeoService';
 import { getFailuresForPorts } from '@/app/services/neo4j/queries/safety/failureModes';
-import { createCausationBetweenFailures } from '@/app/services/neo4j/queries/safety/causation';
+import { createCausationBetweenFailureModes } from '@/app/services/neo4j/queries/safety/causation';
 import AddFM from '../../safety/components/AddFM';
 
 const { Search } = Input;
@@ -189,16 +189,13 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
           const failures = failuresResult.success ? failuresResult.data || [] : [];
           
           if (assemblyContextRecords && assemblyContextRecords.length > 0) {
-            const connectorsMap = new Map<string, CustomDataNode>();            for (const record of assemblyContextRecords) {
-              const {
+            const connectorsMap = new Map<string, CustomDataNode>();            for (const record of assemblyContextRecords) {              const {
                 assemblySWConnectorName,
                 assemblySWConnectorUUID,
                 swComponentName: asmSwCompName, // Renamed to avoid conflict
                 swComponentUUID: asmSwCompUUID, // Renamed to avoid conflict
                 swComponentType: asmSwCompType, // Get the actual component type from the query
                 providerPortName,
-                failureModeName,
-                failureModeASIL,
               } = record;
 
               if (!assemblySWConnectorUUID) continue;
@@ -239,15 +236,9 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
                         {asmSwCompName || 'Unnamed SW Component'}
                         <Typography.Text type="secondary" style={{ marginLeft: '8px', fontStyle: 'italic', fontSize: '0.9em' }}>
                           ({asmSwCompType || 'UNKNOWN_TYPE'})
-                        </Typography.Text>
-                        {providerPortName && (
+                        </Typography.Text>                        {providerPortName && (
                           <Typography.Text type="secondary" style={{ marginLeft: '8px', fontSize: '0.8em', color: '#52c41a' }}>
                             via {providerPortName}
-                          </Typography.Text>
-                        )}
-                        {failureModeName && failureModeASIL && (
-                          <Typography.Text type="danger" style={{ marginLeft: '8px', fontSize: '0.8em', fontWeight: 'bold' }}>
-                            ASIL: {failureModeASIL}
                           </Typography.Text>
                         )}
                       </>
@@ -260,9 +251,7 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
                       targetName: asmSwCompName, targetUuid: asmSwCompUUID, targetType: asmSwCompType || 'UNKNOWN_TYPE',
                       // Add the new fields to relation data
                       providerPortName,
-                      failureModeName,
-                      failureModeASIL,
-                    } as any, 
+                    } as any,
                   };
                   connectorNode.children!.push(asmComponentNode);
                 }
@@ -639,7 +628,7 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
       cancelText: 'Cancel',
       onOk: async () => {
         try {
-          const result = await deleteFailureNode(element.uuid);
+          const result = await deleteFailureModeNode(element.uuid);
           
           if (result.success) {
             Modal.success({
@@ -747,10 +736,9 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
     setFirstFailureForCausation(null);
     setSecondFailureForCausation(null);
   };
-
-  const createCausationAutomatically = async (sourceFailureUuid: string, targetFailureUuid: string, sourceName: string, targetName: string) => {
+  const createCausationAutomatically = async (sourceFailureModeUuid: string, targetFailureModeUuid: string, sourceName: string, targetName: string) => {
     try {
-      await createCausationBetweenFailures(sourceFailureUuid, targetFailureUuid);
+      await createCausationBetweenFailureModes(sourceFailureModeUuid, targetFailureModeUuid);
       
       Modal.success({
         title: 'Causation Created Successfully',

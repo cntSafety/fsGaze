@@ -48,7 +48,7 @@ export interface SafetyReqApiResponse<T = any> {
 }
 
 /**
- * Create a new SAFETYREQ node linked to a failure
+ * Create a new SAFETYREQ node linked to a failure mode
  */
 export const createSafetyReq = async (
   failureUuid: string,
@@ -72,10 +72,8 @@ export const createSafetyReq = async (
         error: 'Missing required fields: name, reqID, reqText, and reqASIL are required'
       };
     }    const now = new Date().toISOString();
-    const uuid = generateUUID();
-
-    const query = `
-      MATCH (f:FAILURE {uuid: $failureUuid})
+    const uuid = generateUUID();    const query = `
+      MATCH (f:FAILUREMODE {uuid: $failureUuid})
       CREATE (sr:SAFETYREQ {
         uuid: $uuid,
         name: $name,
@@ -105,7 +103,7 @@ export const createSafetyReq = async (
     if (result.records.length === 0) {
       return {
         success: false,
-        error: 'Failed to create safety requirement - failure node not found'
+        error: 'Failed to create safety requirement - failure mode node not found'
       };
     }
 
@@ -129,19 +127,18 @@ export const createSafetyReq = async (
 };
 
 /**
- * Get all SAFETYREQ nodes for a specific failure node
+ * Get all SAFETYREQ nodes for a specific failure mode node
  */
 export const getSafetyReqsForNode = async (
   failureUuid: string
 ): Promise<SafetyReqApiResponse<SafetyReqData[]>> => {
   const session = driver.session();
   
-  try {
-    const query = `
-      MATCH (f:FAILURE {uuid: $failureUuid})-[:HAS_SAFETY_REQUIREMENT]->(sr:SAFETYREQ)
+  try {    const query = `
+      MATCH (f:FAILUREMODE {uuid: $failureUuid})-[:HAS_SAFETY_REQUIREMENT]->(sr:SAFETYREQ)
       RETURN sr
       ORDER BY sr.created DESC
-    `;    const result = await session.run(query, { failureUuid });
+    `;const result = await session.run(query, { failureUuid });
     const safetyReqs = result.records.map((record: any) => record.get('sr').properties);
     
     return {

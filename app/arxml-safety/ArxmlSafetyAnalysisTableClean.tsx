@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation';
 import type { ColumnType } from 'antd/es/table';
 import type { FilterDropdownProps } from 'antd/es/table/interface';
 import { getApplicationSwComponents } from '../services/neo4j/queries/components';
-import { getFailuresForSwComponents, createFailureNode, deleteFailureNode } from '../services/neo4j/queries/safety/failureModes';
+import { getFailuresForSwComponents, createFailureModeNode, deleteFailureModeNode } from '../services/neo4j/queries/safety/failureModes';
 import { createRiskRatingNode } from '../services/neo4j/queries/safety/riskRating';
 import { createSafetyTask, getSafetyTasksForNode, updateSafetyTask, deleteSafetyTask, SafetyTaskStatus, SafetyTaskType } from '../services/neo4j/queries/safety/safetyTasks';
 import { SafetyTableRow } from './types';
@@ -207,7 +207,7 @@ export default function ArxmlSafetyAnalysisTable() {
       setIsAddingFailure(true);
       
       if (record.isNewRow || record.failureName === PLACEHOLDER_VALUES.NO_FAILURES) {
-        const result = await createFailureNode(
+        const result = await createFailureModeNode(
           record.swComponentUuid!,
           row.failureName,
           row.failureDescription,
@@ -252,7 +252,7 @@ export default function ArxmlSafetyAnalysisTable() {
     try {
       setIsAddingFailure(true);
       
-      const result = await deleteFailureNode(record.failureUuid);
+      const result = await deleteFailureModeNode(record.failureUuid);
       
       if (result.success) {
         await loadData();

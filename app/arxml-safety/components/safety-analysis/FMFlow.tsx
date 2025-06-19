@@ -22,7 +22,7 @@ import { Button, Card, Typography, Space, Tag, Modal, message } from 'antd';
 import { NodeCollapseOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import { SwComponent, Failure, PortFailure, ProviderPort } from './types';
 import { getSafetyGraph } from '@/app/services/neo4j/queries/safety/exportGraph';
-import { deleteCausationNode, createCausationBetweenFailures } from '@/app/services/neo4j/queries/safety/causation';
+import { deleteCausationNode, createCausationBetweenFailureModes } from '@/app/services/neo4j/queries/safety/causation';
 
 const { Title, Text } = Typography;
 
@@ -388,7 +388,7 @@ export default function FMFlow({
     setIsCreatingCausation(true);
     
     try {
-      const result = await createCausationBetweenFailures(
+      const result = await createCausationBetweenFailureModes(
         sourceFailureUuid,
         targetFailureUuid
       );

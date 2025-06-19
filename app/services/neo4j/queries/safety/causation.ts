@@ -2,13 +2,13 @@ import { driver } from '@/app/services/neo4j/config';
 import { generateUUID } from '../../utils';
 
 /**
- * Create a causation relationship between two failure nodes
- * @param sourceFailureUuid UUID of the source failure (cause)
- * @param targetFailureUuid UUID of the target failure (effect)
+ * Create a causation relationship between two failure mode nodes
+ * @param sourceFailureModeUuid UUID of the source failure mode (cause)
+ * @param targetFailureModeUuid UUID of the target failure mode (effect)
  */
-export const createCausationBetweenFailures = async (
-  sourceFailureUuid: string,
-  targetFailureUuid: string
+export const createCausationBetweenFailureModes = async (
+  sourceFailureModeUuid: string,
+  targetFailureModeUuid: string
 ): Promise<{
   success: boolean;
   message: string;
@@ -18,18 +18,18 @@ export const createCausationBetweenFailures = async (
   const session = driver.session();
   
   try {
-    // First, verify both failure nodes exist
+    // First, verify both failure mode nodes exist
     const verificationResult = await session.run(
-      `MATCH (source:FAILURE), (target:FAILURE)
-       WHERE source.uuid = $sourceFailureUuid AND target.uuid = $targetFailureUuid
+      `MATCH (source:FAILUREMODE), (target:FAILUREMODE)
+       WHERE source.uuid = $sourceFailureModeUuid AND target.uuid = $targetFailureModeUuid
        RETURN source.name AS sourceName, target.name AS targetName`,
-      { sourceFailureUuid, targetFailureUuid }
+      { sourceFailureModeUuid, targetFailureModeUuid }
     );
 
     if (verificationResult.records.length === 0) {
       return {
         success: false,
-        message: `One or both failure nodes not found. Source: ${sourceFailureUuid}, Target: ${targetFailureUuid}`,
+        message: `One or both failure mode nodes not found. Source: ${sourceFailureModeUuid}, Target: ${targetFailureModeUuid}`,
       };
     }
 
@@ -38,10 +38,10 @@ export const createCausationBetweenFailures = async (
 
     // Check if causation relationship already exists
     const existingRelResult = await session.run(
-      `MATCH (causation:CAUSATION)-[:FIRST]->(:FAILURE {uuid: $sourceFailureUuid})
-       MATCH (causation)-[:THEN]->(:FAILURE {uuid: $targetFailureUuid})
+      `MATCH (causation:CAUSATION)-[:FIRST]->(:FAILUREMODE {uuid: $sourceFailureModeUuid})
+       MATCH (causation)-[:THEN]->(:FAILUREMODE {uuid: $targetFailureModeUuid})
        RETURN causation`,
-      { sourceFailureUuid, targetFailureUuid }
+      { sourceFailureModeUuid, targetFailureModeUuid }
     );
 
     if (existingRelResult.records.length > 0) {
@@ -57,8 +57,8 @@ export const createCausationBetweenFailures = async (
 
     // Create the causation node and relationships
     const result = await session.run(
-      `MATCH (causationFirst:FAILURE {uuid: $firstFailureUuid})
-       MATCH (causationThen:FAILURE {uuid: $thenFailureUuid})
+      `MATCH (causationFirst:FAILUREMODE {uuid: $firstFailureUuid})
+       MATCH (causationThen:FAILUREMODE {uuid: $thenFailureUuid})
        CREATE (causation:CAUSATION {
            name: $causationName,
            uuid: $causationUuid,
@@ -68,8 +68,8 @@ export const createCausationBetweenFailures = async (
        CREATE (causation)-[:THEN]->(causationThen)
        RETURN causation.uuid AS createdCausationUuid, causation.name AS createdCausationName`,
       {
-        firstFailureUuid: sourceFailureUuid,
-        thenFailureUuid: targetFailureUuid,
+        firstFailureUuid: sourceFailureModeUuid,
+        thenFailureUuid: targetFailureModeUuid,
         causationName,
         causationUuid,
         createdAt: new Date().toISOString()

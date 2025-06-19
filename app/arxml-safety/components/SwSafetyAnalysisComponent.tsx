@@ -10,7 +10,7 @@ import SwFailureModesTable from './safety-analysis/SwFailureModesTable';
 import ProviderPortsFailureModesTable from './safety-analysis/ProviderPortsFailureModesTable';
 import ReceiverPortsFailureModesTable from './safety-analysis/ReceiverPortsFailureModesTable';
 import FMFlow from './safety-analysis/FMFlow';
-import { createCausationBetweenFailures } from '@/app/services/ArxmlToNeoService';
+import { createCausationBetweenFailureModes } from '@/app/services/ArxmlToNeoService';
 import { SwSafetyAnalysisProps } from './safety-analysis/types';
 
 const { Text } = Typography;
@@ -57,7 +57,7 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
       setSelectedFailures({ first: currentSelection.first, second: failure });
       
       try {
-        const result = await createCausationBetweenFailures(
+        const result = await createCausationBetweenFailureModes(
           currentSelection.first.uuid,
           failure.uuid
         );

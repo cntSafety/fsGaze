@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Form, Input, Select, Button, Card, Alert, Space, Typography, Spin } from 'antd';
 import { ExclamationCircleOutlined, CheckCircleOutlined } from '@ant-design/icons';
-import { createFailureNode } from '../../services/ArxmlToNeoService';
+import { createFailureModeNode } from '../../services/ArxmlToNeoService';
 
 const { TextArea } = Input;
 const { Option } = Select;
@@ -16,7 +16,7 @@ interface AddFMProps {
   onCancel?: () => void;
 }
 
-interface FailureFormData {
+interface FailureModeFormData {
   name: string;
   description: string;
   asil: string;
@@ -28,18 +28,18 @@ const AddFM: React.FC<AddFMProps> = ({
   onSuccess, 
   onCancel 
 }) => {
-  const [form] = Form.useForm<FailureFormData>();
+  const [form] = Form.useForm<FailureModeFormData>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<any | null>(null);
 
-  const handleSubmit = async (values: FailureFormData) => {
+  const handleSubmit = async (values: FailureModeFormData) => {
     setLoading(true);
     setError(null);
     setSuccess(null);
 
     try {
-      const result = await createFailureNode(
+      const result = await createFailureModeNode(
         existingElementUuid,
         values.name,
         values.description,
@@ -53,7 +53,7 @@ const AddFM: React.FC<AddFMProps> = ({
           onSuccess(result);
         }
       } else {
-        setError(result.message || 'Failed to create failure node');
+        setError(result.message || 'Failed to create failure mode node');
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
@@ -129,9 +129,9 @@ const AddFM: React.FC<AddFMProps> = ({
         >
           <Form.Item
             name="name"
-            label="Failure Name"
+            label="Failure Mode Name"
             rules={[
-              { required: true, message: 'Please enter a failure name' },
+              { required: true, message: 'Please enter a failure mode name' },
               { min: 3, message: 'Failure name must be at least 3 characters' },
               { max: 100, message: 'Failure name must not exceed 100 characters' }
             ]}
@@ -144,9 +144,9 @@ const AddFM: React.FC<AddFMProps> = ({
 
           <Form.Item
             name="description"
-            label="Failure Description"
+            label="Failure Mode Description"
             rules={[
-              { required: true, message: 'Please enter a failure description' },
+              { required: true, message: 'Please enter a failure mode description' },
               { min: 10, message: 'Description must be at least 10 characters' },
               { max: 500, message: 'Description must not exceed 500 characters' }
             ]}

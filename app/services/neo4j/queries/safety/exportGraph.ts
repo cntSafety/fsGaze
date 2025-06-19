@@ -10,7 +10,7 @@ export async function getSafetyGraph(): Promise<{
     try {
         // 1. Get all FAILURE nodes and their properties
         const failuresResult = await session.run(
-            'MATCH (f:FAILURE) RETURN f.uuid AS uuid, properties(f) AS properties'
+            'MATCH (f:FAILUREMODE) RETURN f.uuid AS uuid, properties(f) AS properties'
         );
         const failures = failuresResult.records.map(record => ({
             uuid: record.get('uuid'),
@@ -29,7 +29,7 @@ export async function getSafetyGraph(): Promise<{
         // 3. Get all OCCURRENCE relationships and related node details
         // Updated to fetch extended properties from the source ARXML element
         const occurrencesResult = await session.run(`
-            MATCH (f:FAILURE)-[o:OCCURRENCE]->(src)
+            MATCH (f:FAILUREMODE)-[o:OCCURRENCE]->(src)
             RETURN f.uuid AS failureUuid, f.name AS failureName, 
                    src.uuid AS occuranceSourceUuid, src.name AS occuranceSourceName, 
                    src.arxmlPath AS occuranceSourceArxmlPath, 
@@ -50,7 +50,7 @@ export async function getSafetyGraph(): Promise<{
 
         // 4. Get all CAUSATION links (FIRST and THEN relationships)
         const causationLinksResult = await session.run(`
-            MATCH (cause:FAILURE)<-[:FIRST]-(c:CAUSATION)-[:THEN]->(effect:FAILURE)
+            MATCH (cause:FAILUREMODE)<-[:FIRST]-(c:CAUSATION)-[:THEN]->(effect:FAILUREMODE)
             RETURN c.uuid AS causationUuid, c.name AS causationName, 
                    cause.uuid AS causeFailureUuid, cause.name AS causeFailureName, 
                    effect.uuid AS effectFailureUuid, effect.name AS effectFailureName
@@ -75,11 +75,10 @@ export async function getSafetyGraph(): Promise<{
 
         // 6. Get all RATED relationships between FAILURE and RISKRATING nodes
         const riskRatingLinksResult = await session.run(`
-            MATCH (f:FAILURE)-[r:RATED]->(rr:RISKRATING)
+            MATCH (f:FAILUREMODE)-[r:RATED]->(rr:RISKRATING)
             RETURN f.uuid AS failureUuid, f.name AS failureName,
                    rr.uuid AS riskRatingUuid, rr.name AS riskRatingName
-        `);
-        const riskRatingLinks = riskRatingLinksResult.records.map(record => ({
+        `);        const riskRatingLinks = riskRatingLinksResult.records.map(record => ({
             failureUuid: record.get('failureUuid'),
             failureName: record.get('failureName'),
             riskRatingUuid: record.get('riskRatingUuid'),

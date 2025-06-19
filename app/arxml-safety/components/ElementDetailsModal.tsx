@@ -274,16 +274,15 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
                             </Text>
                           </div>
                         )}
-                        
-                        {/* Failure Mode Information */}
-                        {context.failureModeName && (
+                          {/* Failure Mode Information */}
+                        {context.failureName && (
                           <div style={{ marginBottom: '6px' }}>
                             <Text type="secondary" style={{ fontSize: '12px' }}>
                               <strong>Failure Mode:</strong> 
                             </Text>
                             <div style={{ marginLeft: '12px', marginTop: '4px' }}>
                               <Tag color="red" style={{ fontSize: '11px' }}>
-                                {context.failureModeName}
+                                {context.failureName}
                               </Tag>
                               {context.failureModeASIL && (
                                 <Tag color="orange" style={{ fontSize: '11px', marginLeft: '4px' }}>

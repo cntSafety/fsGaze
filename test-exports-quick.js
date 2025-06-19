@@ -8,5 +8,5 @@ console.log('ArxmlToNeoService exports:', Object.keys(arxmlExports));
 // Test specific functions
 console.log('getSafetyGraph in safety?', 'getSafetyGraph' in safetyExports);
 console.log('importSafetyGraphData in safety?', 'importSafetyGraphData' in safetyExports);
-console.log('createFailureNode in safety?', 'createFailureNode' in safetyExports);
-console.log('createFailureNode in arxmlService?', 'createFailureNode' in arxmlExports);
+console.log('createFailureModeNode in safety?', 'createFailureModeNode' in safetyExports);
+console.log('createFailureModeNode in arxmlService?', 'createFailureModeNode' in arxmlExports);

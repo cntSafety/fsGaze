@@ -3,8 +3,8 @@ import { message } from 'antd';
 import { getApplicationSwComponents } from '../../services/neo4j/queries/components';
 import { 
   getFailuresForSwComponents, 
-  createFailureNode, 
-  deleteFailureNode 
+  createFailureModeNode, 
+  deleteFailureModeNode 
 } from '../../services/neo4j/queries/safety/failureModes';
 import { ApiResponse, SwComponent, Failure, SafetyTableRow } from '../types';
 import { PLACEHOLDER_VALUES, MESSAGES } from '../utils/constants';
@@ -52,7 +52,7 @@ export class SafetyApiService {
     asil: string
   ): Promise<ApiResponse<any>> {
     try {
-      const result = await createFailureNode(componentUuid, failureName, failureDescription, asil);
+      const result = await createFailureModeNode(componentUuid, failureName, failureDescription, asil);
       if (result.success) {
         message.success(MESSAGES.SUCCESS.FAILURE_ADDED);
       } else {
@@ -74,7 +74,7 @@ export class SafetyApiService {
    */
   static async deleteFailure(failureUuid: string): Promise<ApiResponse<any>> {
     try {
-      const result = await deleteFailureNode(failureUuid);
+      const result = await deleteFailureModeNode(failureUuid);
       if (result.success) {
         message.success(MESSAGES.SUCCESS.FAILURE_DELETED);
       } else {

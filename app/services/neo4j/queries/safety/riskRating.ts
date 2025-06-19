@@ -5,7 +5,7 @@ import { generateUUID } from '../../utils';
  * Create a new RISKRATING node and link it to an existing FAILURE node
  */
 export const createRiskRatingNode = async (
-  failureUuid: string,
+  failureModeUuid: string,
   severity: number,
   occurrence: number,
   detection: number,
@@ -24,20 +24,20 @@ export const createRiskRatingNode = async (
     
     // First, verify that the failure node exists
     const failureResult = await session.run(
-      `MATCH (failure:FAILURE) 
-       WHERE failure.uuid = $failureUuid 
-       RETURN failure.name AS failureName, failure.uuid AS failureUuid`,
-      { failureUuid }
+      `MATCH (failure:FAILUREMODE) 
+       WHERE failure.uuid = $failureModeUuid 
+       RETURN failure.name AS failureModeName, failure.uuid AS failureModeUuid`,
+      { failureModeUuid }
     );
 
     if (failureResult.records.length === 0) {
       return {
         success: false,
-        message: `No failure node found with UUID: ${failureUuid}`,
+        message: `No failure node found with UUID: ${failureModeUuid}`,
       };
     }
 
-    const failureName = failureResult.records[0].get('failureName');
+    const failureModeName = failureResult.records[0].get('failureModeName');
 
     if (progressCallback) progressCallback(30, 'Creating risk rating node');
     
@@ -57,11 +57,11 @@ export const createRiskRatingNode = async (
 
     // Generate the risk rating name based on failure name with timestamp for uniqueness
     const timestamp = generateTimestamp(new Date());
-    const riskRatingName = `RR${failureName}_${timestamp}`;
+    const riskRatingName = `RR${failureModeName}_${timestamp}`;
     
     // Create the risk rating node and establish the relationship
     const queryParams = {
-      failureUuid,
+      failureModeUuid,
       riskRatingUuid,
       name: riskRatingName,
       severity,
@@ -73,8 +73,8 @@ export const createRiskRatingNode = async (
     };
 
     const createResult = await session.run(
-      `MATCH (failure:FAILURE) 
-       WHERE failure.uuid = $failureUuid
+      `MATCH (failure:FAILUREMODE) 
+       WHERE failure.uuid = $failureModeUuid
        CREATE (riskRating:RISKRATING {
          uuid: $riskRatingUuid,
          name: $name,
@@ -102,7 +102,7 @@ export const createRiskRatingNode = async (
 
     return {
       success: true,
-      message: `Risk rating created and linked to failure "${failureName}".`,
+      message: `Risk rating created and linked to failure "${failureModeName}".`,
       riskRatingUuid: createdRiskRatingUuid,
     };
 
@@ -112,7 +112,7 @@ export const createRiskRatingNode = async (
     console.error(`❌ Error details:`, {
       message: errorMessage,
       stack: error instanceof Error ? error.stack : 'No stack trace',
-      failureUuid,
+      failureModeUuid,
       severity,
       occurrence,
       detection,
@@ -239,11 +239,11 @@ export const updateRiskRatingNode = async (
 
 /**
  * Get all risk rating nodes for a specific failure node
- * @param failureUuid UUID of the failure node to get risk ratings for
+ * @param failureModeUuid UUID of the failure node to get risk ratings for
  * @param progressCallback Optional callback for progress updates
  */
 export const getRiskRatingNodes = async (
-  failureUuid: string,
+  failureModeUuid: string,
   progressCallback?: (progress: number, message: string) => void
 ): Promise<{
   success: boolean;
@@ -267,27 +267,27 @@ export const getRiskRatingNodes = async (
     
     // First, verify that the failure node exists
     const failureResult = await session.run(
-      `MATCH (failure:FAILURE) 
-       WHERE failure.uuid = $failureUuid 
-       RETURN failure.name AS failureName`,
-      { failureUuid }
+      `MATCH (failure:FAILUREMODE) 
+       WHERE failure.uuid = $failureModeUuid 
+       RETURN failure.name AS failureModeName`,
+      { failureModeUuid }
     );
 
     if (failureResult.records.length === 0) {
       return {
         success: false,
-        message: `No failure node found with UUID: ${failureUuid}`,
+        message: `No failure node found with UUID: ${failureModeUuid}`,
       };
     }
 
-    const failureName = failureResult.records[0].get('failureName');
+    const failureModeName = failureResult.records[0].get('failureModeName');
 
     if (progressCallback) progressCallback(50, 'Retrieving risk rating nodes');
     
     // Get all risk rating nodes related to the failure node
     const riskRatingResult = await session.run(
-      `MATCH (failureNode:FAILURE) 
-       WHERE failureNode.uuid = $failureUuid
+      `MATCH (failureNode:FAILUREMODE) 
+       WHERE failureNode.uuid = $failureModeUuid
        MATCH (failureNode)-[relRated:RATED]->(RRnode:RISKRATING)
        RETURN RRnode.name AS RiskRatingNodeName, 
               RRnode.uuid AS RiskRatingNodeUuid, 
@@ -298,7 +298,7 @@ export const getRiskRatingNodes = async (
               RRnode.Created AS Created,
               RRnode.LastModified AS RiskRatingNodeLastModified
        ORDER BY RRnode.Created ASC`,
-      { failureUuid }
+      { failureModeUuid }
     );
 
     if (progressCallback) progressCallback(90, 'Processing risk rating data');
@@ -319,7 +319,7 @@ export const getRiskRatingNodes = async (
     return {
       success: true,
       data: riskRatings,
-      message: `Found ${riskRatings.length} risk rating(s) for failure "${failureName}".`,
+      message: `Found ${riskRatings.length} risk rating(s) for failure "${failureModeName}".`,
     };
 
   } catch (error) {
@@ -329,7 +329,7 @@ export const getRiskRatingNodes = async (
     console.error(`❌ Error details:`, {
       message: errorMessage,
       stack: error instanceof Error ? error.stack : 'No stack trace',
-      failureUuid,
+      failureModeUuid,
     });
     
     return {

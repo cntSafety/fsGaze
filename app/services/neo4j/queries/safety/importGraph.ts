@@ -26,9 +26,8 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
         return null;
     };
 
-    try {
-        // Import/Update FAILURES
-        const failureNodeType = "FAILURE";
+    try {        // Import/Update FAILURE MODES
+        const failureNodeType = "FAILUREMODE";
         for (const failure of data.failures || []) {
             if (!failure.uuid || !failure.properties || !failure.properties.name) {
                 logs.push(`[ERROR] Skipping ${failureNodeType} due to missing uuid or name: ${JSON.stringify(failure)}`);
@@ -41,7 +40,7 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
             delete propsToSet.updatedAt;  // We set this explicitly
 
             const result = await tx.run(
-                'MERGE (f:FAILURE {uuid: $uuid}) ' +
+                'MERGE (f:FAILUREMODE {uuid: $uuid}) ' +
                 'ON CREATE SET f = $propsToSet, f.uuid = $uuid, f.createdAt = timestamp(), f.updatedAt = f.createdAt ' +
                 'ON MATCH SET f += $propsToSet, f.updatedAt = CASE WHEN f.createdAt IS NULL THEN f.updatedAt ELSE timestamp() END ' +
                 'RETURN f.name AS name, f.createdAt AS createdAt, f.updatedAt AS updatedAt',
@@ -145,24 +144,24 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 { sourceUuid: occ.occuranceSourceUuid }
             );
             if (sourceCheck.records.length === 0) {
-                logs.push(`[ERROR] Source element with UUID ${occ.occuranceSourceUuid} for OCCURRENCE not found. Skipping link to FAILURE ${occ.failureName || occ.failureUuid}.`);
+                logs.push(`[ERROR] Source element with UUID ${occ.occuranceSourceUuid} for OCCURRENCE not found. Skipping link to FAILUREMODE ${occ.failureName || occ.failureUuid}.`);
                 continue;
             }
             const sourceNode = sourceCheck.records[0];
             const sourceLabels = sourceNode.get('lbls').join(':');
 
-            // Check if the target FAILURE exists (it should have been created above)
+            // Check if the target FAILUREMODE exists (it should have been created above)
             const failureCheck = await tx.run(
-                'MATCH (f:FAILURE {uuid: $failureUuid}) RETURN f.uuid', 
+                'MATCH (f:FAILUREMODE {uuid: $failureUuid}) RETURN f.uuid', 
                 { failureUuid: occ.failureUuid }
             );
             if (failureCheck.records.length === 0) {
-                logs.push(`[ERROR] Target FAILURE with UUID ${occ.failureUuid} for OCCURRENCE not found. Skipping link from ${sourceLabels} ${occ.occuranceSourceName || occ.occuranceSourceUuid}.`);
+                logs.push(`[ERROR] Target FAILUREMODE with UUID ${occ.failureUuid} for OCCURRENCE not found. Skipping link from ${sourceLabels} ${occ.occuranceSourceName || occ.occuranceSourceUuid}.`);
                 continue;
             }
 
             await tx.run(
-                'MATCH (f:FAILURE {uuid: $failureUuid}) ' +
+                'MATCH (f:FAILUREMODE {uuid: $failureUuid}) ' +
                 'MATCH (src {uuid: $occuranceSourceUuid}) ' +
                 'MERGE (f)-[r:OCCURRENCE]->(src) ' +
                 'ON CREATE SET r.createdAt = timestamp() ' +
@@ -170,7 +169,7 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 'RETURN type(r) AS relType', // We can return something to confirm creation/match
                 { failureUuid: occ.failureUuid, occuranceSourceUuid: occ.occuranceSourceUuid }
             );
-            logs.push(`[SUCCESS] OCCURRENCE relationship linked: (FAILURE ${occ.failureName || occ.failureUuid})-[OCCURRENCE]->(${sourceLabels} ${occ.occuranceSourceName || occ.occuranceSourceUuid}).`);
+            logs.push(`[SUCCESS] OCCURRENCE relationship linked: (FAILUREMODE ${occ.failureName || occ.failureUuid})-[OCCURRENCE]->(${sourceLabels} ${occ.occuranceSourceName || occ.occuranceSourceUuid}).`);
         }
 
         // Import CAUSATION links (FIRST, THEN)
@@ -178,12 +177,10 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
             if (!link.causeFailureUuid || !link.causationUuid || !link.effectFailureUuid) {
                 logs.push(`[ERROR] Skipping CAUSATION link due to missing UUIDs: ${JSON.stringify(link)}`);
                 continue;
-            }
-
-            // Check if CAUSE FAILURE exists
-            const causeFailureCheck = await tx.run('MATCH (f:FAILURE {uuid: $uuid}) RETURN f.uuid', { uuid: link.causeFailureUuid });
+            }            // Check if CAUSE FAILUREMODE exists
+            const causeFailureCheck = await tx.run('MATCH (f:FAILUREMODE {uuid: $uuid}) RETURN f.uuid', { uuid: link.causeFailureUuid });
             if (causeFailureCheck.records.length === 0) {
-                logs.push(`[ERROR] CAUSE FAILURE ${link.causeFailureName || link.causeFailureUuid} not found for causation link. Skipping.`);
+                logs.push(`[ERROR] CAUSE FAILUREMODE ${link.causeFailureName || link.causeFailureUuid} not found for causation link. Skipping.`);
                 continue;
             }
 
@@ -192,36 +189,34 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
             if (causationNodeCheck.records.length === 0) {
                 logs.push(`[ERROR] CAUSATION node ${link.causationName || link.causationUuid} not found for causation link. Skipping.`);
                 continue;
-            }
-
-            // Check if EFFECT FAILURE exists
-            const effectFailureCheck = await tx.run('MATCH (f:FAILURE {uuid: $uuid}) RETURN f.uuid', { uuid: link.effectFailureUuid });
+            }            // Check if EFFECT FAILUREMODE exists
+            const effectFailureCheck = await tx.run('MATCH (f:FAILUREMODE {uuid: $uuid}) RETURN f.uuid', { uuid: link.effectFailureUuid });
             if (effectFailureCheck.records.length === 0) {
-                logs.push(`[ERROR] EFFECT FAILURE ${link.effectFailureName || link.effectFailureUuid} not found for causation link. Skipping.`);
+                logs.push(`[ERROR] EFFECT FAILUREMODE ${link.effectFailureName || link.effectFailureUuid} not found for causation link. Skipping.`);
                 continue;
             }
 
             // Link CAUSE_FAILURE -> CAUSATION
             await tx.run(
-                'MATCH (cause:FAILURE {uuid: $causeFailureUuid}) ' +
+                'MATCH (cause:FAILUREMODE {uuid: $causeFailureUuid}) ' +
                 'MATCH (c:CAUSATION {uuid: $causationUuid}) ' +
                 'MERGE (cause)<-[r:FIRST]-(c) ' +
                 'ON CREATE SET r.createdAt = timestamp() ' +
                 'ON MATCH SET r.updatedAt = timestamp() ',
                 { causeFailureUuid: link.causeFailureUuid, causationUuid: link.causationUuid }
             );
-            logs.push(`[SUCCESS] FIRST relationship linked: (FAILURE ${link.causeFailureName || link.causeFailureUuid})-[FIRST]->(CAUSATION ${link.causationName || link.causationUuid}).`);
+            logs.push(`[SUCCESS] FIRST relationship linked: (FAILUREMODE ${link.causeFailureName || link.causeFailureUuid})-[FIRST]->(CAUSATION ${link.causationName || link.causationUuid}).`);
 
             // Link CAUSATION -> EFFECT_FAILURE
             await tx.run(
                 'MATCH (c:CAUSATION {uuid: $causationUuid}) ' +
-                'MATCH (effect:FAILURE {uuid: $effectFailureUuid}) ' +
+                'MATCH (effect:FAILUREMODE {uuid: $effectFailureUuid}) ' +
                 'MERGE (c)-[r:THEN]->(effect) ' +
                 'ON CREATE SET r.createdAt = timestamp() ' +
                 'ON MATCH SET r.updatedAt = timestamp() ',
                 { causationUuid: link.causationUuid, effectFailureUuid: link.effectFailureUuid }
             );
-            logs.push(`[SUCCESS] THEN relationship linked: (CAUSATION ${link.causationName || link.causationUuid})-[THEN]->(FAILURE ${link.effectFailureName || link.effectFailureUuid}).`);
+            logs.push(`[SUCCESS] THEN relationship linked: (CAUSATION ${link.causationName || link.causationUuid})-[THEN]->(FAILUREMODE ${link.effectFailureName || link.effectFailureUuid}).`);
         }
 
         // Import/Update RISK RATINGS
@@ -272,12 +267,10 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
             if (!link.failureUuid || !link.riskRatingUuid) {
                 logs.push(`[ERROR] Skipping RATED link due to missing UUIDs: ${JSON.stringify(link)}`);
                 continue;
-            }
-
-            // Check if FAILURE exists
-            const failureCheck = await tx.run('MATCH (f:FAILURE {uuid: $uuid}) RETURN f.uuid', { uuid: link.failureUuid });
+            }            // Check if FAILUREMODE exists
+            const failureCheck = await tx.run('MATCH (f:FAILUREMODE {uuid: $uuid}) RETURN f.uuid', { uuid: link.failureUuid });
             if (failureCheck.records.length === 0) {
-                logs.push(`[ERROR] FAILURE ${link.failureName || link.failureUuid} not found for RATED link. Skipping.`);
+                logs.push(`[ERROR] FAILUREMODE ${link.failureName || link.failureUuid} not found for RATED link. Skipping.`);
                 continue;
             }
 
@@ -288,16 +281,16 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 continue;
             }
 
-            // Link FAILURE -> RISKRATING
+            // Link FAILUREMODE -> RISKRATING
             await tx.run(
-                'MATCH (f:FAILURE {uuid: $failureUuid}) ' +
+                'MATCH (f:FAILUREMODE {uuid: $failureUuid}) ' +
                 'MATCH (r:RISKRATING {uuid: $riskRatingUuid}) ' +
                 'MERGE (f)-[rel:RATED]->(r) ' +
                 'ON CREATE SET rel.createdAt = timestamp() ' +
                 'ON MATCH SET rel.updatedAt = timestamp() ',
                 { failureUuid: link.failureUuid, riskRatingUuid: link.riskRatingUuid }
             );
-            logs.push(`[SUCCESS] RATED relationship linked: (FAILURE ${link.failureName || link.failureUuid})-[RATED]->(RISKRATING ${link.riskRatingName || link.riskRatingUuid}).`);
+            logs.push(`[SUCCESS] RATED relationship linked: (FAILUREMODE ${link.failureName || link.failureUuid})-[RATED]->(RISKRATING ${link.riskRatingName || link.riskRatingUuid}).`);
         }
 
         // Import/Update SAFETY NOTES

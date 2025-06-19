@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Form, message } from 'antd';
-import { createFailureNode, deleteFailureNode, updateFailureNode } from '../../../../services/neo4j/queries/safety/failureModes';
+import { createFailureModeNode, deleteFailureModeNode, updateFailureModeNode } from '../../../../services/neo4j/queries/safety/failureModes';
 import { ProviderPort as ReceiverPort, PortFailure } from '../types';
 import { SafetyTableRow } from '../../CoreSafetyTable';
 
@@ -21,10 +21,10 @@ export const useReceiverPortFailures = (
     const allPortTableRows: SafetyTableRow[] = [];
     
     for (const port of receiverPorts) {
-      const failures = portFailures[port.uuid] || [];
+      const failureModes = portFailures[port.uuid] || [];
       
-      if (failures.length > 0) {
-        failures.forEach(failure => {
+      if (failureModes.length > 0) {
+        failureModes.forEach(failure => {
           allPortTableRows.push({
             key: `${port.uuid}-${failure.failureUuid}`,
             swComponentUuid: port.uuid, // Using port UUID as identifier
@@ -36,12 +36,12 @@ export const useReceiverPortFailures = (
           });
         });
       } else {
-        // Add placeholder row for ports with no failures
+        // Add placeholder row for ports with no failureModes
         allPortTableRows.push({
           key: `${port.uuid}-empty`,
           swComponentUuid: port.uuid,
           swComponentName: `${port.name} (${port.type})`,
-          failureName: 'No failures defined',
+          failureName: 'No failureModes defined',
           failureDescription: '-',
           asil: '-'
         });
@@ -69,9 +69,9 @@ export const useReceiverPortFailures = (
 
       setIsSavingPort(true);
       
-      if (record.isNewRow || record.failureName === 'No failures defined') {
+      if (record.isNewRow || record.failureName === 'No failureModes defined') {
         // Create new failure for port - use the port UUID (stored in swComponentUuid for ports)
-        const result = await createFailureNode(
+        const result = await createFailureModeNode(
           record.swComponentUuid!, // This is the port UUID for port records
           row.failureName,
           row.failureDescription || '',
@@ -90,7 +90,7 @@ export const useReceiverPortFailures = (
             relationshipType: 'HAS_FAILURE'
           };
           
-          // Update port failures map
+          // Update port failureModes map
           setPortFailures({
             ...portFailures,
             [portUuid]: [...(portFailures[portUuid] || []), newPortFailure]
@@ -110,8 +110,8 @@ export const useReceiverPortFailures = (
           
           // Update port table data
           setPortTableData(prev => {
-            if (record.failureName === 'No failures defined') {
-              // Replace the "No failures defined" row with the new failure
+            if (record.failureName === 'No failureModes defined') {
+              // Replace the "No failureModes defined" row with the new failure
               return prev.map(item => 
                 item.key === record.key ? newTableRow : item
               );
@@ -135,7 +135,7 @@ export const useReceiverPortFailures = (
           return;
         }
 
-        const result = await updateFailureNode(
+        const result = await updateFailureModeNode(
           record.failureUuid,
           row.failureName,
           row.failureDescription || '',
@@ -143,7 +143,7 @@ export const useReceiverPortFailures = (
         );
 
         if (result.success) {
-          // Update local port failures map
+          // Update local port failureModes map
           const portUuid = record.swComponentUuid!;
           const updatedPortFailures = {
             ...portFailures,
@@ -187,25 +187,25 @@ export const useReceiverPortFailures = (
   };
 
   const handleCancelPort = () => {
-    // Remove temporary new rows or restore "No failures defined" if needed
+    // Remove temporary new rows or restore "No failureModes defined" if needed
     setPortTableData(prev => {
       const filtered = prev.filter(row => !row.isNewRow || row.key !== editingPortKey);
       
-      // Check if we need to restore "No failures defined" for any ports
+      // Check if we need to restore "No failureModes defined" for any ports
       const restoredData = [...filtered];
       
-      // For each receiver port, check if it has no failures and no placeholder row
+      // For each receiver port, check if it has no failureModes and no placeholder row
       receiverPorts.forEach(port => {
         const portRows = restoredData.filter(row => row.swComponentUuid === port.uuid);
         const portFailuresCount = portFailures[port.uuid]?.length || 0;
         
-        // If the port has no failures and no rows in the table, add "No failures defined"
+        // If the port has no failureModes and no rows in the table, add "No failureModes defined"
         if (portFailuresCount === 0 && portRows.length === 0) {
           restoredData.push({
             key: `${port.uuid}-empty`,
             swComponentUuid: port.uuid,
             swComponentName: `${port.name} (${port.type})`,
-            failureName: 'No failures defined',
+            failureName: 'No failureModes defined',
             failureDescription: '-',
             asil: '-'
           });
@@ -226,13 +226,13 @@ export const useReceiverPortFailures = (
     try {
       setIsSavingPort(true);
       
-      const result = await deleteFailureNode(record.failureUuid);
+      const result = await deleteFailureModeNode(record.failureUuid);
       
       if (result.success) {
         // Update local state instead of reloading everything
         const portUuid = record.swComponentUuid!;
         
-        // Update port failures map and handle UI updates
+        // Update port failureModes map and handle UI updates
         const updatedPortFailures = {
           ...portFailures,
           [portUuid]: portFailures[portUuid]?.filter(f => f.failureUuid !== record.failureUuid) || []
@@ -242,13 +242,13 @@ export const useReceiverPortFailures = (
         const remainingFailures = updatedPortFailures[portUuid] || [];
         
         if (remainingFailures.length === 0) {
-          // Replace with "No failures defined" row
+          // Replace with "No failureModes defined" row
           const port = receiverPorts.find(p => p.uuid === portUuid);
           const placeholderRow: SafetyTableRow = {
             key: `${portUuid}-empty`,
             swComponentUuid: portUuid,
             swComponentName: `${port?.name || 'Unknown'} (${port?.type || 'R_PORT_PROTOTYPE'})`,
-            failureName: 'No failures defined',
+            failureName: 'No failureModes defined',
             failureDescription: '-',
             asil: '-'
           };
@@ -298,15 +298,15 @@ export const useReceiverPortFailures = (
     setPortTableData(prev => {
       const newData = [...prev];
       
-      // Check if the port currently shows "No failures defined"
+      // Check if the port currently shows "No failureModes defined"
       const noFailuresIndex = newData.findIndex(row => 
-        row.swComponentUuid === portUuid && row.failureName === 'No failures defined'
+        row.swComponentUuid === portUuid && row.failureName === 'No failureModes defined'
       );
       
       if (noFailuresIndex !== -1) {
-        // Replace the "No failures defined" row with the new editable row
+        // Replace the "No failureModes defined" row with the new editable row
         newData[noFailuresIndex] = newRow;
-        // console.log('Replacing "No failures defined" for port:', portName, 'at index:', noFailuresIndex);
+        // console.log('Replacing "No failureModes defined" for port:', portName, 'at index:', noFailuresIndex);
       } else {
         // Find the last index of rows with the same port UUID and insert after
         let insertIndex = newData.length;
