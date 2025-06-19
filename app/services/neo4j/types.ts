@@ -67,6 +67,12 @@ export interface AssemblyContextInfo {
   swComponentName: string | null;
   swComponentUUID: string | null;
   swComponentType: string | null;
+  // New fields for port and ASIL information
+  providerPortUUID?: string | null;
+  providerPortName?: string | null;
+  failureModeName?: string | null;
+  failureModeUUID?: string | null;
+  failureModeASIL?: string | null;
 }
 
 // Port and interface interfaces

@@ -189,14 +189,16 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
           const failures = failuresResult.success ? failuresResult.data || [] : [];
           
           if (assemblyContextRecords && assemblyContextRecords.length > 0) {
-            const connectorsMap = new Map<string, CustomDataNode>();
-            for (const record of assemblyContextRecords) {
+            const connectorsMap = new Map<string, CustomDataNode>();            for (const record of assemblyContextRecords) {
               const {
                 assemblySWConnectorName,
                 assemblySWConnectorUUID,
                 swComponentName: asmSwCompName, // Renamed to avoid conflict
                 swComponentUUID: asmSwCompUUID, // Renamed to avoid conflict
                 swComponentType: asmSwCompType, // Get the actual component type from the query
+                providerPortName,
+                failureModeName,
+                failureModeASIL,
               } = record;
 
               if (!assemblySWConnectorUUID) continue;
@@ -229,8 +231,7 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
               if (asmSwCompUUID) {
                 const asmComponentKey = `${connectorNodeKey}-comp-${asmSwCompUUID}`;
                 let asmComponentNode = connectorNode.children!.find(child => child.key === asmComponentKey);
-                if (!asmComponentNode) {
-                  asmComponentNode = {
+                if (!asmComponentNode) {                  asmComponentNode = {
                     key: asmComponentKey,
                     // title: `SWC: ${asmSwCompName || 'Unnamed SW Component'}`,
                     title: (
@@ -239,6 +240,16 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
                         <Typography.Text type="secondary" style={{ marginLeft: '8px', fontStyle: 'italic', fontSize: '0.9em' }}>
                           ({asmSwCompType || 'UNKNOWN_TYPE'})
                         </Typography.Text>
+                        {providerPortName && (
+                          <Typography.Text type="secondary" style={{ marginLeft: '8px', fontSize: '0.8em', color: '#52c41a' }}>
+                            via {providerPortName}
+                          </Typography.Text>
+                        )}
+                        {failureModeName && failureModeASIL && (
+                          <Typography.Text type="danger" style={{ marginLeft: '8px', fontSize: '0.8em', fontWeight: 'bold' }}>
+                            ASIL: {failureModeASIL}
+                          </Typography.Text>
+                        )}
                       </>
                     ),
                     isLeaf: true,
@@ -246,7 +257,11 @@ const SWCompDetailsTree: React.FC<SWCompDetailsTreeProps> = ({ componentUuid, co
                     relationData: { 
                       relationshipType: 'ASSEMBLY_CONTEXT',
                       sourceName: assemblySWConnectorName, sourceUuid: assemblySWConnectorUUID, sourceType: 'ASSEMBLY_SW_CONNECTOR',
-                      targetName: asmSwCompName, targetUuid: asmSwCompUUID, targetType: asmSwCompType || 'UNKNOWN_TYPE'
+                      targetName: asmSwCompName, targetUuid: asmSwCompUUID, targetType: asmSwCompType || 'UNKNOWN_TYPE',
+                      // Add the new fields to relation data
+                      providerPortName,
+                      failureModeName,
+                      failureModeASIL,
                     } as any, 
                   };
                   connectorNode.children!.push(asmComponentNode);

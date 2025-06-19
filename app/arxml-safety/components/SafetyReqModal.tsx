@@ -327,10 +327,9 @@ const SafetyReqModal: React.FC<SafetyReqModalProps> = ({
       ] : [
         <Button key="close" onClick={onCancel}>
           Close
-        </Button>
-      ]}
+        </Button>      ]}
       width={700}
-      destroyOnClose
+      destroyOnHidden
     >
       {renderContent()}
     </Modal>

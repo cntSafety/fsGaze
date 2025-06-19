@@ -51,12 +51,22 @@ export const getAssemblyContextForRPort = async (rPortUuid: string): Promise<Que
       //find the APPLICATION_SW_COMPONENT_TYPE which is connected for filtering out
       MATCH (containingSwc:APPLICATION_SW_COMPONENT_TYPE) -[:CONTAINS]->(rPortNode)
       WHERE swCompPro.name <> containingSwc.name
-      RETURN DISTINCT 
+      
+      // Get the connected P_PORT and its failure modes with ASIL information
+      OPTIONAL MATCH (swConnector)-[:\`TARGET-P-PORT-REF\`]->(pPortNode:P_PORT_PROTOTYPE)
+      OPTIONAL MATCH (pPortNode)<-[:OCCURRENCE]-(FM:FAILURE)
+      
+      RETURN DISTINCT
        swConnector.name as assemblySWConnectorName,
        swConnector.uuid as assemblySWConnectorUUID,
        swCompPro.name as swComponentName,
        swCompPro.uuid as swComponentUUID,
-       labels(swCompPro)[0] as swComponentType
+       labels(swCompPro)[0] as swComponentType,
+       pPortNode.uuid as providerPortUUID,
+       pPortNode.name as providerPortName,
+       FM.name as failureModeName,
+       FM.uuid as failureModeUUID,
+       FM.asil as failureModeASIL
       `,
       { rPortUuid }
     );

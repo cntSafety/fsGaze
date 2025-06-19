@@ -250,16 +250,14 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
                     <Text strong style={{ color: '#1890ff', fontSize: '14px', marginBottom: '12px', display: 'block' }}>
                       🔗 Assembly Connector Connections ({assemblyContext.length}):
                     </Text>
-                    
-                    {assemblyContext.map((context, index) => (
+                      {assemblyContext.map((context, index) => (
                       <div key={`assembly-${index}`} style={{ 
                         marginBottom: '16px',
                         padding: '12px',
                         backgroundColor: '#fff',
                         borderRadius: '6px',
                         border: '1px solid #d9d9d9'
-                      }}>
-                        <div style={{ marginBottom: '8px' }}>
+                      }}>                        <div style={{ marginBottom: '8px' }}>
                           <Text strong style={{ color: '#1890ff' }}>
                             Connected to: 
                           </Text>
@@ -268,28 +266,31 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
                           </Tag>
                         </div>
                         
-                        {context.swComponentType && (
+                        {/* Provider Port Information */}
+                        {context.providerPortName && (
                           <div style={{ marginBottom: '6px', fontSize: '12px', color: '#666' }}>
                             <Text type="secondary">
-                              <strong>Component Type:</strong> <Text code>{context.swComponentType}</Text>
+                              <strong>Provider Port:</strong> <Text code style={{ color: '#52c41a' }}>{context.providerPortName}</Text>
                             </Text>
                           </div>
                         )}
                         
-                        {context.assemblySWConnectorName && (
-                          <div style={{ marginBottom: '6px', fontSize: '12px', color: '#666' }}>
-                            <Text type="secondary">
-                              <strong>Via Connector:</strong> <Text code>{context.assemblySWConnectorName}</Text>
+                        {/* Failure Mode Information */}
+                        {context.failureModeName && (
+                          <div style={{ marginBottom: '6px' }}>
+                            <Text type="secondary" style={{ fontSize: '12px' }}>
+                              <strong>Failure Mode:</strong> 
                             </Text>
-                          </div>
-                        )}
-                        
-                        {context.assemblySWConnectorUUID && (
-                          <div style={{ fontSize: '11px', color: '#999' }}>
-                            <Text type="secondary">
-                              <strong>Connector UUID:</strong> <Text code style={{ fontSize: '10px' }}>{context.assemblySWConnectorUUID}</Text>
-                            </Text>
-                          </div>
+                            <div style={{ marginLeft: '12px', marginTop: '4px' }}>
+                              <Tag color="red" style={{ fontSize: '11px' }}>
+                                {context.failureModeName}
+                              </Tag>
+                              {context.failureModeASIL && (
+                                <Tag color="orange" style={{ fontSize: '11px', marginLeft: '4px' }}>
+                                  ASIL: {context.failureModeASIL}
+                                </Tag>
+                              )}
+                            </div>                          </div>
                         )}
                       </div>
                     ))}

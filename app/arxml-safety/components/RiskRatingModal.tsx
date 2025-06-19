@@ -240,11 +240,10 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
           name="severity"
           label={<span style={{ fontWeight: 'bold' }}>Severity</span>}
           rules={[{ required: true, message: 'Please select a severity level' }]}
-        >
-          <Select
+        >          <Select
             placeholder="Select severity level"
             style={{ width: '100%' }}
-            dropdownStyle={{ minWidth: '400px' }}
+            styles={{ popup: { root: { minWidth: '400px' } } }}
           >
             {SEVERITY_OPTIONS.map(option => (
               <Option 
@@ -267,10 +266,9 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
           label={<span style={{ fontWeight: 'bold' }}>Occurrence</span>}
           rules={[{ required: true, message: 'Please select an occurrence level' }]}
         >
-          <Select
-            placeholder="Select occurrence level"
+          <Select            placeholder="Select occurrence level"
             style={{ width: '100%' }}
-            dropdownStyle={{ minWidth: '400px' }}
+            styles={{ popup: { root: { minWidth: '400px' } } }}
           >
             {OCCURRENCE_OPTIONS.map(option => (
               <Option 
@@ -293,10 +291,9 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
           label={<span style={{ fontWeight: 'bold' }}>Detection</span>}
           rules={[{ required: true, message: 'Please select a detection level' }]}
         >
-          <Select
-            placeholder="Select detection level"
+          <Select            placeholder="Select detection level"
             style={{ width: '100%' }}
-            dropdownStyle={{ minWidth: '400px' }}
+            styles={{ popup: { root: { minWidth: '400px' } } }}
           >
             {DETECTION_OPTIONS.map(option => (
               <Option 
