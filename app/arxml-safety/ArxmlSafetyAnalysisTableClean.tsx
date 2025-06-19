@@ -3,16 +3,18 @@
 
 import React, { useState, useEffect } from 'react';
 import { Form, Typography, message, Table, Input, Select, Popconfirm, Button, Space, Tooltip } from 'antd';
-import { SearchOutlined, DeleteOutlined, EditOutlined, PlusOutlined, LinkOutlined, DashboardOutlined } from '@ant-design/icons';
+import { SearchOutlined, DeleteOutlined, EditOutlined, PlusOutlined, LinkOutlined, DashboardOutlined, CheckSquareOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import type { ColumnType } from 'antd/es/table';
 import type { FilterDropdownProps } from 'antd/es/table/interface';
 import { getApplicationSwComponents } from '../services/neo4j/queries/components';
 import { getFailuresForSwComponents, createFailureNode, deleteFailureNode } from '../services/neo4j/queries/safety/failureModes';
 import { createRiskRatingNode } from '../services/neo4j/queries/safety/riskRating';
+import { createSafetyTask, getSafetyTasksForNode, updateSafetyTask, deleteSafetyTask } from '../services/neo4j/queries/safety/safetyTasks';
 import { SafetyTableRow } from './types';
 import { ASIL_OPTIONS, PLACEHOLDER_VALUES, MESSAGES } from './utils/constants';
 import RiskRatingModal from './components/RiskRatingModal';
+import SafetyTaskModal from './components/SafetyTaskModal';
 
 const { Option } = Select;
 
@@ -109,10 +111,16 @@ export default function ArxmlSafetyAnalysisTable() {
   const [editingKey, setEditingKey] = useState('');  const [isAddingFailure, setIsAddingFailure] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
-  
-  // Risk rating modal state
+    // Risk rating modal state
   const [isRiskRatingModalVisible, setIsRiskRatingModalVisible] = useState(false);
   const [selectedFailureForRiskRating, setSelectedFailureForRiskRating] = useState<SafetyTableRow | null>(null);
+  // Safety task modal state
+  const [isSafetyTaskModalVisible, setIsSafetyTaskModalVisible] = useState(false);
+  const [selectedFailureForSafetyTask, setSelectedFailureForSafetyTask] = useState<SafetyTableRow | null>(null);
+  const [safetyTaskModalMode, setSafetyTaskModalMode] = useState<'create' | 'edit' | 'tabs'>('create');
+  const [existingSafetyTasks, setExistingSafetyTasks] = useState<any[]>([]);
+  const [activeSafetyTask, setActiveSafetyTask] = useState<any | null>(null);
+  const [activeSafetyTaskIndex, setActiveSafetyTaskIndex] = useState(0);
 
   useEffect(() => {
     loadData();
@@ -293,6 +301,131 @@ export default function ArxmlSafetyAnalysisTable() {
     setIsRiskRatingModalVisible(false);
     setSelectedFailureForRiskRating(null);
   };
+  // Safety task handlers
+  const handleSafetyTaskClick = async (record: SafetyTableRow) => {
+    if (!record.failureUuid) return;
+    
+    try {
+      setIsAddingFailure(true);
+      
+      // Load existing safety tasks for this failure
+      const result = await getSafetyTasksForNode(record.failureUuid);
+      
+      if (result.success && result.data) {
+        setExistingSafetyTasks(result.data);
+        
+        if (result.data.length > 0) {
+          // Tasks exist - show in edit/tabs mode
+          setActiveSafetyTask(result.data[0]);
+          setActiveSafetyTaskIndex(0);
+          setSafetyTaskModalMode(result.data.length > 1 ? 'tabs' : 'edit');
+        } else {
+          // No tasks exist - show create mode
+          setExistingSafetyTasks([]);
+          setActiveSafetyTask(null);
+          setSafetyTaskModalMode('create');
+        }
+      } else {
+        // Error or no tasks - default to create mode
+        setExistingSafetyTasks([]);
+        setActiveSafetyTask(null);
+        setSafetyTaskModalMode('create');
+      }
+      
+      setSelectedFailureForSafetyTask(record);
+      setIsSafetyTaskModalVisible(true);
+      
+    } catch (error) {
+      console.error('Error loading safety tasks:', error);
+      message.error('Failed to load safety tasks');
+      // Default to create mode on error
+      setExistingSafetyTasks([]);
+      setActiveSafetyTask(null);
+      setSafetyTaskModalMode('create');
+      setSelectedFailureForSafetyTask(record);
+      setIsSafetyTaskModalVisible(true);
+    } finally {
+      setIsAddingFailure(false);
+    }
+  };
+
+  const handleSafetyTaskCancel = () => {
+    setIsSafetyTaskModalVisible(false);
+    setSelectedFailureForSafetyTask(null);
+    setExistingSafetyTasks([]);
+    setActiveSafetyTask(null);
+    setSafetyTaskModalMode('create');
+    setActiveSafetyTaskIndex(0);
+  };
+
+  const handleSafetyTaskSave = async (taskData: {
+    name: string;
+    description: string;
+    status: string;
+    responsible: string;
+    reference: string;
+    taskType: string;
+  }) => {
+    if (!selectedFailureForSafetyTask?.failureUuid) return;
+    
+    try {
+      setIsAddingFailure(true);
+      
+      let result;
+      if (safetyTaskModalMode === 'create') {
+        // Create new task
+        result = await createSafetyTask(selectedFailureForSafetyTask.failureUuid, taskData);
+      } else if (activeSafetyTask) {
+        // Update existing task
+        result = await updateSafetyTask(activeSafetyTask.uuid, taskData);
+      }
+      
+      if (result?.success) {
+        message.success(safetyTaskModalMode === 'create' ? 'Safety task created successfully' : 'Safety task updated successfully');
+        handleSafetyTaskCancel();
+      } else {
+        message.error(result?.message || `Failed to ${safetyTaskModalMode === 'create' ? 'create' : 'update'} safety task`);
+      }
+    } catch (error) {
+      console.error('Error saving safety task:', error);
+      message.error(`Failed to ${safetyTaskModalMode === 'create' ? 'create' : 'update'} safety task`);
+    } finally {
+      setIsAddingFailure(false);
+    }
+  };
+
+  const handleSafetyTaskDelete = async () => {
+    if (!activeSafetyTask) return;
+    
+    try {
+      setIsAddingFailure(true);
+      const result = await deleteSafetyTask(activeSafetyTask.uuid);
+      
+      if (result.success) {
+        message.success('Safety task deleted successfully');
+        handleSafetyTaskCancel();
+      } else {
+        message.error(result.message || 'Failed to delete safety task');
+      }
+    } catch (error) {
+      console.error('Error deleting safety task:', error);
+      message.error('Failed to delete safety task');
+    } finally {
+      setIsAddingFailure(false);
+    }
+  };
+
+  const handleSafetyTaskCreateNew = () => {
+    setActiveSafetyTask(null);
+    setSafetyTaskModalMode('create');
+  };
+
+  const handleSafetyTaskTabChange = (index: number) => {
+    setActiveSafetyTaskIndex(index);
+    if (existingSafetyTasks[index]) {
+      setActiveSafetyTask(existingSafetyTasks[index]);
+    }
+  };
 
   const addNewFailure = (swComponentUuid: string, swComponentName: string) => {
     const newKey = `${swComponentUuid}-new-${Date.now()}`;
@@ -470,9 +603,7 @@ export default function ArxmlSafetyAnalysisTable() {
                   onClick={() => edit(record)}
                 />
               </Tooltip>
-            )}
-
-            {/* Risk Rating Icon */}
+            )}            {/* Risk Rating Icon */}
             {record.failureUuid && record.failureName !== PLACEHOLDER_VALUES.NO_FAILURES && (
               <Tooltip title="Set Risk Rating">
                 <Button 
@@ -481,6 +612,17 @@ export default function ArxmlSafetyAnalysisTable() {
                   onClick={() => handleRiskRatingClick(record)}
                   icon={<DashboardOutlined />}
                   style={{ color: '#52c41a' }}
+                />
+              </Tooltip>
+            )}            {/* Safety Task Icon */}
+            {record.failureUuid && record.failureName !== PLACEHOLDER_VALUES.NO_FAILURES && (
+              <Tooltip title="Manage Safety Tasks">
+                <Button 
+                  type="text"
+                  size="small"
+                  onClick={() => handleSafetyTaskClick(record)}
+                  icon={<CheckSquareOutlined />}
+                  style={{ color: '#1890ff' }}
                 />
               </Tooltip>
             )}
@@ -558,6 +700,21 @@ export default function ArxmlSafetyAnalysisTable() {
         onSave={handleRiskRatingSave}
         failureName={selectedFailureForRiskRating?.failureName || ''}
         loading={isAddingFailure}
+      />      {/* Safety Task Modal */}
+      <SafetyTaskModal
+        open={isSafetyTaskModalVisible}
+        onCancel={handleSafetyTaskCancel}
+        onSave={handleSafetyTaskSave}
+        onDelete={handleSafetyTaskDelete}
+        onCreateNew={handleSafetyTaskCreateNew}
+        onTabChange={handleSafetyTaskTabChange}
+        nodeName={selectedFailureForSafetyTask?.failureName || ''}
+        nodeDescription={selectedFailureForSafetyTask?.failureDescription}
+        loading={isAddingFailure}
+        mode={safetyTaskModalMode}
+        activeTask={activeSafetyTask}
+        existingTasks={existingSafetyTasks}
+        activeTabIndex={activeSafetyTaskIndex}
       />
     </Form>
   );

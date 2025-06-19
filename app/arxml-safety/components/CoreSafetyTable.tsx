@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Table, Form, Input, Select, Button, Space, Tooltip, Dropdown, Modal, Popconfirm } from 'antd';
-import { SearchOutlined, DeleteOutlined, EditOutlined, PlusOutlined, LinkOutlined, DashboardOutlined, MoreOutlined, ExclamationCircleOutlined, FileTextOutlined } from '@ant-design/icons';
+import { SearchOutlined, DeleteOutlined, EditOutlined, PlusOutlined, LinkOutlined, DashboardOutlined, MoreOutlined, ExclamationCircleOutlined, FileTextOutlined, CheckSquareOutlined } from '@ant-design/icons';
 import type { TableProps, ColumnType } from 'antd/es/table';
 import type { FormInstance } from 'antd/es/form';
 import type { FilterDropdownProps } from 'antd/es/table/interface';
@@ -147,9 +147,9 @@ interface CoreSafetyTableProps {
   onEdit?: (record: SafetyTableRow) => void;
   onSave?: (key: React.Key) => Promise<void>;
   onCancel?: () => void;  onAdd?: (swComponentUuid: string, swComponentName: string) => void;
-  onDelete?: (record: SafetyTableRow) => Promise<void>;
-  onRiskRating?: (failureUuid: string, severity: number, occurrence: number, detection: number) => Promise<void>;
+  onDelete?: (record: SafetyTableRow) => Promise<void>;  onRiskRating?: (failureUuid: string, severity: number, occurrence: number, detection: number) => Promise<void>;
   onRiskRatingClick?: (failureUuid: string, failureName: string, failureDescription?: string) => Promise<void>; // New enhanced handler
+  onSafetyTaskClick?: (failureUuid: string, failureName: string, failureDescription?: string) => Promise<void>; // New safety task handler
   isSaving?: boolean;
   pagination?: false | TableProps<SafetyTableRow>['pagination'];
   showComponentActions?: boolean;
@@ -215,6 +215,7 @@ export default function CoreSafetyTable({
   onDelete,
   onRiskRating,
   onRiskRatingClick,
+  onSafetyTaskClick,
   isSaving = false,
   pagination = { pageSize: 50 },
   showComponentActions = false,
@@ -236,10 +237,13 @@ export default function CoreSafetyTable({
   // Delete confirmation modal state
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [failureToDelete, setFailureToDelete] = useState<SafetyTableRow | null>(null);
-  
-  // Safety notes modal state
+    // Safety notes modal state
   const [isSafetyNotesModalVisible, setIsSafetyNotesModalVisible] = useState(false);
   const [selectedFailureForNotes, setSelectedFailureForNotes] = useState<SafetyTableRow | null>(null);
+  
+  // Safety task modal state
+  const [isSafetyTaskModalVisible, setIsSafetyTaskModalVisible] = useState(false);
+  const [selectedFailureForSafetyTask, setSelectedFailureForSafetyTask] = useState<SafetyTableRow | null>(null);
   
   // Helper function to check if a failure is selected
   const isFailureSelected = (failureUuid: string) => {
@@ -311,6 +315,23 @@ export default function CoreSafetyTable({
     } finally {
       setIsRiskRatingSaving(false);
     }
+  };
+
+  // Safety task handlers
+  const handleSafetyTaskClick = async (record: SafetyTableRow) => {
+    if (onSafetyTaskClick && record.failureUuid) {
+      // Use the enhanced handler from SafetyTaskManager
+      await onSafetyTaskClick(record.failureUuid, record.failureName, record.failureDescription);
+    } else {
+      // Fall back to basic modal behavior if no handler provided
+      setSelectedFailureForSafetyTask(record);
+      setIsSafetyTaskModalVisible(true);
+    }
+  };
+
+  const handleSafetyTaskCancel = () => {
+    setIsSafetyTaskModalVisible(false);
+    setSelectedFailureForSafetyTask(null);
   };
 
   // Delete confirmation handlers
@@ -724,10 +745,8 @@ export default function CoreSafetyTable({
                 icon={<PlusOutlined />}
                 title="Add Failure"
               />
-            )}
-
-            {/* More actions dropdown - only show if there are additional actions available */}
-            {(canLink || canRiskRating || (onDelete && record.failureName !== 'No failures defined' && !record.isNewRow && record.failureUuid)) && (
+            )}            {/* More actions dropdown - only show if there are additional actions available */}
+            {(canLink || canRiskRating || onSafetyTaskClick || (onDelete && record.failureName !== 'No failures defined' && !record.isNewRow && record.failureUuid)) && (
               <Dropdown
                 disabled={editingKey !== ''}
                 menu={{
@@ -758,14 +777,22 @@ export default function CoreSafetyTable({
                                selectionState === 'second' ? '#ff7875' : undefined
                       }
                     }] : []),
-                    
-                    // Risk Rating
+                      // Risk Rating
                     ...(canRiskRating ? [{
                       key: 'risk-rating',
                       icon: <DashboardOutlined />,
                       label: 'Set Risk Rating',
                       onClick: () => handleRiskRatingClick(record),
                       style: { color: '#52c41a' }
+                    }] : []),
+                    
+                    // Safety Tasks
+                    ...(onSafetyTaskClick && record.failureName !== 'No failures defined' && record.failureUuid ? [{
+                      key: 'safety-tasks',
+                      icon: <CheckSquareOutlined />,
+                      label: 'Manage Safety Tasks',
+                      onClick: () => handleSafetyTaskClick(record),
+                      style: { color: '#1890ff' }
                     }] : []),
                     
                     // Safety Notes

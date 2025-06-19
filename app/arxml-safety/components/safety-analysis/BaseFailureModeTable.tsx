@@ -2,6 +2,7 @@ import React from 'react';
 import { Card, Typography } from 'antd';
 import CoreSafetyTable, { SafetyTableColumn, SafetyTableRow } from '../CoreSafetyTable';
 import { RiskRatingManager } from './RiskRatingManager';
+import { SafetyTaskManager } from './SafetyTaskManager';
 import type { FormInstance } from 'antd/es/form';
 import type { TableProps } from 'antd/es/table';
 
@@ -32,6 +33,7 @@ interface BaseFailureModeTableProps {
     secondaryMessage?: string;
     itemsList?: string[];
   };
+  onSafetyTaskClick?: (failureUuid: string, failureName: string, failureDescription?: string) => Promise<void>;
 }
 
 export const BaseFailureModeTable: React.FC<BaseFailureModeTableProps> = ({
@@ -52,68 +54,75 @@ export const BaseFailureModeTable: React.FC<BaseFailureModeTableProps> = ({
   selectedFailures,
   pagination,
   emptyStateConfig,
+  onSafetyTaskClick,
 }) => {
   return (
     <RiskRatingManager>
       {({ handleRiskRatingClick }) => (
-        <Card style={{ marginTop: '24px' }}>          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            {typeof title === 'string' ? (
-              <Title level={3} style={{ margin: 0 }}>
-                {title}
-              </Title>
-            ) : (
-              title
-            )}
-          </div>
-          
-          {dataSource.length > 0 ? (
-            <CoreSafetyTable
-              dataSource={dataSource}
-              columns={columns}
-              loading={loading}
-              editingKey={editingKey}
-              onEdit={onEdit}
-              onSave={onSave}
-              onCancel={onCancel}
-              onAdd={onAdd}
-              onDelete={onDelete}
-              onRiskRatingClick={handleRiskRatingClick}
-              isSaving={isSaving}
-              showComponentActions={showComponentActions}
-              form={form}
-              onFailureSelect={onFailureSelect}
-              selectedFailures={selectedFailures}
-              pagination={pagination}
-            />
-          ) : (
-            <div style={{ 
-              textAlign: 'center', 
-              padding: '40px',
-              backgroundColor: '#fafafa',
-              borderRadius: '8px'
-            }}>
-              <Typography.Text type="secondary" style={{ fontSize: '16px' }}>
-                {emptyStateConfig.primaryMessage}
-              </Typography.Text>
-              {emptyStateConfig.secondaryMessage && (
-                <>
-                  <br />
-                  <Typography.Text type="secondary" style={{ fontSize: '14px', marginTop: '8px' }}>
-                    {emptyStateConfig.secondaryMessage}
+        <SafetyTaskManager>
+          {({ handleSafetyTaskClick }) => (
+            <Card style={{ marginTop: '24px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                {typeof title === 'string' ? (
+                  <Title level={3} style={{ margin: 0 }}>
+                    {title}
+                  </Title>
+                ) : (
+                  title
+                )}
+              </div>
+              
+              {dataSource.length > 0 ? (
+                <CoreSafetyTable
+                  dataSource={dataSource}
+                  columns={columns}
+                  loading={loading}
+                  editingKey={editingKey}
+                  onEdit={onEdit}
+                  onSave={onSave}
+                  onCancel={onCancel}
+                  onAdd={onAdd}
+                  onDelete={onDelete}
+                  onRiskRatingClick={handleRiskRatingClick}
+                  onSafetyTaskClick={onSafetyTaskClick || handleSafetyTaskClick}
+                  isSaving={isSaving}
+                  showComponentActions={showComponentActions}
+                  form={form}
+                  onFailureSelect={onFailureSelect}
+                  selectedFailures={selectedFailures}
+                  pagination={pagination}
+                />
+              ) : (
+                <div style={{ 
+                  textAlign: 'center', 
+                  padding: '40px',
+                  backgroundColor: '#fafafa',
+                  borderRadius: '8px'
+                }}>
+                  <Typography.Text type="secondary" style={{ fontSize: '16px' }}>
+                    {emptyStateConfig.primaryMessage}
                   </Typography.Text>
-                </>
+                  {emptyStateConfig.secondaryMessage && (
+                    <>
+                      <br />
+                      <Typography.Text type="secondary" style={{ fontSize: '14px', marginTop: '8px' }}>
+                        {emptyStateConfig.secondaryMessage}
+                      </Typography.Text>
+                    </>
+                  )}
+                  {emptyStateConfig.itemsList && emptyStateConfig.itemsList.length > 0 && (
+                    <>
+                      <br />
+                      <Typography.Text type="secondary" style={{ fontSize: '14px', marginTop: '8px' }}>
+                        {emptyStateConfig.itemsList.join(', ')}
+                      </Typography.Text>
+                    </>
+                  )}
+                </div>
               )}
-              {emptyStateConfig.itemsList && emptyStateConfig.itemsList.length > 0 && (
-                <>
-                  <br />
-                  <Typography.Text type="secondary" style={{ fontSize: '14px', marginTop: '8px' }}>
-                    {emptyStateConfig.itemsList.join(', ')}
-                  </Typography.Text>
-                </>
-              )}
-            </div>
+            </Card>
           )}
-        </Card>
+        </SafetyTaskManager>
       )}
     </RiskRatingManager>
   );
