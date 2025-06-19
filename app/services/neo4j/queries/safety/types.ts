@@ -1,0 +1,47 @@
+// Define the structure of the data to be imported/exported
+export interface SafetyGraphNode {
+    uuid: string;
+    properties: Record<string, unknown>;
+}
+
+export interface OccurrenceLink {
+    failureUuid: string;
+    failureName: string; // For logging/verification, not directly stored in relationship
+    occuranceSourceUuid: string;
+    occuranceSourceName: string; // For logging/verification
+    // Optional: any properties for the OCCURRENCE relationship itself
+}
+
+export interface CausationLinkInfo {
+    causationUuid: string;
+    causationName: string; // For logging/verification
+    causeFailureUuid: string;
+    causeFailureName: string; // For logging/verification
+    effectFailureUuid: string;
+    effectFailureName: string; // For logging/verification
+}
+
+export interface RiskRatingLink {
+    failureUuid: string;
+    failureName: string; // For logging/verification
+    riskRatingUuid: string;
+    riskRatingName: string; // For logging/verification
+}
+
+export interface SafetyNoteLink {
+    nodeUuid: string;
+    nodeName: string; // For logging/verification
+    safetyNoteUuid: string;
+    safetyNoteName: string; // For logging/verification
+}
+
+export interface SafetyGraphData {
+    failures: SafetyGraphNode[];
+    causations: SafetyGraphNode[];
+    riskRatings: SafetyGraphNode[];
+    safetyNotes?: SafetyGraphNode[];
+    occurrences: OccurrenceLink[];
+    causationLinks: CausationLinkInfo[];
+    riskRatingLinks: RiskRatingLink[];
+    safetyNoteLinks?: SafetyNoteLink[];
+}
