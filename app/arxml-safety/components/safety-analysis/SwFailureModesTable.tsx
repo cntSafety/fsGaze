@@ -96,8 +96,8 @@ export default function SwFailureModesTable({
       title={
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <CodeOutlined style={{ fontSize: '18px', color: '#1890ff' }} />
-            <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#262626' }}>SW Failure Modes</span>
+            <CodeOutlined style={{ fontSize: '23px', color: '#1890ff' }} />
+            <span style={{ fontSize: '21px', fontWeight: 'bold', color: '#262626' }}>SW Component Failure Modes</span>
           </div>
           <Button 
             type="primary" 

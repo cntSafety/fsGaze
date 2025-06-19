@@ -1,14 +1,15 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Modal, Form, Select, Button, Space, Typography, Divider, Input, Tabs, Popconfirm } from 'antd';
-import { PlusOutlined, DeleteOutlined, ClockCircleOutlined, EditOutlined, BugOutlined } from '@ant-design/icons';
+import { Modal, Form, Select, Button, Space, Typography, Divider, Input, Tabs, Popconfirm, Collapse } from 'antd';
+import { PlusOutlined, DeleteOutlined, ClockCircleOutlined, EditOutlined, BugOutlined, CheckSquareOutlined } from '@ant-design/icons';
 import { 
   SEVERITY_OPTIONS, 
   OCCURRENCE_OPTIONS, 
   DETECTION_OPTIONS, 
   type RiskRatingOption 
 } from '../utils/riskRatingConstants';
+import InlineSafetyTasks from './InlineSafetyTasks';
 
 const { Option } = Select;
 const { Text } = Typography;
@@ -331,9 +332,7 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
           </div>
         </Form.Item>
 
-        <Divider />
-
-        <Form.Item
+        <Divider />        <Form.Item
           name="ratingComment"
           label="Rating Comment (Optional)"
         >
@@ -343,11 +342,34 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
             showCount
             maxLength={500}
           />
-        </Form.Item>      </Form>
-    );
-  };
+        </Form.Item>
 
-  const renderModalContent = () => {
+        {/* Safety Tasks Section */}
+        <Divider />
+        <Collapse
+          size="small"
+          items={[
+            {
+              key: 'safety-tasks',
+              label: (
+                <span>
+                  <CheckSquareOutlined style={{ marginRight: 8 }} />
+                  Safety Tasks
+                </span>
+              ),
+              children: (
+                <InlineSafetyTasks
+                  riskRatingUuid={activeRiskRating?.uuid}
+                  failureName={failureName}
+                  compact={true}
+                />
+              )
+            }
+          ]}
+        />
+      </Form>
+    );
+  };  const renderModalContent = () => {
     if (mode === 'tabs' && existingRiskRatings.length > 1) {
       const tabItems = existingRiskRatings.map((rating, index) => ({
         key: index.toString(),
@@ -364,8 +386,9 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
       );
     }
     
-    return renderFormContent();
-  };const getModalFooter = () => {
+    return renderFormContent();  };
+
+  const getModalFooter = () => {
     const buttons = [
       <Button key="cancel" onClick={handleCancel} disabled={loading} size="small">
         Cancel
