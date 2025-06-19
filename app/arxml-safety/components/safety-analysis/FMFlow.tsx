@@ -21,7 +21,8 @@ import 'reactflow/dist/style.css';
 import { Button, Card, Typography, Space, Tag, Modal, message } from 'antd';
 import { NodeCollapseOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import { SwComponent, Failure, PortFailure, ProviderPort } from './types';
-import { getSafetyGraph, deleteCausationNode, createCausationBetweenFailures } from '@/app/services/neo4j/queries/safety';
+import { getSafetyGraph } from '@/app/services/neo4j/queries/safety/exportGraph';
+import { deleteCausationNode, createCausationBetweenFailures } from '@/app/services/neo4j/queries/safety/causation';
 
 const { Title, Text } = Typography;
 

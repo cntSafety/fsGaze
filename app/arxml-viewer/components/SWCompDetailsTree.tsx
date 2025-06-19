@@ -6,7 +6,8 @@ import type { GetProps, MenuProps } from 'antd';
 import { DataNode as AntDataNode } from 'antd/es/tree';
 import { PlusOutlined, DeleteOutlined, ExclamationCircleOutlined, ReloadOutlined } from '@ant-design/icons';
 import { getComponentRelations, getAssemblyContextForPPort, getAssemblyContextForRPort, AssemblyContextInfo, deleteFailureNode, getNodeLabels } from '@/app/services/ArxmlToNeoService';
-import { getFailuresForPorts, createCausationBetweenFailures } from '@/app/services/neo4j/queries/safety';
+import { getFailuresForPorts } from '@/app/services/neo4j/queries/safety/failureModes';
+import { createCausationBetweenFailures } from '@/app/services/neo4j/queries/safety/causation';
 import AddFM from '../../safety/components/AddFM';
 
 const { Search } = Input;

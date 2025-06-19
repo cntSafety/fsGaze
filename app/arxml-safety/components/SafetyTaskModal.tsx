@@ -345,8 +345,7 @@ const SafetyTaskModal: React.FC<SafetyTaskModalProps> = ({
       const tabItems = existingTasks.map((task, index) => ({
         key: index.toString(),
         label: (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Tag color={getStatusColor(task.status)} size="small">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>            <Tag color={getStatusColor(task.status)}>
               {task.status}
             </Tag>
             <span>{task.name}</span>
@@ -456,11 +455,10 @@ const SafetyTaskModal: React.FC<SafetyTaskModalProps> = ({
             <Text type="secondary" style={{ fontSize: '12px' }}>
               Editing: {activeTask.name}
             </Text>
-            <div style={{ marginTop: 4 }}>
-              <Tag color={getTaskTypeColor(activeTask.taskType)} size="small">
+            <div style={{ marginTop: 4 }}>              <Tag color={getTaskTypeColor(activeTask.taskType)}>
                 {activeTask.taskType}
               </Tag>
-              <Tag color={getStatusColor(activeTask.status)} size="small">
+              <Tag color={getStatusColor(activeTask.status)}>
                 {activeTask.status}
               </Tag>
             </div>

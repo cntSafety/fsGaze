@@ -5,7 +5,7 @@ import {
   getFailuresForSwComponents, 
   createFailureNode, 
   deleteFailureNode 
-} from '../../services/neo4j/queries/safety';
+} from '../../services/neo4j/queries/safety/failureModes';
 import { ApiResponse, SwComponent, Failure, SafetyTableRow } from '../types';
 import { PLACEHOLDER_VALUES, MESSAGES } from '../utils/constants';
 

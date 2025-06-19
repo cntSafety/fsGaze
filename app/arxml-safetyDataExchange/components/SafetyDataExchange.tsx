@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { Button, Space, Typography, Spin, Alert, Card, Upload, Input, Modal } from 'antd';
 import { UploadOutlined, DatabaseOutlined, DownloadOutlined, ExportOutlined } from '@ant-design/icons';
-import { getSafetyGraph } from '@/app/services/neo4j/queries/safety'; // Assuming this path is correct
+import { getSafetyGraph } from '@/app/services/neo4j/queries/safety/exportGraph';
 import { importFullGraph } from '@/app/services/neo4j/queries/general';
 import StatusDB, { StatusDBRef } from '@/app/components/statusDB';
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { importSafetyGraphData, SafetyGraphData } from '@/app/services/neo4j/queries/safety';
+import { importSafetyGraphData } from '@/app/services/neo4j/queries/safety/importGraph';
+import { SafetyGraphData } from '@/app/services/neo4j/queries/safety/types';
 
 export async function POST(request: NextRequest) {
   try {

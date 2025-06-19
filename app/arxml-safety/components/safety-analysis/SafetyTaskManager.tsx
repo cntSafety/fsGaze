@@ -1,21 +1,14 @@
 import React from 'react';
 import SafetyTaskModal from '../SafetyTaskModal';
 import { useSafetyTaskManager } from './hooks/useSafetyTaskManager';
+import { CreateSafetyTaskInput } from '@/app/services/neo4j/queries/safety/safetyTasks';
 
 interface SafetyTaskManagerProps {
   children: (safetyTaskHandlers: {
     handleSafetyTaskClick: (failureUuid: string, failureName: string, failureDescription?: string) => Promise<void>;
     safetyTaskModalProps: {
       open: boolean;
-      onCancel: () => void;
-      onSave: (values: {
-        name: string;
-        description: string;
-        status: string;
-        responsible: string;
-        reference: string;
-        taskType: string;
-      }) => Promise<void>;
+      onCancel: () => void;      onSave: (taskData: CreateSafetyTaskInput) => Promise<void>;
       onCreateNew: () => void;
       onDelete: () => Promise<void>;
       onTabChange: (index: number) => void;

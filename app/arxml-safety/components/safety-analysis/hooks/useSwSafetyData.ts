@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { message } from 'antd';
 import { getInfoForAppSWComp } from '../../../../services/neo4j/queries/components';
-import { getFailuresForSwComponents, getFailuresForPorts } from '../../../../services/neo4j/queries/safety';
+import { getFailuresForSwComponents, getFailuresForPorts } from '../../../../services/neo4j/queries/safety/failureModes';
 import { getProviderPortsForSWComponent, getReceiverPortsForSWComponent } from '../../../../services/neo4j/queries/ports';
 import { SwComponent, Failure, PortFailure, ProviderPort } from '../types';
 

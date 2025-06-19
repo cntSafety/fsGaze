@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { message } from 'antd';
-import { createRiskRatingNode, updateRiskRatingNode, deleteRiskRatingNode, getRiskRatingNodes } from '@/app/services/neo4j/queries/safety';
+import { createRiskRatingNode, updateRiskRatingNode, deleteRiskRatingNode, getRiskRatingNodes } from '@/app/services/neo4j/queries/safety/riskRating';
 
 interface RiskRatingModalState {
   failureUuid: string;

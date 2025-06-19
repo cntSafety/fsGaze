@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Form, message } from 'antd';
-import { createFailureNode, deleteFailureNode, updateFailureNode } from '../../../../services/neo4j/queries/safety';
+import { createFailureNode, deleteFailureNode, updateFailureNode } from '../../../../services/neo4j/queries/safety/failureModes';
 import { SwComponent, Failure } from '../types';
 import { SafetyTableRow } from '../../CoreSafetyTable';
 

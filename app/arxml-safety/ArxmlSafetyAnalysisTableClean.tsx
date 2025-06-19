@@ -10,7 +10,7 @@ import type { FilterDropdownProps } from 'antd/es/table/interface';
 import { getApplicationSwComponents } from '../services/neo4j/queries/components';
 import { getFailuresForSwComponents, createFailureNode, deleteFailureNode } from '../services/neo4j/queries/safety/failureModes';
 import { createRiskRatingNode } from '../services/neo4j/queries/safety/riskRating';
-import { createSafetyTask, getSafetyTasksForNode, updateSafetyTask, deleteSafetyTask } from '../services/neo4j/queries/safety/safetyTasks';
+import { createSafetyTask, getSafetyTasksForNode, updateSafetyTask, deleteSafetyTask, SafetyTaskStatus, SafetyTaskType } from '../services/neo4j/queries/safety/safetyTasks';
 import { SafetyTableRow } from './types';
 import { ASIL_OPTIONS, PLACEHOLDER_VALUES, MESSAGES } from './utils/constants';
 import RiskRatingModal from './components/RiskRatingModal';
@@ -367,17 +367,23 @@ export default function ArxmlSafetyAnalysisTable() {
     taskType: string;
   }) => {
     if (!selectedFailureForSafetyTask?.failureUuid) return;
-    
-    try {
+      try {
       setIsAddingFailure(true);
+      
+      // Convert form values to proper types
+      const convertedTaskData = {
+        ...taskData,
+        status: taskData.status as SafetyTaskStatus,
+        taskType: taskData.taskType as SafetyTaskType
+      };
       
       let result;
       if (safetyTaskModalMode === 'create') {
         // Create new task
-        result = await createSafetyTask(selectedFailureForSafetyTask.failureUuid, taskData);
+        result = await createSafetyTask(selectedFailureForSafetyTask.failureUuid, convertedTaskData);
       } else if (activeSafetyTask) {
         // Update existing task
-        result = await updateSafetyTask(activeSafetyTask.uuid, taskData);
+        result = await updateSafetyTask(activeSafetyTask.uuid, convertedTaskData);
       }
       
       if (result?.success) {
