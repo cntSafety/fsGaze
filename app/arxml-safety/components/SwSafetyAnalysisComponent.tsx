@@ -10,6 +10,7 @@ import SwFailureModesTable from './safety-analysis/SwFailureModesTable';
 import ProviderPortsFailureModesTable from './safety-analysis/ProviderPortsFailureModesTable';
 import ReceiverPortsFailureModesTable from './safety-analysis/ReceiverPortsFailureModesTable';
 import FMFlow from './safety-analysis/FMFlow';
+import SWCAnalysisExport from './SWCAnalysisExport';
 import { createCausationBetweenFailureModes } from '@/app/services/ArxmlToNeoService';
 import { SwSafetyAnalysisProps } from './safety-analysis/types';
 
@@ -214,14 +215,20 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
           setPortFailures={setPortFailures}
           onFailureSelect={handleFailureSelection}
           selectedFailures={selectedFailures}
-        />
-
-        <ReceiverPortsFailureModesTable 
+        />        <ReceiverPortsFailureModesTable 
           receiverPorts={receiverPorts}
           portFailures={receiverPortFailures}
           setPortFailures={setReceiverPortFailures}
           onFailureSelect={handleFailureSelection}
           selectedFailures={selectedFailures}
+        />
+      </div>
+
+      {/* Export Section */}
+      <div style={{ marginTop: '24px', textAlign: 'center', borderTop: '1px solid #f0f0f0', paddingTop: '16px' }}>
+        <SWCAnalysisExport 
+          componentUuid={swComponentUuid}
+          componentName={swComponent?.name}
         />
       </div>
     </div>

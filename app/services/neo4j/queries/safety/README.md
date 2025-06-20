@@ -229,6 +229,27 @@ OPTIONAL match (fmOfPartner)-[partnerFMtoOccSource:OCCURRENCE]->(impactedElement
 RETURN swc, swcNote, fm, fmNote, fmTask, fmrr, rrTask, fmOfPartner, impactedElement
 ```
 
+
+```cypher
+//all safety relevand nodes for a given SW component
+match(swc) where swc.uuid="F2F2D5DA-6C14-4AC3-8EC0-8F961F3A0A81" 
+//get notes for swc
+OPTIONAL match(swc)-[notRel:NOTEREF]->(swcNote)
+//get the failure modes for the sw component
+OPTIONAL match (fm)-[occRel:OCCURRENCE]->(swc) 
+//-- get notes for fm
+OPTIONAL match (fm)-[noteRelfm:NOTEREF]->(fmNote) 
+//-- get tasks for fm
+OPTIONAL match (fm)-[taskRelfm:TASKREF]->(fmTask)
+//-- get risk rating rr for fm
+OPTIONAL match (fm)-[rrRelfm:RATED]->(fmrr)
+//-- get tasks related to risk reating (rrTasks)
+OPTIONAL match (fmrr)-[fmrrRelTask:TASKREF]->(rrTask)
+RETURN swc.name as componentName, swcNote.note as safetyNote, fm.name as fmName, fm.description as fmDescription,
+fmNote.note as fmNote, fmTask.name as fmTask, fmrr.name as riskRatingName, fmrr.Severity as Severity, fmrr.Occurrence as Occurrence, fmrr.Detection as Detection, fmrr.RatingComment as RatingComment, rrTask.name as RiskRatingTaskName, rrTask.description as RiskRatingTaskDescription
+```
+
+
 This query demonstrates:
 
 - **NOTEREF**: References to safety notes from components and failure modes

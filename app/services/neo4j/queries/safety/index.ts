@@ -4,6 +4,7 @@ export * from './types';
 // Export functions by category
 export * from './importGraph';
 export * from './exportGraph';
+export * from './exportSWCSafety';
 export * from './failureModes';
 export * from './riskRating';
 export * from './causation';
