@@ -78,7 +78,7 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
         if (result && result.records) {
           const contextData = result.records.map(record => record.toObject() as unknown as AssemblyContextInfo);
           setAssemblyContext(contextData);
-          // console.log(`Assembly context found for ${elementDetails.name}:`, contextData);
+          console.log(`Assembly context found for ${elementDetails.name}:`, contextData);
         } else {
           setAssemblyContext([]);
           // console.log(`No assembly context found for ${elementDetails.name}`);
@@ -275,14 +275,14 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
                           </div>
                         )}
                           {/* Failure Mode Information */}
-                        {context.failureName && (
+                        {context.failureModeName && (
                           <div style={{ marginBottom: '6px' }}>
                             <Text type="secondary" style={{ fontSize: '12px' }}>
                               <strong>Failure Mode:</strong> 
                             </Text>
                             <div style={{ marginLeft: '12px', marginTop: '4px' }}>
                               <Tag color="red" style={{ fontSize: '11px' }}>
-                                {context.failureName}
+                                {context.failureModeName}
                               </Tag>
                               {context.failureModeASIL && (
                                 <Tag color="orange" style={{ fontSize: '11px', marginLeft: '4px' }}>

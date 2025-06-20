@@ -70,8 +70,8 @@ export interface AssemblyContextInfo {
   // New fields for port and ASIL information
   providerPortUUID?: string | null;
   providerPortName?: string | null;
-  failureName?: string | null;
-  failureUUID?: string | null;
+  failureModeName?: string | null;
+  failureModeUUID?: string | null;
   failureModeASIL?: string | null;
 }
 

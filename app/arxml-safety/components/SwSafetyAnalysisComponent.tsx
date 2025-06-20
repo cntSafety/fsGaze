@@ -11,6 +11,7 @@ import ProviderPortsFailureModesTable from './safety-analysis/ProviderPortsFailu
 import ReceiverPortsFailureModesTable from './safety-analysis/ReceiverPortsFailureModesTable';
 import FMFlow from './safety-analysis/FMFlow';
 import SWCAnalysisExport from './SWCAnalysisExport';
+import InterfaceCheck from './InterfaceCheck';
 import { createCausationBetweenFailureModes } from '@/app/services/ArxmlToNeoService';
 import { SwSafetyAnalysisProps } from './safety-analysis/types';
 
@@ -231,6 +232,16 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
           componentName={swComponent?.name}
         />
       </div>
+
+      {/* Interface Check Section */}
+      <InterfaceCheck
+        swComponentUuid={swComponentUuid}
+        swComponentName={swComponent?.name}
+        providerPorts={providerPorts}
+        receiverPorts={receiverPorts}
+        portFailures={portFailures}
+        receiverPortFailures={receiverPortFailures}
+      />
     </div>
   );
 }
