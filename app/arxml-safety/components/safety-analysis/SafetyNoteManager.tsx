@@ -187,59 +187,80 @@ export default function SafetyNoteManager({
       </div>
     );
   };
-
   const renderInlineNotes = () => {
-    if (!showInline || safetyNotes.length === 0) return null;
+    if (!showInline) return null;
 
     return (
       <div style={{ marginTop: '8px' }}>
-        {safetyNotes.map((note, index) => (
-          <div 
-            key={note.uuid}
-            style={{ 
-              marginBottom: index < safetyNotes.length - 1 ? '4px' : '0',
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: '8px'
-            }}
-          >
-            <Text style={{ flex: 1 }}>{note.note}</Text>
-            <Space size="small">
+        {safetyNotes.length === 0 ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Text type="secondary" style={{ fontSize: '14px' }}>No safety notes</Text>
+            <Tooltip title="Add safety note">
               <Button 
                 type="link" 
-                icon={<EditOutlined />} 
-                onClick={() => handleEditNote(note)}
+                icon={<PlusOutlined />} 
+                onClick={handleAddNote}
                 size="small"
-                style={{ padding: '0', minWidth: 'auto', height: 'auto' }}
+                style={{ 
+                  padding: '0', 
+                  minWidth: 'auto', 
+                  height: 'auto',
+                  color: '#52c41a'
+                }}
               />
-              <Button 
-                type="link" 
-                icon={<DeleteOutlined />} 
-                onClick={() => handleDeleteNote(note)}
-                size="small"
-                danger
-                style={{ padding: '0', minWidth: 'auto', height: 'auto' }}
-              />
-            </Space>
+            </Tooltip>
           </div>
-        ))}
-        {/* Add button for additional notes */}
-        <div style={{ marginTop: '4px', display: 'flex', justifyContent: 'flex-start' }}>
-          <Tooltip title="Add another safety note">
-            <Button 
-              type="link" 
-              icon={<PlusOutlined />} 
-              onClick={handleAddNote}
-              size="small"
-              style={{ 
-                padding: '0', 
-                minWidth: 'auto', 
-                height: 'auto',
-                color: '#52c41a'
-              }}
-            />
-          </Tooltip>
-        </div>
+        ) : (
+          <>
+            {safetyNotes.map((note, index) => (
+              <div 
+                key={note.uuid}
+                style={{ 
+                  marginBottom: index < safetyNotes.length - 1 ? '4px' : '0',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '8px'
+                }}
+              >
+                <Text style={{ flex: 1 }}>{note.note}</Text>
+                <Space size="small">
+                  <Button 
+                    type="link" 
+                    icon={<EditOutlined />} 
+                    onClick={() => handleEditNote(note)}
+                    size="small"
+                    style={{ padding: '0', minWidth: 'auto', height: 'auto' }}
+                  />
+                  <Button 
+                    type="link" 
+                    icon={<DeleteOutlined />} 
+                    onClick={() => handleDeleteNote(note)}
+                    size="small"
+                    danger
+                    style={{ padding: '0', minWidth: 'auto', height: 'auto' }}
+                  />
+                </Space>
+              </div>
+            ))}
+            {/* Add button for additional notes */}
+            <div style={{ marginTop: '4px', display: 'flex', justifyContent: 'flex-start' }}>
+              <Tooltip title="Add another safety note">
+                <Button 
+                  type="link" 
+                  icon={<PlusOutlined />} 
+                  onClick={handleAddNote}
+                  size="small"
+                  style={{ 
+                    padding: '0', 
+                    minWidth: 'auto', 
+                    height: 'auto',
+                    color: '#52c41a'
+                  }}
+                />
+              </Tooltip>
+            </div>
+          </>
+        )}
       </div>
     );
   };

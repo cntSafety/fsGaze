@@ -85,7 +85,49 @@ export async function getSafetyGraph(): Promise<{
             riskRatingName: record.get('riskRatingName'),
         }));
 
-        // 7. Get all SAFETYNOTE nodes and their properties
+        // 7. Get all SAFETYTASK nodes and their properties
+        const safetyTasksResult = await session.run(
+            'MATCH (task:SAFETYTASK) RETURN task.uuid AS uuid, properties(task) AS properties'
+        );
+        const safetyTasks = safetyTasksResult.records.map(record => ({
+            uuid: record.get('uuid'),
+            properties: record.get('properties'),
+        }));        // 8. Get all TASKREF relationships between any node and SAFETYTASK nodes
+        const safetyTaskLinksResult = await session.run(`
+            MATCH (n)-[rel:TASKREF]->(task:SAFETYTASK)
+            RETURN n.uuid AS nodeUuid, n.name AS nodeName,
+                   task.uuid AS safetyTaskUuid, task.name AS safetyTaskName
+        `);
+        const safetyTaskLinks = safetyTaskLinksResult.records.map(record => ({
+            nodeUuid: record.get('nodeUuid'),
+            nodeName: record.get('nodeName'),
+            safetyTaskUuid: record.get('safetyTaskUuid'),
+            safetyTaskName: record.get('safetyTaskName'),
+        }));
+
+        // 9. Get all SAFETYREQ nodes and their properties
+        const safetyReqsResult = await session.run(
+            'MATCH (req:SAFETYREQ) RETURN req.uuid AS uuid, properties(req) AS properties'
+        );
+        const safetyReqs = safetyReqsResult.records.map(record => ({
+            uuid: record.get('uuid'),
+            properties: record.get('properties'),
+        }));
+
+        // 10. Get all HAS_SAFETY_REQUIREMENT relationships between any node and SAFETYREQ nodes
+        const safetyReqLinksResult = await session.run(`
+            MATCH (n)-[rel:HAS_SAFETY_REQUIREMENT]->(req:SAFETYREQ)
+            RETURN n.uuid AS nodeUuid, n.name AS nodeName,
+                   req.uuid AS safetyReqUuid, req.name AS safetyReqName
+        `);
+        const safetyReqLinks = safetyReqLinksResult.records.map(record => ({
+            nodeUuid: record.get('nodeUuid'),
+            nodeName: record.get('nodeName'),
+            safetyReqUuid: record.get('safetyReqUuid'),
+            safetyReqName: record.get('safetyReqName'),
+        }));
+
+        // 11. Get all SAFETYNOTE nodes and their properties        // 11. Get all SAFETYNOTE nodes and their properties
         const safetyNotesResult = await session.run(
             'MATCH (note:SAFETYNOTE) RETURN note.uuid AS uuid, properties(note) AS properties'
         );
@@ -94,7 +136,7 @@ export async function getSafetyGraph(): Promise<{
             properties: record.get('properties'),
         }));
 
-        // 8. Get all NOTEREF relationships between any node and SAFETYNOTE nodes
+        // 12. Get all NOTEREF relationships between any node and SAFETYNOTE nodes        // 12. Get all NOTEREF relationships between any node and SAFETYNOTE nodes
         const safetyNoteLinksResult = await session.run(`
             MATCH (n)-[ref:NOTEREF]->(note:SAFETYNOTE)
             RETURN n.uuid AS nodeUuid, n.name AS nodeName,
@@ -113,10 +155,14 @@ export async function getSafetyGraph(): Promise<{
                 failures,
                 causations,
                 riskRatings,
+                safetyTasks,
+                safetyReqs,
                 safetyNotes,
                 occurrences,
                 causationLinks,
                 riskRatingLinks,
+                safetyTaskLinks,
+                safetyReqLinks,
                 safetyNoteLinks,
             },
         };

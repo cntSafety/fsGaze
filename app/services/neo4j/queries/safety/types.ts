@@ -28,6 +28,20 @@ export interface RiskRatingLink {
     riskRatingName: string; // For logging/verification
 }
 
+export interface SafetyTaskLink {
+    nodeUuid: string;
+    nodeName: string; // For logging/verification
+    safetyTaskUuid: string;
+    safetyTaskName: string; // For logging/verification
+}
+
+export interface SafetyReqLink {
+    nodeUuid: string;
+    nodeName: string; // For logging/verification
+    safetyReqUuid: string;
+    safetyReqName: string; // For logging/verification
+}
+
 export interface SafetyNoteLink {
     nodeUuid: string;
     nodeName: string; // For logging/verification
@@ -39,9 +53,13 @@ export interface SafetyGraphData {
     failures: SafetyGraphNode[];
     causations: SafetyGraphNode[];
     riskRatings: SafetyGraphNode[];
+    safetyTasks?: SafetyGraphNode[];
+    safetyReqs?: SafetyGraphNode[];
     safetyNotes?: SafetyGraphNode[];
     occurrences: OccurrenceLink[];
     causationLinks: CausationLinkInfo[];
     riskRatingLinks: RiskRatingLink[];
+    safetyTaskLinks?: SafetyTaskLink[];
+    safetyReqLinks?: SafetyReqLink[];
     safetyNoteLinks?: SafetyNoteLink[];
 }

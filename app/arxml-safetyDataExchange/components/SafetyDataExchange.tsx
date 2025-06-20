@@ -42,6 +42,20 @@ interface RiskRatingLink {
   riskRatingName: string;
 }
 
+interface SafetyTaskLink {
+  nodeUuid: string;
+  nodeName: string;
+  safetyTaskUuid: string;
+  safetyTaskName: string;
+}
+
+interface SafetyReqLink {
+  nodeUuid: string;
+  nodeName: string;
+  safetyReqUuid: string;
+  safetyReqName: string;
+}
+
 interface SafetyNoteLink {
   nodeUuid: string;
   nodeName: string;
@@ -53,10 +67,14 @@ interface SafetyGraphData {
   failures: SafetyGraphNode[];
   causations: SafetyGraphNode[];
   riskRatings: SafetyGraphNode[];
+  safetyTasks?: SafetyGraphNode[];
+  safetyReqs?: SafetyGraphNode[];
   safetyNotes?: SafetyGraphNode[];
   occurrences: OccurrenceLink[];
   causationLinks: CausationLinkInfo[];
   riskRatingLinks: RiskRatingLink[];
+  safetyTaskLinks?: SafetyTaskLink[];
+  safetyReqLinks?: SafetyReqLink[];
   safetyNoteLinks?: SafetyNoteLink[];
 }
 
@@ -500,12 +518,24 @@ const SafetyDataExchange: React.FC = () => {
         const parsedData: SafetyGraphData = JSON.parse(text);
         // Basic validation (can be more thorough)
         if (parsedData && parsedData.failures && parsedData.causations && parsedData.occurrences && parsedData.causationLinks) {
-          // Allow riskRatings, riskRatingLinks, safetyNotes, and safetyNoteLinks to be optional for backward compatibility
+          // Allow newer fields to be optional for backward compatibility
           if (!parsedData.riskRatings) {
             parsedData.riskRatings = [];
           }
           if (!parsedData.riskRatingLinks) {
             parsedData.riskRatingLinks = [];
+          }
+          if (!parsedData.safetyTasks) {
+            parsedData.safetyTasks = [];
+          }
+          if (!parsedData.safetyTaskLinks) {
+            parsedData.safetyTaskLinks = [];
+          }
+          if (!parsedData.safetyReqs) {
+            parsedData.safetyReqs = [];
+          }
+          if (!parsedData.safetyReqLinks) {
+            parsedData.safetyReqLinks = [];
           }
           if (!parsedData.safetyNotes) {
             parsedData.safetyNotes = [];

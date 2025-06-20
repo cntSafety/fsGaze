@@ -18,8 +18,9 @@ The safety module provides comprehensive CRUD operations for a safety analysis m
   - `asil`: ASIL rating (QM, A, B, C, D)
 - **Relationships**:
   - `OCCURRENCE` → Links to source elements (ports, components)
-  - `LEADS_TO` → Connected to RISKRATING nodes
+  - `RATED` → Connected to RISKRATING nodes
   - `FIRST/THEN` → Connected via CAUSATION nodes
+  - `HAS_SAFETY_REQUIREMENT` → Connected to SAFETYREQ nodes
 
 #### 2. RISKRATING Nodes
 - **Purpose**: Store risk assessment data using FMEA methodology
@@ -34,8 +35,8 @@ The safety module provides comprehensive CRUD operations for a safety analysis m
   - `overallRisk`: Calculated value (severity × occurrence × detection)
   - `ratingComment`: Optional comment
 - **Relationships**:
-  - `ASSESSED_BY` ← Links from FAILURE nodes
-  - `HAS_TASK` → Connected to SAFETYTASK nodes
+  - `RATED` ← Links from FAILUREMODE nodes
+  - `TASKREF` → Connected to SAFETYTASK nodes
 
 #### 3. SAFETYTASK Nodes
 - **Purpose**: Track safety-related tasks and measures
@@ -50,7 +51,7 @@ The safety module provides comprehensive CRUD operations for a safety analysis m
   - `reference`: Optional reference information
   - `taskType`: Type of task ('runtime measures', 'dev-time measures', 'other')
 - **Relationships**:
-  - `ASSIGNED_TO` ← Links from any node (typically RISKRATING)
+  - `TASKREF` ← Links from any node (typically RISKRATING or FAILUREMODE)
 
 #### 4. SAFETYREQ Nodes
 - **Purpose**: Store safety requirements
@@ -64,7 +65,7 @@ The safety module provides comprehensive CRUD operations for a safety analysis m
   - `reqASIL`: ASIL rating (QM, A, B, C, D)
   - `reqLinkedTo`: Optional link to other elements
 - **Relationships**:
-  - `ADDRESSES` ← Can link from any node
+  - `HAS_SAFETY_REQUIREMENT` ← Can link from any node
 
 #### 5. SAFETYNOTE Nodes
 - **Purpose**: Store safety-related notes and comments
@@ -74,7 +75,7 @@ The safety module provides comprehensive CRUD operations for a safety analysis m
   - `created`: Creation timestamp
   - `lastModified`: Last modification timestamp
 - **Relationships**:
-  - `ANNOTATES` ← Links from any node
+  - `NOTEREF` ← Links from any node
 
 #### 6. CAUSATION Nodes
 - **Purpose**: Represent causal relationships between failure modes
@@ -90,10 +91,10 @@ The safety module provides comprehensive CRUD operations for a safety analysis m
 
 ```
 FAILUREMODE --[OCCURRENCE]--> SourceElement (P_PORT_PROTOTYPE, R_PORT_PROTOTYPE, etc.)
-FAILUREMODE --[LEADS_TO]--> RISKRATING
-RISKRATING --[HAS_TASK]--> SAFETYTASK
-AnyNode --[ADDRESSES]--> SAFETYREQ
-AnyNode --[ANNOTATES]--> SAFETYNOTE
+FAILUREMODE --[RATED]--> RISKRATING
+AnyNode --[TASKREF]--> SAFETYTASK
+AnyNode --[HAS_SAFETY_REQUIREMENT]--> SAFETYREQ
+AnyNode --[NOTEREF]--> SAFETYNOTE
 CAUSATION --[FIRST]--> FAILUREMODE (cause)
 CAUSATION --[THEN]--> FAILUREMODE (effect)
 ```
@@ -198,9 +199,47 @@ All existing imports continue to work through the main safety export:
 import { createFailureModeNode, createRiskRatingNode } from '@/app/services/neo4j/queries/safety';
 ```
 
+## Query Examples
+
+### Get All Safety Nodes for a SW Component
+
+This comprehensive query retrieves all safety-related information for a specific SW component, including failure modes, notes, tasks, risk ratings, and causation chains:
+
+```cypher
+// All safety nodes for a given SW component
+MATCH (swc) WHERE swc.uuid = "F2F2D5DA-6C14-4AC3-8EC0-8F961F3A0A81"
+// Get notes for swc
+OPTIONAL MATCH (swc)-[notRel:NOTEREF]->(swcNote)
+// Get the failure modes for the sw component
+OPTIONAL MATCH (fm)-[occRel:OCCURRENCE]->(swc)
+// -- Get notes for fm
+OPTIONAL MATCH (fm)-[noteRelfm:NOTEREF]->(fmNote)
+// -- Get tasks for fm
+OPTIONAL MATCH (fm)-[taskRelfm:TASKREF]->(fmTask)
+// -- Get risk rating rr for fm
+OPTIONAL MATCH (fm)-[rrRelfm:RATED]->(fmrr)
+// -- Get causation for fm / first so this is the start of the causation
+OPTIONAL MATCH (fm)<-[causationRelFirst:FIRST]-(causation)
+// --- Get causation partner first --> then
+OPTIONAL MATCH (causation)-[causationRelThen:THEN]->(fmOfPartner)
+// --- Get the partner node where this failure mode occurs
+OPTIONAL MATCH (fmOfPartner)-[partnerFMtoOccSource:OCCURRENCE]->(impactedElement)
+RETURN swc, swcNote, fm, fmNote, fmTask, fmrr, fmOfPartner, impactedElement
+```
+
+This query demonstrates:
+
+- **NOTEREF**: References to safety notes from components and failure modes
+- **OCCURRENCE**: Links failure modes to their source elements
+- **TASKREF**: References to safety tasks from failure modes
+- **RATED**: Risk rating assessments for failure modes
+- **FIRST/THEN**: Causation chain relationships showing cause-effect patterns
+- **Complex traversal**: Following causation chains to find impacted elements
+
 ## Testing and Validation
 
 All modules include comprehensive error handling and validation:
+
 - Input parameter validation
 - Node existence verification
 - Relationship integrity checks
