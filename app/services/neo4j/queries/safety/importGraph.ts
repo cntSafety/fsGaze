@@ -290,10 +290,8 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 'ON MATCH SET rel.updatedAt = timestamp() ',
                 { failureUuid: link.failureUuid, riskRatingUuid: link.riskRatingUuid }
             );
-            logs.push(`[SUCCESS] RATED relationship linked: (FAILUREMODE ${link.failureName || link.failureUuid})-[RATED]->(RISKRATING ${link.riskRatingName || link.riskRatingUuid}).`);        }
-
-        // Import/Update SAFETY TASKS
-        const safetyTaskNodeType = "SAFETYTASK";
+            logs.push(`[SUCCESS] RATED relationship linked: (FAILUREMODE ${link.failureName || link.failureUuid})-[RATED]->(RISKRATING ${link.riskRatingName || link.riskRatingUuid}).`);        }        // Import/Update SAFETY TASKS
+        const safetyTaskNodeType = "SAFETYTASKS";
         for (const safetyTask of data.safetyTasks || []) {
             if (!safetyTask.uuid || !safetyTask.properties || !safetyTask.properties.name) {
                 logs.push(`[ERROR] Skipping ${safetyTaskNodeType} due to missing uuid or name: ${JSON.stringify(safetyTask)}`);
@@ -306,7 +304,7 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
             delete propsToSet.updatedAt;  // We set this explicitly
 
             const result = await tx.run(
-                'MERGE (task:SAFETYTASK {uuid: $uuid}) ' +
+                'MERGE (task:SAFETYTASKS {uuid: $uuid}) ' +
                 'ON CREATE SET task = $propsToSet, task.uuid = $uuid, task.createdAt = timestamp(), task.updatedAt = task.createdAt ' +
                 'ON MATCH SET task += $propsToSet, task.updatedAt = CASE WHEN task.createdAt IS NULL THEN task.updatedAt ELSE timestamp() END ' +
                 'RETURN task.name AS name, task.createdAt AS createdAt, task.updatedAt AS updatedAt',
@@ -345,25 +343,22 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
             if (nodeCheck.records.length === 0) {
                 logs.push(`[ERROR] Source node ${link.nodeName || link.nodeUuid} not found for TASKREF link. Skipping.`);
                 continue;
-            }
-
-            // Check if SAFETYTASK exists
-            const taskCheck = await tx.run('MATCH (task:SAFETYTASK {uuid: $uuid}) RETURN task.uuid', { uuid: link.safetyTaskUuid });
+            }            // Check if SAFETYTASKS exists
+            const taskCheck = await tx.run('MATCH (task:SAFETYTASKS {uuid: $uuid}) RETURN task.uuid', { uuid: link.safetyTaskUuid });
             if (taskCheck.records.length === 0) {
-                logs.push(`[ERROR] SAFETYTASK ${link.safetyTaskName || link.safetyTaskUuid} not found for TASKREF link. Skipping.`);
+                logs.push(`[ERROR] SAFETYTASKS ${link.safetyTaskName || link.safetyTaskUuid} not found for TASKREF link. Skipping.`);
                 continue;
             }
 
-            // Link SOURCE_NODE -> SAFETYTASK
+            // Link SOURCE_NODE -> SAFETYTASKS
             await tx.run(
                 'MATCH (n {uuid: $nodeUuid}) ' +
-                'MATCH (task:SAFETYTASK {uuid: $safetyTaskUuid}) ' +
+                'MATCH (task:SAFETYTASKS {uuid: $safetyTaskUuid}) ' +
                 'MERGE (n)-[rel:TASKREF]->(task) ' +
                 'ON CREATE SET rel.createdAt = timestamp() ' +
                 'ON MATCH SET rel.updatedAt = timestamp() ',
-                { nodeUuid: link.nodeUuid, safetyTaskUuid: link.safetyTaskUuid }
-            );
-            logs.push(`[SUCCESS] TASKREF relationship linked: (${link.nodeName || link.nodeUuid})-[TASKREF]->(SAFETYTASK ${link.safetyTaskName || link.safetyTaskUuid}).`);
+                { nodeUuid: link.nodeUuid, safetyTaskUuid: link.safetyTaskUuid }            );
+            logs.push(`[SUCCESS] TASKREF relationship linked: (${link.nodeName || link.nodeUuid})-[TASKREF]->(SAFETYTASKS ${link.safetyTaskName || link.safetyTaskUuid}).`);
         }
 
         // Import/Update SAFETY REQUIREMENTS

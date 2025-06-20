@@ -206,25 +206,27 @@ import { createFailureModeNode, createRiskRatingNode } from '@/app/services/neo4
 This comprehensive query retrieves all safety-related information for a specific SW component, including failure modes, notes, tasks, risk ratings, and causation chains:
 
 ```cypher
-// All safety nodes for a given SW component
-MATCH (swc) WHERE swc.uuid = "F2F2D5DA-6C14-4AC3-8EC0-8F961F3A0A81"
-// Get notes for swc
-OPTIONAL MATCH (swc)-[notRel:NOTEREF]->(swcNote)
-// Get the failure modes for the sw component
-OPTIONAL MATCH (fm)-[occRel:OCCURRENCE]->(swc)
-// -- Get notes for fm
-OPTIONAL MATCH (fm)-[noteRelfm:NOTEREF]->(fmNote)
-// -- Get tasks for fm
-OPTIONAL MATCH (fm)-[taskRelfm:TASKREF]->(fmTask)
-// -- Get risk rating rr for fm
-OPTIONAL MATCH (fm)-[rrRelfm:RATED]->(fmrr)
-// -- Get causation for fm / first so this is the start of the causation
-OPTIONAL MATCH (fm)<-[causationRelFirst:FIRST]-(causation)
-// --- Get causation partner first --> then
-OPTIONAL MATCH (causation)-[causationRelThen:THEN]->(fmOfPartner)
-// --- Get the partner node where this failure mode occurs
-OPTIONAL MATCH (fmOfPartner)-[partnerFMtoOccSource:OCCURRENCE]->(impactedElement)
-RETURN swc, swcNote, fm, fmNote, fmTask, fmrr, fmOfPartner, impactedElement
+//all safety nodes for a given SW component
+match(swc) where swc.uuid="F2F2D5DA-6C14-4AC3-8EC0-8F961F3A0A81" 
+//get notes for swc
+OPTIONAL match(swc)-[notRel:NOTEREF]->(swcNote)
+//get the failure modes for the sw component
+OPTIONAL match (fm)-[occRel:OCCURRENCE]->(swc) 
+//-- get notes for fm
+OPTIONAL match (fm)-[noteRelfm:NOTEREF]->(fmNote) 
+//-- get tasks for fm
+OPTIONAL match (fm)-[taskRelfm:TASKREF]->(fmTask)
+//-- get risk rating rr for fm
+OPTIONAL match (fm)-[rrRelfm:RATED]->(fmrr)
+//-- get tasks related to risk reating (rrTasks)
+OPTIONAL match (fmrr)-[fmrrRelTask:TASKREF]->(rrTask)
+//-- get causation for fm / first so this is the start of the causation
+OPTIONAL match (fm)<-[causationRelFirst:FIRST]-(causation)
+//---get causation partner first --> then 
+OPTIONAL match (causation)-[causationRelThen:THEN]->(fmOfPartner)
+//---get the partner node where this failure mode occurs 
+OPTIONAL match (fmOfPartner)-[partnerFMtoOccSource:OCCURRENCE]->(impactedElement) 
+RETURN swc, swcNote, fm, fmNote, fmTask, fmrr, rrTask, fmOfPartner, impactedElement
 ```
 
 This query demonstrates:

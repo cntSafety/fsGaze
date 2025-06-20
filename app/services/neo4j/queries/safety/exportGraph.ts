@@ -82,19 +82,20 @@ export async function getSafetyGraph(): Promise<{
             failureUuid: record.get('failureUuid'),
             failureName: record.get('failureName'),
             riskRatingUuid: record.get('riskRatingUuid'),
-            riskRatingName: record.get('riskRatingName'),
-        }));
+            riskRatingName: record.get('riskRatingName'),        }));
 
-        // 7. Get all SAFETYTASK nodes and their properties
+        // 7. Get all SAFETYTASKS nodes and their properties
         const safetyTasksResult = await session.run(
-            'MATCH (task:SAFETYTASK) RETURN task.uuid AS uuid, properties(task) AS properties'
+            'MATCH (task:SAFETYTASKS) RETURN task.uuid AS uuid, properties(task) AS properties'
         );
         const safetyTasks = safetyTasksResult.records.map(record => ({
             uuid: record.get('uuid'),
             properties: record.get('properties'),
-        }));        // 8. Get all TASKREF relationships between any node and SAFETYTASK nodes
+        }));
+
+        // 8. Get all TASKREF relationships between any node and SAFETYTASKS nodes
         const safetyTaskLinksResult = await session.run(`
-            MATCH (n)-[rel:TASKREF]->(task:SAFETYTASK)
+            MATCH (n)-[rel:TASKREF]->(task:SAFETYTASKS)
             RETURN n.uuid AS nodeUuid, n.name AS nodeName,
                    task.uuid AS safetyTaskUuid, task.name AS safetyTaskName
         `);
@@ -102,8 +103,7 @@ export async function getSafetyGraph(): Promise<{
             nodeUuid: record.get('nodeUuid'),
             nodeName: record.get('nodeName'),
             safetyTaskUuid: record.get('safetyTaskUuid'),
-            safetyTaskName: record.get('safetyTaskName'),
-        }));
+            safetyTaskName: record.get('safetyTaskName'),        }));
 
         // 9. Get all SAFETYREQ nodes and their properties
         const safetyReqsResult = await session.run(
@@ -127,16 +127,15 @@ export async function getSafetyGraph(): Promise<{
             safetyReqName: record.get('safetyReqName'),
         }));
 
-        // 11. Get all SAFETYNOTE nodes and their properties        // 11. Get all SAFETYNOTE nodes and their properties
+        // 11. Get all SAFETYNOTE nodes and their properties
         const safetyNotesResult = await session.run(
             'MATCH (note:SAFETYNOTE) RETURN note.uuid AS uuid, properties(note) AS properties'
         );
         const safetyNotes = safetyNotesResult.records.map(record => ({
             uuid: record.get('uuid'),
-            properties: record.get('properties'),
-        }));
+            properties: record.get('properties'),        }));
 
-        // 12. Get all NOTEREF relationships between any node and SAFETYNOTE nodes        // 12. Get all NOTEREF relationships between any node and SAFETYNOTE nodes
+        // 12. Get all NOTEREF relationships between any node and SAFETYNOTE nodes
         const safetyNoteLinksResult = await session.run(`
             MATCH (n)-[ref:NOTEREF]->(note:SAFETYNOTE)
             RETURN n.uuid AS nodeUuid, n.name AS nodeName,
@@ -148,6 +147,20 @@ export async function getSafetyGraph(): Promise<{
             safetyNoteUuid: record.get('safetyNoteUuid'),
             safetyNoteName: record.get('safetyNoteName'),
         }));
+
+        console.log("Debug: Export summary:");
+        console.log(`- failures: ${failures.length}`);
+        console.log(`- causations: ${causations.length}`);
+        console.log(`- riskRatings: ${riskRatings.length}`);
+        console.log(`- safetyTasks: ${safetyTasks.length}`);
+        console.log(`- safetyReqs: ${safetyReqs.length}`);
+        console.log(`- safetyNotes: ${safetyNotes.length}`);
+        console.log(`- occurrences: ${occurrences.length}`);
+        console.log(`- causationLinks: ${causationLinks.length}`);
+        console.log(`- riskRatingLinks: ${riskRatingLinks.length}`);
+        console.log(`- safetyTaskLinks: ${safetyTaskLinks.length}`);
+        console.log(`- safetyReqLinks: ${safetyReqLinks.length}`);
+        console.log(`- safetyNoteLinks: ${safetyNoteLinks.length}`);
 
         return {
             success: true,
