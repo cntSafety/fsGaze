@@ -148,7 +148,7 @@ export async function getSafetyGraph(): Promise<{
             safetyNoteName: record.get('safetyNoteName'),
         }));
 
-        console.log("Debug: Export summary:");
+/*         console.log("Debug: Export summary:");
         console.log(`- failures: ${failures.length}`);
         console.log(`- causations: ${causations.length}`);
         console.log(`- riskRatings: ${riskRatings.length}`);
@@ -160,7 +160,7 @@ export async function getSafetyGraph(): Promise<{
         console.log(`- riskRatingLinks: ${riskRatingLinks.length}`);
         console.log(`- safetyTaskLinks: ${safetyTaskLinks.length}`);
         console.log(`- safetyReqLinks: ${safetyReqLinks.length}`);
-        console.log(`- safetyNoteLinks: ${safetyNoteLinks.length}`);
+        console.log(`- safetyNoteLinks: ${safetyNoteLinks.length}`); */
 
         return {
             success: true,

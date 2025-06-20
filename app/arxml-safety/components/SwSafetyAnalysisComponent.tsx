@@ -12,6 +12,7 @@ import ReceiverPortsFailureModesTable from './safety-analysis/ReceiverPortsFailu
 import FMFlow from './safety-analysis/FMFlow';
 import SWCAnalysisExport from './SWCAnalysisExport';
 import InterfaceCheck from './InterfaceCheck';
+import ASILFMCheck from './ASILFMCheck';
 import { createCausationBetweenFailureModes } from '@/app/services/ArxmlToNeoService';
 import { SwSafetyAnalysisProps } from './safety-analysis/types';
 
@@ -237,6 +238,17 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
       <InterfaceCheck
         swComponentUuid={swComponentUuid}
         swComponentName={swComponent?.name}
+        providerPorts={providerPorts}
+        receiverPorts={receiverPorts}
+        portFailures={portFailures}
+        receiverPortFailures={receiverPortFailures}
+      />
+
+      {/* ASIL-FM Check Section */}
+      <ASILFMCheck
+        swComponentUuid={swComponentUuid}
+        swComponentName={swComponent?.name}
+        failures={failures}
         providerPorts={providerPorts}
         receiverPorts={receiverPorts}
         portFailures={portFailures}
