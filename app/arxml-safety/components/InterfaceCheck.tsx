@@ -479,7 +479,11 @@ const InterfaceCheck: React.FC<InterfaceCheckProps> = ({
               <Tag color={getAsilColor(failure.asil)}>ASIL: {failure.asil}</Tag>
               <br />
               <Text type="secondary" style={{ fontSize: '12px' }}>
-                {failure.connectedComponentName}
+                <strong>Component:</strong> {failure.connectedComponentName}
+              </Text>
+              <br />
+              <Text type="secondary" style={{ fontSize: '12px' }}>
+                <strong>Port:</strong> {failure.connectedPortName}
               </Text>
             </div>
           ))}
