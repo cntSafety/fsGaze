@@ -21,9 +21,8 @@ interface OccurrenceLink {
   occuranceSourceUuid: string;
   occuranceSourceName: string;
   occuranceSourceArxmlPath?: string;
-  occuranceSourceimportLabel?: string;
-  occuranceSourceimportTimestamp?: string;
   occuranceSourceoriginalXmlTag?: string;
+  occuranceSourceLabels?: string[];
 }
 
 interface CausationLinkInfo {

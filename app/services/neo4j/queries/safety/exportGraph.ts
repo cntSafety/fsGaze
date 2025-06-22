@@ -33,9 +33,8 @@ export async function getSafetyGraph(): Promise<{
             RETURN f.uuid AS failureUuid, f.name AS failureName, 
                    src.uuid AS occuranceSourceUuid, src.name AS occuranceSourceName, 
                    src.arxmlPath AS occuranceSourceArxmlPath, 
-                   src.importLabel AS occuranceSourceimportLabel, 
-                   src.importTimestamp AS occuranceSourceimportTimestamp, 
-                   src.originalXmlTag AS occuranceSourceoriginalXmlTag
+                   src.originalXmlTag AS occuranceSourceoriginalXmlTag,
+                   labels(src) AS occuranceSourceLabels
         `);
         const occurrences = occurrencesResult.records.map(record => ({
             failureUuid: record.get('failureUuid'),
@@ -43,9 +42,8 @@ export async function getSafetyGraph(): Promise<{
             occuranceSourceUuid: record.get('occuranceSourceUuid'),
             occuranceSourceName: record.get('occuranceSourceName'),
             occuranceSourceArxmlPath: record.get('occuranceSourceArxmlPath'),
-            occuranceSourceimportLabel: record.get('occuranceSourceimportLabel'),
-            occuranceSourceimportTimestamp: record.get('occuranceSourceimportTimestamp'),
             occuranceSourceoriginalXmlTag: record.get('occuranceSourceoriginalXmlTag'),
+            occuranceSourceLabels: record.get('occuranceSourceLabels'),
         }));
 
         // 4. Get all CAUSATION links (FIRST and THEN relationships)

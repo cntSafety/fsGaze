@@ -86,7 +86,8 @@ export function Navbar() {
                 { label: 'SW Graph', href: '/arxml-graphViewer', isActive: true },
                 { label: 'SW Flow', href: '/arxml-flowViewer', isActive: true },
                 { label: 'SW Safety', href: '/arxml-safety', isActive: true },
-                 { label: 'Store / Load', href: '/arxml-safetyDataExchange', isActive: true }
+                 { label: 'Store / Load', href: '/arxml-safetyDataExchange', isActive: true },
+                 { label: 'Failure Chain', href: '/arxml-crossFM', isActive: true }
             ]
         },
         {

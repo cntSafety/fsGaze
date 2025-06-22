@@ -9,6 +9,9 @@ export interface OccurrenceLink {
     failureName: string; // For logging/verification, not directly stored in relationship
     occuranceSourceUuid: string;
     occuranceSourceName: string; // For logging/verification
+    occuranceSourceArxmlPath?: string;
+    occuranceSourceoriginalXmlTag?: string;
+    occuranceSourceLabels?: string[]; // Neo4j labels of the source node
     // Optional: any properties for the OCCURRENCE relationship itself
 }
 
