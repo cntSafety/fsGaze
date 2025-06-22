@@ -23,6 +23,7 @@ import { NodeCollapseOutlined, ReloadOutlined, DeleteOutlined } from '@ant-desig
 import { getSafetyGraph } from '@/app/services/neo4j/queries/safety/exportGraph';
 import type { SafetyGraphData } from '@/app/services/neo4j/queries/safety/types';
 import { deleteCausationNode, createCausationBetweenFailureModes } from '@/app/services/neo4j/queries/safety/causation';
+import { getLayoutedElements } from '../services/diagramLayoutService';
 
 const { Title, Text } = Typography;
 
@@ -520,13 +521,23 @@ export default function CrossCompFlow({ onFailureSelect }: CrossCompFlowProps) {
   };
 
   const applyLayout = useCallback(() => {
-    // Simple grid layout - you can implement more sophisticated layout algorithms
-    const layoutedNodes = nodes.map((node, index) => ({
-      ...node,
-      position: { x: index * 350, y: 100 }
-    }));
-    setNodes(layoutedNodes);
-  }, [nodes, setNodes]);
+    const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
+      nodes,
+      edges
+    );
+    setNodes([...layoutedNodes]);
+    setEdges([...layoutedEdges]);
+  }, [nodes, edges, setNodes, setEdges]);
+
+  // Apply initial layout only when nodes are first loaded
+  const [hasAppliedInitialLayout, setHasAppliedInitialLayout] = useState(false);
+  
+  useEffect(() => {
+    if (nodes.length > 0 && !hasAppliedInitialLayout) {
+      applyLayout();
+      setHasAppliedInitialLayout(true);
+    }
+  }, [nodes, hasAppliedInitialLayout, applyLayout]);
 
   if (loading) {
     return (
