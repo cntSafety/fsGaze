@@ -18,13 +18,12 @@ import ReactFlow, {
     addEdge,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { Card, Typography, Space, Tag, Button, message, Spin, Alert, Tooltip } from 'antd';
+import { Card, Typography, Space, Tag, Button, message, Spin, Alert, Tooltip, Modal } from 'antd';
 import { NodeCollapseOutlined, ReloadOutlined, DeleteOutlined } from '@ant-design/icons';
 import { getSafetyGraph } from '@/app/services/neo4j/queries/safety/exportGraph';
 import { SafetyGraphData } from '@/app/services/neo4j/queries/safety/types';
 import { deleteCausationNode, createCausationBetweenFailureModes } from '@/app/services/neo4j/queries/safety/causation';
 import { getLayoutedElements } from '../services/diagramLayoutService';
-import { useLoading } from '@/app/components/LoadingProvider';
 import InteractiveSmoothStepEdge from './InteractiveSmoothStepEdge';
 
 const { Title, Text } = Typography;
@@ -99,7 +98,7 @@ function SwComponentNode({ data }: { data: any }) {
           gap: '4px',
           minWidth: '120px'
         }}>
-          {receiverPorts.map((port: PortData) => (
+          {receiverPorts.map((port: any) => (
             <div key={port.uuid}>
               <Tooltip title={port.name} placement="left">
                 <div style={{
@@ -116,7 +115,7 @@ function SwComponentNode({ data }: { data: any }) {
                   {port.name}
                 </div>
               </Tooltip>
-              {port.failureModes.map((failure: FailureModeData, index: number) => (
+              {port.failureModes.map((failure: any, index: number) => (
                 <div key={failure.uuid} style={{ position: 'relative', marginBottom: '2px' }}>
                   <Handle
                     type="target"
@@ -146,7 +145,7 @@ function SwComponentNode({ data }: { data: any }) {
                       style={{ 
                         fontSize: '8px', 
                         marginLeft: '4px',
-                        backgroundColor: getAsilColor(failure.asil),
+                        backgroundColor: '#6B7280',
                         color: 'white',
                         border: 'none',
                         padding: '1px 4px',
@@ -169,7 +168,7 @@ function SwComponentNode({ data }: { data: any }) {
           gap: '4px',
           minWidth: '120px'
         }}>
-          {providerPorts.map((port: PortData) => (
+          {providerPorts.map((port: any) => (
             <div key={port.uuid}>
               <Tooltip title={port.name} placement="right">
                 <div style={{
@@ -186,7 +185,7 @@ function SwComponentNode({ data }: { data: any }) {
                   {port.name}
                 </div>
               </Tooltip>
-              {port.failureModes.map((failure: FailureModeData, index: number) => (
+              {port.failureModes.map((failure: any, index: number) => (
                 <div key={failure.uuid} style={{ position: 'relative', marginBottom: '2px' }}>
                   <Handle
                     type="source"
@@ -215,7 +214,7 @@ function SwComponentNode({ data }: { data: any }) {
                       style={{ 
                         fontSize: '8px', 
                         marginRight: '4px',
-                        backgroundColor: getAsilColor(failure.asil),
+                        backgroundColor: '#6B7280',
                         color: 'white',
                         border: 'none',
                         padding: '1px 4px',
@@ -240,32 +239,18 @@ function SwComponentNode({ data }: { data: any }) {
         textAlign: 'center',
         marginTop: '8px'
       }}>
-        {receiverPorts.reduce((sum: number, port: PortData) => sum + port.failureModes.length, 0)} in / {providerPorts.reduce((sum: number, port: PortData) => sum + port.failureModes.length, 0)} out
+        {receiverPorts.reduce((sum: number, port: any) => sum + port.failureModes.length, 0)} in / {providerPorts.reduce((sum: number, port: any) => sum + port.failureModes.length, 0)} out
       </div>
     </div>
   );
 }
 
-// Helper function to get ASIL color
-const getAsilColor = (asil: string): string => {
-  switch (asil) {
-    case 'A': return '#10B981';
-    case 'B': return '#3B82F6';
-    case 'C': return '#F59E0B';
-    case 'D': return '#EF4444';
-    default: return '#6B7280';
-  }
-};
-
-export default function CrossCompFlow({ onFailureSelect }: CrossCompFlowProps) {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export default function CrossCompFlow() {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [isCreatingCausation, setIsCreatingCausation] = useState(false);
   
-  // Context menu state for edge deletion
   const [contextMenu, setContextMenu] = useState<{
     visible: boolean;
     x: number;
@@ -275,7 +260,6 @@ export default function CrossCompFlow({ onFailureSelect }: CrossCompFlowProps) {
     causationName: string;
   } | null>(null);
 
-  // Define custom node types
   const nodeTypes: NodeTypes = useMemo(() => ({
     swComponent: SwComponentNode,
   }), []);
@@ -284,353 +268,254 @@ export default function CrossCompFlow({ onFailureSelect }: CrossCompFlowProps) {
     interactive: InteractiveSmoothStepEdge,
   }), []);
 
-  const loadSafetyData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const result = await getSafetyGraph();
-      
-      if (result.success && result.data) {
-        buildFlowDiagram(result.data);
-      } else {
-        setError(result.message || 'Failed to load safety graph data');
-      }
-    } catch (err) {
-      console.error('Error loading safety data:', err);
-      setError('An error occurred while loading the safety data');
-    } finally {
-      setLoading(false);
+  const buildFlowDiagram = (safetyGraph: SafetyGraphData) => {
+    const nodes: Node[] = [];
+    const edges: Edge[] = [];
+
+    const swComponents = new Map<string, any>();
+
+    safetyGraph.occurrences.forEach(occ => {
+        if (!occ.occuranceSourceArxmlPath || !occ.occuranceSourceLabels) return;
+
+        const pathParts = occ.occuranceSourceArxmlPath.split('/');
+        const componentName = pathParts[2];
+        const portName = pathParts[3];
+        const portType = occ.occuranceSourceLabels.includes('P_PORT_PROTOTYPE') ? 'provider' : 'receiver';
+
+        if (!swComponents.has(componentName)) {
+            swComponents.set(componentName, {
+                uuid: componentName,
+                name: componentName,
+                providerPorts: [],
+                receiverPorts: [],
+            });
+        }
+
+        const component = swComponents.get(componentName);
+        const portArray = portType === 'provider' ? component.providerPorts : component.receiverPorts;
+        
+        let port = portArray.find((p: any) => p.name === portName);
+        if (!port) {
+            port = {
+                uuid: occ.occuranceSourceUuid,
+                name: portName,
+                failureModes: [],
+            };
+            portArray.push(port);
+        }
+
+        const failure = safetyGraph.failures.find(f => f.uuid === occ.failureUuid);
+        if (failure) {
+            port.failureModes.push({
+                uuid: failure.uuid,
+                name: failure.properties.name,
+                asil: failure.properties.ASIL,
+                description: failure.properties.description,
+            });
+        }
+    });
+
+    Array.from(swComponents.values()).forEach(comp => {
+        nodes.push({
+            id: comp.uuid,
+            type: 'swComponent',
+            position: { x: 0, y: 0 },
+            data: {
+                component: comp,
+                providerPorts: comp.providerPorts,
+                receiverPorts: comp.receiverPorts,
+            },
+        });
+    });
+
+    if (safetyGraph.causationLinks) {
+        safetyGraph.causationLinks.forEach((causation, index) => {
+            const causeFailure = safetyGraph.occurrences.find(o => o.failureUuid === causation.causeFailureUuid);
+            const effectFailure = safetyGraph.occurrences.find(o => o.failureUuid === causation.effectFailureUuid);
+
+            if (causeFailure?.occuranceSourceArxmlPath && effectFailure?.occuranceSourceArxmlPath) {
+                const causeComponent = swComponents.get(causeFailure.occuranceSourceArxmlPath.split('/')[2]);
+                const effectComponent = swComponents.get(effectFailure.occuranceSourceArxmlPath.split('/')[2]);
+
+                if (causeComponent && effectComponent) {
+                    const sourceHandle = `failure-${causation.causeFailureUuid}`;
+                    const targetHandle = `failure-${causation.effectFailureUuid}`;
+                    
+                    edges.push({
+                        id: `causation-${causation.causationUuid}-${index}`,
+                        source: causeComponent.uuid,
+                        target: effectComponent.uuid,
+                        sourceHandle,
+                        targetHandle,
+                        type: 'interactive',
+                        animated: false,
+                        markerEnd: {
+                            type: MarkerType.ArrowClosed,
+                        },
+                        data: {
+                            causationUuid: causation.causationUuid,
+                            causationName: causation.causationName,
+                            type: 'causation'
+                        }
+                    });
+                }
+            }
+        });
     }
+    return { nodes, edges };
   };
+
+  const loadDataAndLayout = useCallback(async () => {
+    setLoading(true);
+    const safetyData = await getSafetyGraph();
+    if (safetyData.success && safetyData.data) {
+      const { nodes: initialNodes, edges: initialEdges } = buildFlowDiagram(safetyData.data);
+      if(initialNodes.length > 0) {
+        const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(initialNodes, initialEdges);
+        setNodes(layoutedNodes);
+        setEdges(layoutedEdges);
+      } else {
+        setNodes([]);
+        setEdges([]);
+      }
+    } else {
+      message.error("Failed to load safety graph data.");
+    }
+    setLoading(false);
+  }, [setNodes, setEdges]);
 
   useEffect(() => {
-    loadSafetyData();
-  }, []);
-
-  const buildFlowDiagram = (safetyGraph: SafetyGraphData) => {
-    // Group occurrences by source element
-    const sourceElementMap = new Map<string, any[]>();
-    safetyGraph.occurrences.forEach(occurrence => {
-      const sourceUuid = occurrence.occuranceSourceUuid;
-      if (!sourceElementMap.has(sourceUuid)) {
-        sourceElementMap.set(sourceUuid, []);
-      }
-      sourceElementMap.get(sourceUuid)!.push(occurrence);
-    });
-
-    // Separate SW components and ports
-    const swComponents = new Map<string, ComponentData>();
-    const ports = new Map<string, PortData>();
-
-    safetyGraph.occurrences.forEach(occurrence => {
-      const sourceUuid = occurrence.occuranceSourceUuid;
-      const sourceName = occurrence.occuranceSourceName;
-      const sourceLabels = occurrence.occuranceSourceLabels || [];
-      
-      // Find failure mode details
-      const failure = safetyGraph.failures.find(f => f.uuid === occurrence.failureUuid);
-      if (!failure) return;
-
-      const failureMode: FailureModeData = {
-        uuid: failure.uuid,
-        name: failure.properties.name as string,
-        asil: failure.properties.asil as string,
-        description: failure.properties.description as string
-      };
-
-      const isSWComponent = sourceLabels.some(label => 
-        ['APPLICATION_SW_COMPONENT_TYPE', 'COMPOSITION_SW_COMPONENT_TYPE', 'SW_COMPONENT_PROTOTYPE'].includes(label)
-      );
-      const isProviderPort = sourceLabels.includes('P_PORT_PROTOTYPE');
-      const isReceiverPort = sourceLabels.includes('R_PORT_PROTOTYPE');
-
-      if (isSWComponent) {
-        // Create or update SW component
-        if (!swComponents.has(sourceUuid)) {
-          swComponents.set(sourceUuid, {
-            uuid: sourceUuid,
-            name: sourceName,
-            type: 'SW_COMPONENT',
-            providerPorts: [],
-            receiverPorts: []
-          });
-        }
-        // SW components don't have failure modes directly, they're on their ports
-      } else if (isProviderPort || isReceiverPort) {
-        // Create or update port
-        if (!ports.has(sourceUuid)) {
-          ports.set(sourceUuid, {
-            uuid: sourceUuid,
-            name: sourceName,
-            type: isProviderPort ? 'P_PORT_PROTOTYPE' : 'R_PORT_PROTOTYPE',
-            failureModes: []
-          });
-        }
-        ports.get(sourceUuid)!.failureModes.push(failureMode);
-      }
-    });
-
-    // Associate ports with their parent components using ARXML paths
-    swComponents.forEach(component => {
-      ports.forEach(port => {
-        // Find occurrences for this port to get its ARXML path
-        const portOccurrences = sourceElementMap.get(port.uuid) || [];
-        if (portOccurrences.length > 0) {
-          const portPath = portOccurrences[0].occuranceSourceArxmlPath;
-          const componentPath = `/ComponentTypes/${component.name}`;
-          
-          if (portPath?.startsWith(componentPath)) {
-            if (port.type === 'P_PORT_PROTOTYPE') {
-              component.providerPorts.push(port);
-            } else {
-              component.receiverPorts.push(port);
-            }
-          }
-        }
-      });
-    });
-
-    // Create React Flow nodes
-    const newNodes: Node[] = [];
-    const newEdges: Edge[] = [];
-    let nodeIndex = 0;
-    const nodeSpacing = 300;
-
-    swComponents.forEach(component => {
-      // Calculate node size based on number of ports
-      const maxPorts = Math.max(component.providerPorts.length, component.receiverPorts.length);
-      const nodeHeight = Math.max(120, maxPorts * 25 + 80);
-
-      newNodes.push({
-        id: component.uuid,
-        type: 'swComponent',
-        position: { x: nodeIndex * nodeSpacing, y: 100 },
-        data: {
-          component,
-          providerPorts: component.providerPorts,
-          receiverPorts: component.receiverPorts
-        },
-        style: {
-          width: 200,
-          height: nodeHeight
-        }
-      });
-      nodeIndex++;
-    });
-
-    // Create causation edges
-    const failureToPortMap = new Map<string, { portUuid: string; isProvider: boolean }>();
-    
-    // Build failure to port mapping
-    ports.forEach(port => {
-      port.failureModes.forEach(failure => {
-        failureToPortMap.set(failure.uuid, {
-          portUuid: port.uuid,
-          isProvider: port.type === 'P_PORT_PROTOTYPE'
-        });
-      });
-    });
-
-    safetyGraph.causationLinks.forEach((causation, index) => {
-      const causePort = failureToPortMap.get(causation.causeFailureUuid);
-      const effectPort = failureToPortMap.get(causation.effectFailureUuid);
-
-      if (causePort && effectPort) {
-        // Find the component that contains the cause port
-        const causeComponent = Array.from(swComponents.values()).find(comp =>
-          comp.providerPorts.some(p => p.uuid === causePort.portUuid) ||
-          comp.receiverPorts.some(p => p.uuid === causePort.portUuid)
-        );
-
-        // Find the component that contains the effect port
-        const effectComponent = Array.from(swComponents.values()).find(comp =>
-          comp.providerPorts.some(p => p.uuid === effectPort.portUuid) ||
-          comp.receiverPorts.some(p => p.uuid === effectPort.portUuid)
-        );
-
-        if (causeComponent && effectComponent) {
-          const sourceHandle = `failure-${causation.causeFailureUuid}`;
-          const targetHandle = `failure-${causation.effectFailureUuid}`;
-
-          newEdges.push({
-            id: `causation-${causation.causationUuid}-${index}`,
-            source: causeComponent.uuid,
-            target: effectComponent.uuid,
-            sourceHandle,
-            targetHandle,
-            type: 'interactive',
-            animated: false,
-            markerEnd: {
-              type: MarkerType.ArrowClosed,
-            },
-            data: {
-              causationUuid: causation.causationUuid,
-              causationName: causation.causationName,
-              type: 'causation'
-            }
-          });
-        }
-      }
-    });
-
-    setNodes(newNodes);
-    setEdges(newEdges);
-  };
+    loadDataAndLayout();
+  }, [loadDataAndLayout]);
 
   const onConnect = useCallback(async (params: Connection) => {
     if (isCreatingCausation) return;
-    
-    // Extract failure UUIDs from handle IDs
-    const sourceHandle = params.sourceHandle;
-    const targetHandle = params.targetHandle;
-    
-    if (!sourceHandle || !targetHandle) {
-      message.error('Invalid connection');
-      return;
+
+    const sourceFailureUuid = params.sourceHandle?.replace('failure-', '');
+    const targetFailureUuid = params.targetHandle?.replace('failure-', '');
+
+    if (!sourceFailureUuid || !targetFailureUuid) {
+        message.error('Could not determine source or target failure mode.');
+        return;
     }
-
-    // Parse handle IDs to get port UUIDs and find failure modes
-    const sourcePortUuid = sourceHandle.replace('provider-', '');
-    const targetPortUuid = targetHandle.replace('receiver-', '');
-
-    // Find failure modes for these ports (simplified - you might want to show a selection dialog)
-    // For now, we'll use the first failure mode of each port
     
     setIsCreatingCausation(true);
+    message.loading({ content: 'Creating causation...', key: 'create-causation' });
     
     try {
-      // This is a simplified implementation - you might want to add a dialog to select specific failure modes
-      message.info('Causation creation between ports - implementation needed');
+      const result = await createCausationBetweenFailureModes(sourceFailureUuid, targetFailureUuid);
+      if (result.success) {
+        message.success({ content: 'Causation created successfully!', key: 'create-causation', duration: 2 });
+        await loadDataAndLayout(); // Reload everything
+      } else {
+        message.error({ content: `Failed to create causation: ${result.message}`, key: 'create-causation', duration: 4 });
+      }
     } catch (error) {
-      console.error('Error creating causation:', error);
-      message.error('Error creating causation');
+      message.error({ content: 'An error occurred while creating causation.', key: 'create-causation', duration: 4 });
     } finally {
       setIsCreatingCausation(false);
     }
-  }, [isCreatingCausation]);
+  }, [isCreatingCausation, loadDataAndLayout]);
 
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
+  const hideContextMenu = useCallback(() => setContextMenu(null), []);
+
+  const onEdgeContextMenu = useCallback((event: React.MouseEvent, edge: Edge) => {
+    event.preventDefault();
+    if (edge.data?.type === 'causation') {
+      setContextMenu({
+        visible: true,
+        x: event.clientX,
+        y: event.clientY,
+        edgeId: edge.id,
+        causationUuid: edge.data.causationUuid,
+        causationName: edge.data.causationName
+      });
+    }
+  }, []);
+
+  const handleDeleteCausation = useCallback(async () => {
+    if (!contextMenu) return;
+
+    message.loading({ content: 'Deleting causation...', key: 'delete-causation' });
     try {
-      await loadSafetyData();
-      message.success('Data refreshed successfully!');
+      const result = await deleteCausationNode(contextMenu.causationUuid);
+      if (result.success) {
+        message.success({ content: 'Causation deleted successfully!', key: 'delete-causation', duration: 2 });
+        await loadDataAndLayout(); // Reload everything
+      } else {
+        message.error({ content: `Failed to delete causation: ${result.message}`, key: 'delete-causation', duration: 4 });
+      }
     } catch (error) {
-      message.error('Failed to refresh data');
+      message.error({ content: 'An error occurred while deleting causation.', key: 'delete-causation', duration: 4 });
     } finally {
-      setIsRefreshing(false);
+      hideContextMenu();
     }
-  };
-
-  const applyLayout = useCallback(() => {
-    const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
-      nodes,
-      edges
-    );
-    setNodes([...layoutedNodes]);
-    setEdges([...layoutedEdges]);
-  }, [nodes, edges, setNodes, setEdges]);
-
-  // Apply initial layout only when nodes are first loaded
-  const [hasAppliedInitialLayout, setHasAppliedInitialLayout] = useState(false);
-  
-  useEffect(() => {
-    if (nodes.length > 0 && !hasAppliedInitialLayout) {
-      applyLayout();
-      setHasAppliedInitialLayout(true);
-    }
-  }, [nodes, hasAppliedInitialLayout, applyLayout]);
+  }, [contextMenu, hideContextMenu, loadDataAndLayout]);
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-64">
+      <div className="flex justify-center items-center h-full">
         <Spin size="large" />
       </div>
     );
   }
 
-  if (error) {
-    return (
-      <Alert
-        message="Error"
-        description={error}
-        type="error"
-        showIcon
-        action={
-          <button onClick={loadSafetyData} className="text-blue-600 hover:text-blue-800">
-            Retry
-          </button>
-        }
-      />
-    );
-  }
-
   return (
-    <Card title="Cross-Component Failure Flow" className="mb-4">
-      <div style={{ marginBottom: '16px' }}>
-        <Space>
-          <Button
-            icon={<ReloadOutlined />}
-            onClick={handleRefresh}
-            loading={isRefreshing}
-            type="default"
-            size="small"
-          >
-            Refresh Data
-          </Button>
-          <Button
-            icon={<NodeCollapseOutlined />}
-            onClick={applyLayout}
-            type="primary"
-            size="small"
-          >
-            Optimize Layout
-          </Button>
-        </Space>
-      </div>
-
-      {/* Legend */}
-      <div style={{ marginBottom: '12px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-        <Space>
-          <Tag color="blue">Receiver Ports (Input)</Tag>
-          <Tag color="gold">Provider Ports (Output)</Tag>
-          <Tag 
-            style={{ 
-              borderColor: '#F59E0B', 
-              color: '#F59E0B',
-              borderStyle: 'dashed'
-            }}
-          >
-            ⚡ Causation Relationships
-          </Tag>
-        </Space>
-      </div>
-
-      <div style={{ 
-        height: '600px', 
-        border: '1px solid #d9d9d9', 
-        borderRadius: '4px',
-        position: 'relative',
-        opacity: isCreatingCausation ? 0.7 : 1,
-        pointerEvents: isCreatingCausation ? 'none' : 'auto'
-      }}>
+    <div style={{ height: '80vh', width: '100%', position: 'relative' }} onClick={hideContextMenu}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onEdgeContextMenu={onEdgeContextMenu}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
-          connectionLineType={ConnectionLineType.Straight}
           fitView
           fitViewOptions={{ padding: 0.2 }}
           proOptions={{ hideAttribution: true }}
+          connectionLineType={ConnectionLineType.Straight}
         >
+          <Panel position="top-right">
+            <Space>
+              <Button onClick={loadDataAndLayout} icon={<ReloadOutlined />} size="small">
+                Reload Layout
+              </Button>
+            </Space>
+          </Panel>
           <Background />
           <Controls />
         </ReactFlow>
-      </div>
-    </Card>
+
+        {contextMenu && (
+          <div
+            style={{
+              position: 'fixed',
+              top: contextMenu.y,
+              left: contextMenu.x,
+              backgroundColor: 'white',
+              border: '1px solid #d9d9d9',
+              borderRadius: '4px',
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+              zIndex: 1000,
+            }}
+          >
+            <div style={{ padding: '8px 12px', borderBottom: '1px solid #f0f0f0' }}>
+              <Text strong>Delete Causation</Text>
+            </div>
+            <div style={{ padding: '4px 0' }}>
+              <Button
+                type="text"
+                icon={<DeleteOutlined />}
+                onClick={handleDeleteCausation}
+                style={{ width: '100%', textAlign: 'left', color: '#ff4d4f' }}
+                danger
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
+        )}
+    </div>
   );
 } 
