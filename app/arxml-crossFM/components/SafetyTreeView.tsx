@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Tree, Card, Typography, Tag, Spin, Alert } from 'antd';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Tree, Card, Typography, Tag, Spin, Alert, Button, message } from 'antd';
 import { getSafetyGraph } from '@/app/services/neo4j/queries/safety/exportGraph';
 import type { SafetyGraphData } from '@/app/services/neo4j/queries/safety/types';
-import { FolderOutlined, ApiOutlined, BugOutlined, LinkOutlined } from '@ant-design/icons';
+import { deleteCausationNode } from '@/app/services/neo4j/queries/safety/causation';
+import { FolderOutlined, ApiOutlined, BugOutlined, LinkOutlined, DeleteOutlined } from '@ant-design/icons';
 
 const { Title } = Typography;
 
@@ -14,6 +15,8 @@ interface TreeNode {
   children?: TreeNode[];
   isLeaf?: boolean;
   type: 'SW_COMPONENT' | 'PORT' | 'FAILURE_MODE' | 'CAUSATION';
+  causationUuid?: string; // Add causationUuid for deletion
+  causationName?: string; // Add causationName for display
   failureModes?: Array<{
     uuid: string;
     name: string;
@@ -30,12 +33,19 @@ export default function SafetyTreeView({ onFailureSelect }: SafetyTreeViewProps)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [treeData, setTreeData] = useState<TreeNode[]>([]);
+  const [contextMenu, setContextMenu] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+    causationUuid: string;
+    causationName: string;
+  } | null>(null);
 
   useEffect(() => {
     loadSafetyTreeData();
   }, []);
 
-  const loadSafetyTreeData = async () => {
+  const loadSafetyTreeData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -54,7 +64,42 @@ export default function SafetyTreeView({ onFailureSelect }: SafetyTreeViewProps)
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  const hideContextMenu = useCallback(() => setContextMenu(null), []);
+
+  const handleDeleteCausation = useCallback(async () => {
+    if (!contextMenu) return;
+
+    message.loading({ content: 'Deleting causation...', key: 'delete-causation' });
+    try {
+      const result = await deleteCausationNode(contextMenu.causationUuid);
+      if (result.success) {
+        message.success({ content: 'Causation deleted successfully!', key: 'delete-causation', duration: 2 });
+        await loadSafetyTreeData(); // Reload everything
+      } else {
+        message.error({ content: `Failed to delete causation: ${result.message}`, key: 'delete-causation', duration: 4 });
+      }
+    } catch (error) {
+      message.error({ content: 'An error occurred while deleting causation.', key: 'delete-causation', duration: 4 });
+    } finally {
+      hideContextMenu();
+    }
+  }, [contextMenu, hideContextMenu, loadSafetyTreeData]);
+
+  const onRightClick = useCallback((info: any) => {
+    const { node, event } = info;
+    if (node.type === 'CAUSATION' && node.causationUuid) {
+      event.preventDefault();
+      setContextMenu({
+        visible: true,
+        x: event.pageX,
+        y: event.pageY,
+        causationUuid: node.causationUuid,
+        causationName: node.causationName || 'Unknown Causation'
+      });
+    }
+  }, []);
 
   const buildSafetyTree = (safetyGraph: SafetyGraphData): TreeNode[] => {
     const tree: TreeNode[] = [];
@@ -250,6 +295,8 @@ export default function SafetyTreeView({ onFailureSelect }: SafetyTreeViewProps)
                     </div>
                   ),
                   type: 'CAUSATION',
+                  causationUuid: causation.causationUuid,
+                  causationName: causation.causationName,
                   isLeaf: true
                 };
                 
@@ -258,7 +305,7 @@ export default function SafetyTreeView({ onFailureSelect }: SafetyTreeViewProps)
             });
           }
           
-          node.children.push(failureNode);
+          node.children!.push(failureNode);
         });
       }
     });
@@ -301,13 +348,46 @@ export default function SafetyTreeView({ onFailureSelect }: SafetyTreeViewProps)
   }
 
   return (
-    <Card title="Safety Analysis Tree" className="mb-4">
-      <Tree
-        showLine
-        defaultExpandAll
-        treeData={treeData}
-        style={{ background: 'transparent' }}
-      />
-    </Card>
+    <div style={{ position: 'relative' }} onClick={hideContextMenu}>
+      <Card title="Safety Analysis Tree" className="mb-4">
+        <Tree
+          showLine
+          defaultExpandAll
+          treeData={treeData}
+          onRightClick={onRightClick}
+          style={{ background: 'transparent' }}
+        />
+      </Card>
+
+      {contextMenu && (
+        <div
+          style={{
+            position: 'fixed',
+            top: contextMenu.y,
+            left: contextMenu.x,
+            backgroundColor: 'white',
+            border: '1px solid #d9d9d9',
+            borderRadius: '4px',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+            zIndex: 1000,
+          }}
+        >
+          <div style={{ padding: '8px 12px', borderBottom: '1px solid #f0f0f0' }}>
+            <Typography.Text strong>Delete Causation</Typography.Text>
+          </div>
+          <div style={{ padding: '4px 0' }}>
+            <Button
+              type="text"
+              icon={<DeleteOutlined />}
+              onClick={handleDeleteCausation}
+              style={{ width: '100%', textAlign: 'left', color: '#ff4d4f' }}
+              danger
+            >
+              Delete
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 } 

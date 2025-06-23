@@ -116,11 +116,11 @@ function SwComponentNode({ data }: { data: any }) {
                 </div>
               </Tooltip>
               {port.failureModes.map((failure: any, index: number) => (
-                <div key={failure.uuid} style={{ position: 'relative', marginBottom: '2px' }}>
+                <div key={`${failure.uuid}-${index}`} style={{ position: 'relative', marginBottom: '2px' }}>
                   <Handle
                     type="target"
                     position={Position.Left}
-                    id={`failure-${failure.uuid}`}
+                    id={`failure-${port.uuid}-${failure.uuid}`}
                     style={{
                       background: '#3B82F6',
                       width: '10px',
@@ -186,11 +186,11 @@ function SwComponentNode({ data }: { data: any }) {
                 </div>
               </Tooltip>
               {port.failureModes.map((failure: any, index: number) => (
-                <div key={failure.uuid} style={{ position: 'relative', marginBottom: '2px' }}>
+                <div key={`${failure.uuid}-${index}`} style={{ position: 'relative', marginBottom: '2px' }}>
                   <Handle
                     type="source"
                     position={Position.Right}
-                    id={`failure-${failure.uuid}`}
+                    id={`failure-${port.uuid}-${failure.uuid}`}
                     style={{
                       background: '#F59E0B',
                       width: '10px',
@@ -280,6 +280,12 @@ export default function CrossCompFlow() {
         const pathParts = occ.occuranceSourceArxmlPath.split('/');
         const componentName = pathParts[2];
         const portName = pathParts[3];
+
+        // If there's no port name, this is an internal failure, so we skip it.
+        if (!portName) {
+            return;
+        }
+
         const portType = occ.occuranceSourceLabels.includes('P_PORT_PROTOTYPE') ? 'provider' : 'receiver';
 
         if (!swComponents.has(componentName)) {
@@ -330,36 +336,46 @@ export default function CrossCompFlow() {
 
     if (safetyGraph.causationLinks) {
         safetyGraph.causationLinks.forEach((causation, index) => {
-            const causeFailure = safetyGraph.occurrences.find(o => o.failureUuid === causation.causeFailureUuid);
-            const effectFailure = safetyGraph.occurrences.find(o => o.failureUuid === causation.effectFailureUuid);
+            const causeOccurrences = safetyGraph.occurrences.filter(o => o.failureUuid === causation.causeFailureUuid);
+            const effectOccurrences = safetyGraph.occurrences.filter(o => o.failureUuid === causation.effectFailureUuid);
 
-            if (causeFailure?.occuranceSourceArxmlPath && effectFailure?.occuranceSourceArxmlPath) {
-                const causeComponent = swComponents.get(causeFailure.occuranceSourceArxmlPath.split('/')[2]);
-                const effectComponent = swComponents.get(effectFailure.occuranceSourceArxmlPath.split('/')[2]);
-
-                if (causeComponent && effectComponent) {
-                    const sourceHandle = `failure-${causation.causeFailureUuid}`;
-                    const targetHandle = `failure-${causation.effectFailureUuid}`;
-                    
-                    edges.push({
-                        id: `causation-${causation.causationUuid}-${index}`,
-                        source: causeComponent.uuid,
-                        target: effectComponent.uuid,
-                        sourceHandle,
-                        targetHandle,
-                        type: 'interactive',
-                        animated: false,
-                        markerEnd: {
-                            type: MarkerType.ArrowClosed,
-                        },
-                        data: {
-                            causationUuid: causation.causationUuid,
-                            causationName: causation.causationName,
-                            type: 'causation'
+            causeOccurrences.forEach((causeOcc, causeIndex) => {
+                effectOccurrences.forEach((effectOcc, effectIndex) => {
+                    if (causeOcc?.occuranceSourceArxmlPath && effectOcc?.occuranceSourceArxmlPath) {
+                        
+                        // Ensure we only link failures that are on ports
+                        if (!causeOcc.occuranceSourceArxmlPath.split('/')[3] || !effectOcc.occuranceSourceArxmlPath.split('/')[3]) {
+                            return;
                         }
-                    });
-                }
-            }
+
+                        const causeComponent = swComponents.get(causeOcc.occuranceSourceArxmlPath.split('/')[2]);
+                        const effectComponent = swComponents.get(effectOcc.occuranceSourceArxmlPath.split('/')[2]);
+
+                        if (causeComponent && effectComponent) {
+                            const sourceHandle = `failure-${causeOcc.occuranceSourceUuid}-${causeOcc.failureUuid}`;
+                            const targetHandle = `failure-${effectOcc.occuranceSourceUuid}-${effectOcc.failureUuid}`;
+                            
+                            edges.push({
+                                id: `causation-${causation.causationUuid}-${causeOcc.occuranceSourceUuid}-${effectOcc.occuranceSourceUuid}`,
+                                source: causeComponent.uuid,
+                                target: effectComponent.uuid,
+                                sourceHandle,
+                                targetHandle,
+                                type: 'interactive',
+                                animated: false,
+                                markerEnd: {
+                                    type: MarkerType.ArrowClosed,
+                                },
+                                data: {
+                                    causationUuid: causation.causationUuid,
+                                    causationName: causation.causationName,
+                                    type: 'causation'
+                                }
+                            });
+                        }
+                    }
+                });
+            });
         });
     }
     return { nodes, edges };
@@ -368,6 +384,7 @@ export default function CrossCompFlow() {
   const loadDataAndLayout = useCallback(async () => {
     setLoading(true);
     const safetyData = await getSafetyGraph();
+    console.log();
     if (safetyData.success && safetyData.data) {
       const { nodes: initialNodes, edges: initialEdges } = buildFlowDiagram(safetyData.data);
       if(initialNodes.length > 0) {
@@ -391,8 +408,11 @@ export default function CrossCompFlow() {
   const onConnect = useCallback(async (params: Connection) => {
     if (isCreatingCausation) return;
 
-    const sourceFailureUuid = params.sourceHandle?.replace('failure-', '');
-    const targetFailureUuid = params.targetHandle?.replace('failure-', '');
+    const sourceHandleParts = params.sourceHandle?.split('-');
+    const targetHandleParts = params.targetHandle?.split('-');
+
+    const sourceFailureUuid = sourceHandleParts?.[sourceHandleParts.length - 1];
+    const targetFailureUuid = targetHandleParts?.[targetHandleParts.length - 1];
 
     if (!sourceFailureUuid || !targetFailureUuid) {
         message.error('Could not determine source or target failure mode.');
@@ -518,4 +538,4 @@ export default function CrossCompFlow() {
         )}
     </div>
   );
-} 
+}
