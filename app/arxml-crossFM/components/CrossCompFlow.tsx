@@ -21,9 +21,11 @@ import 'reactflow/dist/style.css';
 import { Card, Typography, Space, Tag, Button, message, Spin, Alert, Tooltip } from 'antd';
 import { NodeCollapseOutlined, ReloadOutlined, DeleteOutlined } from '@ant-design/icons';
 import { getSafetyGraph } from '@/app/services/neo4j/queries/safety/exportGraph';
-import type { SafetyGraphData } from '@/app/services/neo4j/queries/safety/types';
+import { SafetyGraphData } from '@/app/services/neo4j/queries/safety/types';
 import { deleteCausationNode, createCausationBetweenFailureModes } from '@/app/services/neo4j/queries/safety/causation';
 import { getLayoutedElements } from '../services/diagramLayoutService';
+import { useLoading } from '@/app/components/LoadingProvider';
+import InteractiveSmoothStepEdge from './InteractiveSmoothStepEdge';
 
 const { Title, Text } = Typography;
 
@@ -61,10 +63,10 @@ function SwComponentNode({ data }: { data: any }) {
     <div style={{
       padding: '16px',
       borderRadius: '12px',
-      background: 'rgba(248, 250, 252, 1)',
-      border: '2px solid #1890ff',
+      background: 'rgba(248, 250, 252, 0.3)',
+      border: '2px solid rgba(24, 144, 255, 0.3)',
       boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-      minWidth: '300px',
+      minWidth: '350px',
       minHeight: '120px',
       position: 'relative',
       display: 'flex',
@@ -120,13 +122,14 @@ function SwComponentNode({ data }: { data: any }) {
                     type="target"
                     position={Position.Left}
                     id={`failure-${failure.uuid}`}
-                    style={{ 
-                      background: '#3B82F6', 
-                      width: '10px', 
-                      height: '10px', 
-                      left: '-5px',
+                    style={{
+                      background: '#3B82F6',
+                      width: '10px',
+                      height: '10px',
+                      left: '-18px',
                       top: '50%',
-                      transform: 'translateY(-50%)'
+                      transform: 'translateY(-50%)',
+                      border: '1px solid white'
                     }}
                   />
                   <div style={{
@@ -189,13 +192,14 @@ function SwComponentNode({ data }: { data: any }) {
                     type="source"
                     position={Position.Right}
                     id={`failure-${failure.uuid}`}
-                    style={{ 
-                      background: '#F59E0B', 
-                      width: '10px', 
-                      height: '10px', 
-                      right: '-5px',
+                    style={{
+                      background: '#F59E0B',
+                      width: '10px',
+                      height: '10px',
+                      right: '-18px',
                       top: '50%',
-                      transform: 'translateY(-50%)'
+                      transform: 'translateY(-50%)',
+                      border: '1px solid white'
                     }}
                   />
                   <div style={{
@@ -274,6 +278,10 @@ export default function CrossCompFlow({ onFailureSelect }: CrossCompFlowProps) {
   // Define custom node types
   const nodeTypes: NodeTypes = useMemo(() => ({
     swComponent: SwComponentNode,
+  }), []);
+
+  const edgeTypes = useMemo(() => ({
+    interactive: InteractiveSmoothStepEdge,
   }), []);
 
   const loadSafetyData = async () => {
@@ -451,16 +459,10 @@ export default function CrossCompFlow({ onFailureSelect }: CrossCompFlowProps) {
             target: effectComponent.uuid,
             sourceHandle,
             targetHandle,
-            type: 'smoothstep',
-            animated: true,
-            style: { 
-              stroke: '#F59E0B', 
-              strokeWidth: 2,
-              strokeDasharray: '5,5'
-            },
+            type: 'interactive',
+            animated: false,
             markerEnd: {
               type: MarkerType.ArrowClosed,
-              color: '#F59E0B',
             },
             data: {
               causationUuid: causation.causationUuid,
@@ -619,9 +621,11 @@ export default function CrossCompFlow({ onFailureSelect }: CrossCompFlowProps) {
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           connectionLineType={ConnectionLineType.Straight}
           fitView
-          attributionPosition="bottom-left"
+          fitViewOptions={{ padding: 0.2 }}
+          proOptions={{ hideAttribution: true }}
         >
           <Background />
           <Controls />

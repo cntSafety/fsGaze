@@ -1,20 +1,18 @@
-import dagre from 'dagre';
 import { Node, Edge, Position } from 'reactflow';
+import dagre from 'dagre';
 
-const nodeWidth = 300; // Match the minWidth of the SwComponentNode
-const nodeHeight = 150; // A baseline height, actual height is dynamic
+const nodeWidth = 350; // Match the minWidth of the SwComponentNode
+const nodeHeight = 200; // A baseline height, actual height is dynamic
 
-export const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'LR') => {
+export const getLayoutedElements = (nodes: Node[], edges: Edge[]) => {
   const dagreGraph = new dagre.graphlib.Graph({ compound: true });
   dagreGraph.setDefaultEdgeLabel(() => ({}));
   dagreGraph.setGraph({
-    rankdir: direction,
-    nodesep: 90,  // Vertical separation
-    ranksep: 180, // Horizontal separation
+    rankdir: 'LR',
+    ranksep: 200, // Horizontal separation
+    nodesep: 70,  // Vertical separation
     align: 'UL',
   });
-
-  const nodesMap = new Map(nodes.map(n => [n.id, n]));
 
   // 1. Build the detailed graph model for Dagre
   nodes.forEach((node) => {
@@ -24,7 +22,7 @@ export const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'L
       height: node.height || nodeHeight,
     });
 
-    // Add dummy nodes for each failure mode handle and parent them
+    // Add invisible "dummy" nodes for each failure mode handle and parent them
     const { providerPorts = [], receiverPorts = [] } = node.data;
     const allPorts = [...providerPorts, ...receiverPorts];
 
@@ -45,7 +43,7 @@ export const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'L
       dagreGraph.setEdge(sourceDummyId, targetDummyId);
     }
   });
-
+  
   // 2. Run the layout algorithm
   dagre.layout(dagreGraph);
 
@@ -69,7 +67,7 @@ export const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'L
         sortedFailureUuids.indexOf(a.uuid) - sortedFailureUuids.indexOf(b.uuid)
       );
     };
-
+    
     const newProviderPorts = node.data.providerPorts.map((port: any) => ({
       ...port,
       failureModes: sortFailures(port.failureModes),
@@ -79,9 +77,10 @@ export const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'L
       ...port,
       failureModes: sortFailures(port.failureModes),
     }));
-
+    
     return {
       ...node,
+      draggable: true, // Ensure nodes are draggable
       targetPosition: Position.Left,
       sourcePosition: Position.Right,
       position: {
@@ -96,5 +95,34 @@ export const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'L
     };
   });
 
-  return { nodes: layoutedNodes, edges };
+  // 4. Calculate horizontal offsets for parallel edges
+  const edgeGroups = new Map<string, Edge[]>();
+  edges.forEach((edge) => {
+    const groupKey = `${edge.source}->${edge.target}`;
+    if (!edgeGroups.has(groupKey)) {
+      edgeGroups.set(groupKey, []);
+    }
+    edgeGroups.get(groupKey)!.push(edge);
+  });
+  
+  const spacing = 15;
+  edgeGroups.forEach((group) => {
+    group.forEach((edge, i) => {
+      const offsetX = (i - (group.length - 1) / 2) * spacing;
+      edge.data = { ...edge.data, offsetX };
+    });
+  });
+
+  // 5. Apply colors for visibility
+  const colors = ['#e11d48', '#ea580c', '#65a30d', '#2563eb', '#9333ea', '#c026d3'];
+  const colorMap = new Map<string, string>();
+  edges.forEach((edge, i) => {
+    const color = colors[i % colors.length];
+    edge.style = { stroke: color, strokeWidth: 2 };
+    if(edge.markerEnd) {
+        (edge.markerEnd as any).color = color;
+    }
+  });
+
+  return { nodes: layoutedNodes, edges: edges };
 }; 

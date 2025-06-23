@@ -5,8 +5,8 @@ import CrossCompFlow from './components/CrossCompFlow';
 export default function ArxmlCrossFMPage() {
   return (
     <div className="container mx-auto">
-      <CrossComponentFailureChain />
-      <SafetyTreeView />
+      {/* <CrossComponentFailureChain />
+      <SafetyTreeView /> */}
       <CrossCompFlow />
     </div>
   );
