@@ -1,13 +1,12 @@
 'use client';
 import React from 'react';
-import { EdgeProps, BaseEdge, Position, getSmoothStepPath } from 'reactflow';
+import { EdgeProps, BaseEdge, Position } from 'reactflow';
 
 /**
- * This function generates a more robust custom orthogonal edge path.
- * It creates a 20px horizontal "stub" at both the source and target,
- * ensuring a clean, blocky connection regardless of node position.
+ * This function generates a gentle, custom S-shaped path that always
+ * connects to handles horizontally, using a curve factor to avoid extreme angles.
  */
-function getCustomOrthogonalPath({
+function getGentleSPath({
   sourceX,
   sourceY,
   targetX,
@@ -25,31 +24,32 @@ function getCustomOrthogonalPath({
   offsetX: number;
 }) {
   const horizontalStub = 20;
-  const path = [];
-  
+
+  // Determine stub end points based on port position
   const sourceStubX = sourcePosition === Position.Right ? sourceX + horizontalStub : sourceX - horizontalStub;
   const targetStubX = targetPosition === Position.Left ? targetX - horizontalStub : targetX + horizontalStub;
-
-  const midY = (sourceY + targetY) / 2;
-
-  // Start point
-  path.push(`M ${sourceX},${sourceY}`);
-  // Horizontal stub from source
-  path.push(`L ${sourceStubX},${sourceY}`);
-  // Apply horizontal offset here for the main vertical line
-  path.push(`L ${sourceStubX + offsetX},${sourceY}`);
-  // Vertical line to the midpoint
-  path.push(`L ${sourceStubX + offsetX},${midY}`);
-  // Horizontal line to align with the target stub
-  path.push(`L ${targetStubX + offsetX},${midY}`);
-  // Vertical line to align with the target
-  path.push(`L ${targetStubX + offsetX},${targetY}`);
-  // Horizontal stub to target
-  path.push(`L ${targetStubX},${targetY}`);
-  // Final connection to target
-  path.push(`L ${targetX},${targetY}`);
   
-  return path.join(' ');
+  const horizontalDistance = Math.abs(targetStubX - sourceStubX);
+
+  // The "roundness" factor for the curve. We use a fraction of the horizontal
+  // distance to ensure the curve is gentle and never creates loops.
+  const curveFactor = horizontalDistance * 0.25;
+
+  // Determine control points based on port position
+  const controlPoint1X = sourcePosition === Position.Right ? sourceStubX + curveFactor : sourceStubX - curveFactor;
+  const controlPoint1Y = sourceY;
+
+  const controlPoint2X = targetPosition === Position.Left ? targetStubX - curveFactor : targetStubX + curveFactor;
+  const controlPoint2Y = targetY;
+
+  // Apply the parallel line offset to the control points
+  const finalCP1X = controlPoint1X + offsetX;
+  const finalCP2X = controlPoint2X + offsetX;
+
+  // Build the path
+  const path = `M ${sourceX},${sourceY} L ${sourceStubX},${sourceY} C ${finalCP1X},${controlPoint1Y} ${finalCP2X},${controlPoint2Y} ${targetStubX},${targetY} L ${targetX},${targetY}`;
+
+  return path;
 }
 
 export default function InteractiveSmoothStepEdge({
@@ -66,15 +66,14 @@ export default function InteractiveSmoothStepEdge({
 }: EdgeProps) {
   const offsetX = data?.offsetX || 0;
 
-  const [edgePath] = getSmoothStepPath({
+  const edgePath = getGentleSPath({
     sourceX,
     sourceY,
     targetX,
     targetY,
     sourcePosition,
     targetPosition,
-    borderRadius: 15,
-    offset: offsetX,
+    offsetX,
   });
 
   return <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} style={style} />;
