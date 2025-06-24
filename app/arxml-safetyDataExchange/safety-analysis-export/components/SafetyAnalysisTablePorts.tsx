@@ -7,11 +7,11 @@ import type { ColumnsType } from 'antd/es/table';
 import type { InputRef } from 'antd';
 import type { FilterConfirmProps } from 'antd/es/table/interface';
 import { getApplicationSwComponents } from '@/app/services/neo4j/queries/components';
-import { getSafetyNodesForComponent } from '@/app/services/neo4j/queries/safety/exportSWCSafety';
+import { getSafetyNodesForPorts } from '@/app/services/neo4j/queries/safety/exportSWCSafety';
 
 const { Title, Text } = Typography;
 
-const SafetyAnalysisTable: React.FC = () => {
+const SafetyAnalysisTablePorts: React.FC = () => {
   const [data, setData] = useState<any[]>([]);
   const [columns, setColumns] = useState<ColumnsType<any>>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -183,7 +183,7 @@ const SafetyAnalysisTable: React.FC = () => {
     
     try {
       // Step 1: Get all SW components
-      message.info('Fetching SW components for Port Export...');
+      message.info('Fetching SW components...');
       const componentsResult = await getApplicationSwComponents();
       
       if (!componentsResult.success || !componentsResult.data) {
@@ -192,15 +192,15 @@ const SafetyAnalysisTable: React.FC = () => {
 
       const components = componentsResult.data;
       setTotalComponents(components.length);
-      message.info(`Found ${components.length} SW components. Fetching safety data for Port Export...`);
+      message.info(`Found ${components.length} SW components. Fetching port safety data...`);
 
-      // Step 2: Get safety data for each component
+      // Step 2: Get safety data for ports of each component
       const allSafetyData: any[] = [];
       let processedCount = 0;
 
       for (const component of components) {
         try {
-          const safetyResult = await getSafetyNodesForComponent(component.uuid);
+          const safetyResult = await getSafetyNodesForPorts(component.uuid);
           
           if (safetyResult.success && safetyResult.data) {
             allSafetyData.push(...safetyResult.data);
@@ -227,10 +227,10 @@ const SafetyAnalysisTable: React.FC = () => {
       }
       
       if (allSafetyData.length === 0) {
-        message.warning('No safety data found for any components');
+        message.warning('No port safety data found for any components');
       } else {
         message.success(
-          `Successfully loaded safety analysis data! 
+          `Successfully loaded port safety analysis data! 
           Total records: ${allSafetyData.length} 
           Components processed: ${processedCount}/${components.length}`
         );
@@ -238,7 +238,7 @@ const SafetyAnalysisTable: React.FC = () => {
 
     } catch (error) {
       message.error(
-        `Failed to fetch safety analysis: ${
+        `Failed to fetch port safety analysis: ${
           error instanceof Error ? error.message : 'Unknown error'
         }`
       );
@@ -310,12 +310,12 @@ const SafetyAnalysisTable: React.FC = () => {
 
       // Download CSV file
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      const filename = `safety_analysis_export_${timestamp}.csv`;
+      const filename = `port_safety_analysis_export_${timestamp}.csv`;
       
       downloadCSV(csvContent, filename);
       
       message.success(
-        `Successfully exported safety analysis data! 
+        `Successfully exported port safety analysis data! 
         Total records: ${data.length}`
       );
 
@@ -339,7 +339,7 @@ const SafetyAnalysisTable: React.FC = () => {
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {/* Header with statistics */}
         <div>
-          <Title level={3}>Safety Analysis Data</Title>
+          <Title level={3}>Port Safety Analysis Data</Title>
           <Space direction="horizontal" size="large">
             <Text>
               <strong>Total Records:</strong> {data.length}
@@ -368,7 +368,7 @@ const SafetyAnalysisTable: React.FC = () => {
             loading={exporting}
             disabled={exporting || data.length === 0}
           >
-            Export Functional FM to CSV
+            Export Port FM to CSV
           </Button>
         </Space>
 
@@ -376,7 +376,7 @@ const SafetyAnalysisTable: React.FC = () => {
         {data.length === 0 && !loading && (
           <Alert
             message="No Data Available"
-            description="No safety analysis data was found. Try refreshing or check if there are safety nodes in the database."
+            description="No port safety analysis data was found. Try refreshing or check if there are safety nodes in the database."
             type="info"
             showIcon
           />
@@ -387,7 +387,7 @@ const SafetyAnalysisTable: React.FC = () => {
           columns={columns}
           dataSource={data}
           loading={loading}
-          rowKey={(record, index) => `${record.componentName || 'unknown'}-${record.fmName || 'unknown'}-${index}`}
+          rowKey={(record, index) => `${record.componentName || 'unknown'}-${record.PortName || 'unknown'}-${record.fmName || 'unknown'}-${index}`}
           scroll={{ x: columns.reduce((total, col) => total + (col.width as number || 150), 0), y: 600 }}
           pagination={false}
           size="small"
@@ -398,4 +398,4 @@ const SafetyAnalysisTable: React.FC = () => {
   );
 };
 
-export default SafetyAnalysisTable;
+export default SafetyAnalysisTablePorts;
