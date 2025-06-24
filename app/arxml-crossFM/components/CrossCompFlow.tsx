@@ -384,7 +384,8 @@ export default function CrossCompFlow() {
   const loadDataAndLayout = useCallback(async () => {
     setLoading(true);
     const safetyData = await getSafetyGraph();
-    console.log();
+    console.log("safetyData::::", safetyData);
+    
     if (safetyData.success && safetyData.data) {
       const { nodes: initialNodes, edges: initialEdges } = buildFlowDiagram(safetyData.data);
       if(initialNodes.length > 0) {

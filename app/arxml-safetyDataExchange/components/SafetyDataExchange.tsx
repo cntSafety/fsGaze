@@ -6,6 +6,7 @@ import { UploadOutlined, DatabaseOutlined, DownloadOutlined, ExportOutlined } fr
 import { getSafetyGraph } from '@/app/services/neo4j/queries/safety/exportGraph';
 import { importFullGraph } from '@/app/services/neo4j/queries/general';
 import StatusDB, { StatusDBRef } from '@/app/components/statusDB';
+import SafetyAnalysisExport from './SafetyAnalysisExport';
 
 const { Title, Paragraph } = Typography;
 
@@ -654,6 +655,16 @@ const SafetyDataExchange: React.FC = () => {
           {isLoading && <div style={{ textAlign: 'center', marginTop: 20 }}><Spin size="large" /></div>}
           {error && <Alert message={error} type="error" showIcon style={{ marginTop: 16 }} />}
           {safetyData && renderDataAsJson(safetyData, "Fetched Safety Data Preview")}
+        </Card>
+
+        <Card title="Export Safety Analysis to CSV">
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <SafetyAnalysisExport />
+            <Paragraph style={{ margin: 0, fontSize: '14px', color: '#666' }}>
+              Exports safety analysis data for all SW components to a CSV file. 
+              This includes component safety notes, failure modes, risk ratings, and associated tasks.
+            </Paragraph>
+          </Space>
         </Card>
 
         <Card title="Full Graph Export (ZIP Archive)">

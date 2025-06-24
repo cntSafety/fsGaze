@@ -15,6 +15,8 @@ export interface ComponentSafetyData {
     RatingComment: string | null;
     RiskRatingTaskName: string | null;
     RiskRatingTaskDescription: string | null;
+    RiskRatingTaskResponsible: string | null;
+    RiskRatingTaskStatus: string | null;
 }
 
 export async function getSafetyNodesForComponent(componentUuid: string): Promise<{
@@ -52,7 +54,9 @@ export async function getSafetyNodesForComponent(componentUuid: string): Promise
                    fmrr.Detection AS Detection, 
                    fmrr.RatingComment AS RatingComment, 
                    rrTask.name AS RiskRatingTaskName, 
-                   rrTask.description AS RiskRatingTaskDescription        `, { componentUuid });
+                   rrTask.description AS RiskRatingTaskDescription,
+                   rrTask.responsible AS RiskRatingTaskResponsible,
+                   rrTask.status AS RiskRatingTaskStatus        `, { componentUuid });
 
         // Helper function to safely convert Neo4j values to numbers
         const safeToNumber = (value: any): number | null => {
@@ -83,18 +87,14 @@ export async function getSafetyNodesForComponent(componentUuid: string): Promise
             RatingComment: record.get('RatingComment'),
             RiskRatingTaskName: record.get('RiskRatingTaskName'),
             RiskRatingTaskDescription: record.get('RiskRatingTaskDescription'),
-        }));
-
-        console.log("Debug: Component Safety Export summary:");
-        console.log(`- Component UUID: ${componentUuid}`);
-        console.log(`- Total records returned: ${componentSafetyData.length}`);
-        
+            RiskRatingTaskResponsible: record.get('RiskRatingTaskResponsible'),
+            RiskRatingTaskStatus: record.get('RiskRatingTaskStatus'),
+        }));        
         return {
             success: true,
             data: componentSafetyData,
         };
     } catch (error: any) {
-        console.error("Error fetching safety nodes for component:", error);
         return { 
             success: false, 
             message: error.message 
