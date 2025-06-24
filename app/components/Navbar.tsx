@@ -2,6 +2,7 @@
 
 import React from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { HiHome, HiCloudDownload, HiMenuAlt2, HiChevronDown, HiLightningBolt, HiX, HiChevronLeft, HiChevronRight, HiOutlineDocumentReport, HiOutlineCode, HiFastForward } from "react-icons/hi";
 import { useState, useEffect } from "react";
@@ -124,9 +125,18 @@ export function Navbar() {
         },
     ];
 
-    // Handle navigation with loading state
-    const handleNavigation = (href: string, label: string) => {
+    // Handle navigation with loading state (for regular clicks)
+    const handleNavigation = (href: string, label: string, event?: React.MouseEvent) => {
         if (href === '#') return; // Skip inactive links
+        
+        // Only handle left clicks and prevent default for programmatic navigation
+        if (event && (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey)) {
+            return; // Let the browser handle right-click, ctrl+click, etc.
+        }
+        
+        if (event) {
+            event.preventDefault();
+        }
         
         // If sidebar is collapsed, expand it when navigating
         if (isSidebarCollapsed) {
@@ -205,8 +215,9 @@ export function Navbar() {
                             return (
                                 <div key={index} className="mb-2">
                                     {item.type === 'link' ? (
-                                        <button
-                                            onClick={() => handleNavigation(item.href, item.label)}
+                                        <Link
+                                            href={item.href}
+                                            onClick={(e) => handleNavigation(item.href, item.label, e)}
                                             className={`flex items-center px-4 py-2.5 text-sm rounded-lg transition-colors w-full text-left ${
                                                 isActive
                                                     ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
@@ -218,69 +229,90 @@ export function Navbar() {
                                                 className={`${isSidebarCollapsed ? 'size-6 mr-0' : 'size-5 mr-3'}`} 
                                             />
                                             {!isSidebarCollapsed && item.label}
-                                        </button>
+                                        </Link>
                                     ) : (
                                         <div className="mb-1">
-                                            <button
-                                                onClick={() => {
-                                                    if (isSidebarCollapsed) {
-                                                        // In collapsed mode, navigate to first active item
-                                                        const firstActiveItem = item.items.find(subitem => subitem.isActive !== false);
-                                                        if (firstActiveItem) {
-                                                            handleNavigation(firstActiveItem.href, firstActiveItem.label);
-                                                        }
-                                                    } else {
-                                                        toggleGroup(item.label);
-                                                    }
-                                                }}
-                                                className={`flex w-full items-center ${isSidebarCollapsed ? 'justify-center px-2' : 'justify-between px-4'} py-2.5 text-sm rounded-lg transition-colors ${
-                                                    isActive 
-                                                        ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
-                                                        : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
-                                                }`}
-                                                title={isSidebarCollapsed ? item.label : undefined}
-                                            >
-                                                <div className="flex items-center">
-                                                    <item.icon 
-                                                        className={`${isSidebarCollapsed ? 'size-6 mr-0' : 'size-5 mr-3'}`} 
-                                                    />
-                                                    {!isSidebarCollapsed && item.label}
-                                                </div>
-                                                {!isSidebarCollapsed && (
+                                            {isSidebarCollapsed ? (
+                                                // In collapsed mode, render as a link to the first active item
+                                                (() => {
+                                                    const firstActiveItem = item.items.find(subitem => subitem.isActive !== false);
+                                                    return firstActiveItem ? (
+                                                        <Link
+                                                            href={firstActiveItem.href}
+                                                            onClick={(e) => handleNavigation(firstActiveItem.href, firstActiveItem.label, e)}
+                                                            className={`flex w-full items-center justify-center px-2 py-2.5 text-sm rounded-lg transition-colors ${
+                                                                isActive 
+                                                                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
+                                                                    : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
+                                                            }`}
+                                                            title={item.label}
+                                                        >
+                                                            <item.icon className="size-6 mr-0" />
+                                                        </Link>
+                                                    ) : (
+                                                        <button
+                                                            className="flex w-full items-center justify-center px-2 py-2.5 text-sm rounded-lg transition-colors text-gray-400 cursor-not-allowed"
+                                                            title={item.label}
+                                                            disabled
+                                                        >
+                                                            <item.icon className="size-6 mr-0" />
+                                                        </button>
+                                                    );
+                                                })()
+                                            ) : (
+                                                // In expanded mode, render as dropdown toggle
+                                                <button
+                                                    onClick={() => toggleGroup(item.label)}
+                                                    className={`flex w-full items-center justify-between px-4 py-2.5 text-sm rounded-lg transition-colors ${
+                                                        isActive 
+                                                            ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
+                                                            : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center">
+                                                        <item.icon className="size-5 mr-3" />
+                                                        {item.label}
+                                                    </div>
                                                     <HiChevronDown 
                                                         className={`size-4 transition-transform ${
                                                             expandedGroups[item.label] ? 'rotate-180' : ''
                                                         }`} 
                                                     />
-                                                )}
-                                            </button>
+                                                </button>
+                                            )}
+                                            
                                             
                                             {!isSidebarCollapsed && expandedGroups[item.label] && (
                                                 <div className="mt-1 ml-6 pl-4 border-l border-gray-200 dark:border-gray-700">
                                                     {item.items.map((subitem, subIndex) => {
                                                         const isSubitemActive = activeMenuItem === subitem.href;
+                                                        
+                                                        if (subitem.isActive === false) {
+                                                            return (
+                                                                <button
+                                                                    key={subIndex}
+                                                                    disabled={true}
+                                                                    className="flex items-center px-3 py-2 text-sm rounded-lg my-0.5 w-full text-left text-gray-400 cursor-not-allowed"
+                                                                >
+                                                                    {subitem.label}
+                                                                    <span className="ml-2 text-xs text-gray-400">(soon)</span>
+                                                                </button>
+                                                            );
+                                                        }
+                                                        
                                                         return (
-                                                            <button
+                                                            <Link
                                                                 key={subIndex}
-                                                                onClick={() => {
-                                                                    if (subitem.isActive !== false) {
-                                                                        handleNavigation(subitem.href, subitem.label);
-                                                                    }
-                                                                }}
-                                                                disabled={subitem.isActive === false}
+                                                                href={subitem.href}
+                                                                onClick={(e) => handleNavigation(subitem.href, subitem.label, e)}
                                                                 className={`flex items-center px-3 py-2 text-sm rounded-lg my-0.5 w-full text-left ${
-                                                                    subitem.isActive === false
-                                                                        ? 'text-gray-400 cursor-not-allowed'
-                                                                        : isSubitemActive
-                                                                            ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
-                                                                            : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'
+                                                                    isSubitemActive
+                                                                        ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
+                                                                        : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'
                                                                 }`}
                                                             >
                                                                 {subitem.label}
-                                                                {subitem.isActive === false && (
-                                                                    <span className="ml-2 text-xs text-gray-400">(soon)</span>
-                                                                )}
-                                                            </button>
+                                                            </Link>
                                                         );
                                                     })}
                                                 </div>
@@ -379,8 +411,9 @@ export function Navbar() {
                         return (
                             <div key={index} className="mb-2">
                                 {item.type === 'link' ? (
-                                    <button
-                                        onClick={() => handleNavigation(item.href, item.label)}
+                                    <Link
+                                        href={item.href}
+                                        onClick={(e) => handleNavigation(item.href, item.label, e)}
                                         className={`flex items-center px-4 py-2.5 text-sm rounded-lg transition-colors w-full text-left ${
                                             isActive
                                                 ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
@@ -389,7 +422,7 @@ export function Navbar() {
                                     >
                                         <item.icon className="mr-3 size-5" />
                                         {item.label}
-                                    </button>
+                                    </Link>
                                 ) : (
                                     <div className="mb-1">
                                         <button
@@ -415,28 +448,33 @@ export function Navbar() {
                                             <div className="mt-1 ml-6 pl-4 border-l border-gray-200 dark:border-gray-700">
                                                 {item.items.map((subitem, subIndex) => {
                                                     const isSubitemActive = activeMenuItem === subitem.href;
+                                                    
+                                                    if (subitem.isActive === false) {
+                                                        return (
+                                                            <button
+                                                                key={subIndex}
+                                                                disabled={true}
+                                                                className="flex items-center px-3 py-2 text-sm rounded-lg my-0.5 w-full text-left text-gray-400 cursor-not-allowed"
+                                                            >
+                                                                {subitem.label}
+                                                                <span className="ml-2 text-xs text-gray-400">(soon)</span>
+                                                            </button>
+                                                        );
+                                                    }
+                                                    
                                                     return (
-                                                        <button
+                                                        <Link
                                                             key={subIndex}
-                                                            onClick={() => {
-                                                                if (subitem.isActive !== false) {
-                                                                    handleNavigation(subitem.href, subitem.label);
-                                                                }
-                                                            }}
-                                                            disabled={subitem.isActive === false}
+                                                            href={subitem.href}
+                                                            onClick={(e) => handleNavigation(subitem.href, subitem.label, e)}
                                                             className={`flex items-center px-3 py-2 text-sm rounded-lg my-0.5 w-full text-left ${
-                                                                subitem.isActive === false
-                                                                    ? 'text-gray-400 cursor-not-allowed'
-                                                                    : isSubitemActive
-                                                                        ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
-                                                                        : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'
+                                                                isSubitemActive
+                                                                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
+                                                                    : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'
                                                             }`}
                                                         >
                                                             {subitem.label}
-                                                            {subitem.isActive === false && (
-                                                                <span className="ml-2 text-xs text-gray-400">(soon)</span>
-                                                            )}
-                                                        </button>
+                                                        </Link>
                                                     );
                                                 })}
                                             </div>
