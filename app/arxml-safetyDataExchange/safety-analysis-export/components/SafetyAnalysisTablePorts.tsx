@@ -283,7 +283,46 @@ const SafetyAnalysisTablePorts: React.FC = () => {
     return csvRows.join('\n');
   };
 
-  const downloadCSV = (csvContent: string, filename: string): void => {
+  const downloadCSV = async (csvContent: string, filename: string): Promise<void> => {
+    try {
+      // Check if File System Access API is supported
+      if ('showSaveFilePicker' in window) {
+        try {
+          const fileHandle = await (window as any).showSaveFilePicker({
+            suggestedName: filename,
+            types: [
+              {
+                description: 'CSV files',
+                accept: {
+                  'text/csv': ['.csv'],
+                },
+              },
+            ],
+          });
+
+          const writable = await fileHandle.createWritable();
+          await writable.write(csvContent);
+          await writable.close();
+          
+          console.log('CSV file saved successfully');
+        } catch (err: any) {
+          if (err.name !== 'AbortError') {
+            console.error('Error saving CSV file:', err);
+            // Fallback to traditional download
+            fallbackDownloadCSV(csvContent, filename);
+          }
+        }
+      } else {
+        // Fallback for browsers that don't support File System Access API
+        fallbackDownloadCSV(csvContent, filename);
+      }
+    } catch (error) {
+      console.error('Error in downloadCSV:', error);
+      fallbackDownloadCSV(csvContent, filename);
+    }
+  };
+
+  const fallbackDownloadCSV = (csvContent: string, filename: string): void => {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -295,7 +334,7 @@ const SafetyAnalysisTablePorts: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const handleExportCSV = (): void => {
+  const handleExportCSV = async (): Promise<void> => {
     setExporting(true);
     
     try {
@@ -312,7 +351,7 @@ const SafetyAnalysisTablePorts: React.FC = () => {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
       const filename = `port_safety_analysis_export_${timestamp}.csv`;
       
-      downloadCSV(csvContent, filename);
+      await downloadCSV(csvContent, filename);
       
       message.success(
         `Successfully exported port safety analysis data! 

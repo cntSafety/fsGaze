@@ -606,3 +606,48 @@ export const getInfoForAppSWComp = async (uuid: string) => {
     await session.close();
   }
 };
+
+/**
+ * Get software component information by name
+ */
+export const getComponentByName = async (componentName: string) => {
+  const session = driver.session();
+  try {
+    const result = await session.run(
+      `MATCH (swc {name: $componentName})
+       WHERE swc:APPLICATION_SW_COMPONENT_TYPE OR swc:COMPOSITION_SW_COMPONENT_TYPE OR swc:SERVICE_SW_COMPONENT_TYPE
+       RETURN swc.uuid as swcUuid, swc.name as swcName, swc.arxmlPath as swcArxmlPath, labels(swc)[0] AS swcType`,
+      { componentName }
+    );
+    
+    if (result.records.length === 0) {
+      return {
+        success: false,
+        message: `SW Component with name "${componentName}" not found`,
+        data: null,
+      };
+    }
+
+    const components = result.records.map(record => ({
+      uuid: record.get('swcUuid'),
+      name: record.get('swcName'),
+      arxmlPath: record.get('swcArxmlPath'),
+      componentType: record.get('swcType'),
+    }));
+
+    return {
+      success: true,
+      data: components.length === 1 ? components[0] : components,
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return {
+      success: false,
+      message: `Error fetching SW component with name "${componentName}".`,
+      error: errorMessage,
+      data: null,
+    };
+  } finally {
+    await session.close();
+  }
+};

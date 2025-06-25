@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useCallback, useRef } from 'react';
-import { Button, Space, Typography, Spin, Alert, Card, Upload, Input, Modal } from 'antd';
-import { UploadOutlined, DatabaseOutlined, DownloadOutlined, ExportOutlined } from '@ant-design/icons';
+import { Button, Space, Typography, Spin, Alert, Card, Upload, Input, Modal, Tabs } from 'antd';
+import { UploadOutlined, DatabaseOutlined, DownloadOutlined, ExportOutlined, LinkOutlined } from '@ant-design/icons';
 import { getSafetyGraph } from '@/app/services/neo4j/queries/safety/exportGraph';
 import { importFullGraph } from '@/app/services/neo4j/queries/general';
 import StatusDB, { StatusDBRef } from '@/app/components/statusDB';
@@ -129,18 +129,71 @@ const SafetyDataExchange: React.FC = () => {
     }
   }, []);
 
-  const handleDownloadJson = () => {
-    if (!safetyData) return;
-    const jsonString = JSON.stringify(safetyData, null, 2);
-    const blob = new Blob([jsonString], { type: 'application/json' });
+  // Utility function for File System Access API downloads
+  const saveFileWithFileSystemAPI = async (content: Blob | string, suggestedName: string, mimeType: string, description: string) => {
+    try {
+      // Check if File System Access API is supported
+      if ('showSaveFilePicker' in window) {
+        try {
+          const fileHandle = await (window as any).showSaveFilePicker({
+            suggestedName,
+            types: [
+              {
+                description,
+                accept: {
+                  [mimeType]: [suggestedName.substring(suggestedName.lastIndexOf('.'))],
+                },
+              },
+            ],
+          });
+
+          const writable = await fileHandle.createWritable();
+          await writable.write(content);
+          await writable.close();
+          
+          console.log(`File saved successfully: ${suggestedName}`);
+          return true;
+        } catch (err: any) {
+          if (err.name !== 'AbortError') {
+            console.error('Error saving file:', err);
+            // Fallback to traditional download
+            fallbackDownload(content, suggestedName, mimeType);
+          }
+          return false;
+        }
+      } else {
+        // Fallback for browsers that don't support File System Access API
+        fallbackDownload(content, suggestedName, mimeType);
+        return true;
+      }
+    } catch (error) {
+      console.error('Error in saveFileWithFileSystemAPI:', error);
+      fallbackDownload(content, suggestedName, mimeType);
+      return false;
+    }
+  };
+
+  const fallbackDownload = (content: Blob | string, filename: string, mimeType: string) => {
+    const blob = content instanceof Blob ? content : new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'safety_analysis_export.json';
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadJson = async () => {
+    if (!safetyData) return;
+    const jsonString = JSON.stringify(safetyData, null, 2);
+    await saveFileWithFileSystemAPI(
+      jsonString,
+      'safety_analysis_export.json',
+      'application/json',
+      'JSON files'
+    );
   };
 
   // Helper function to sanitize filenames and folder names
@@ -186,28 +239,23 @@ const SafetyDataExchange: React.FC = () => {
       const blob = await response.blob();
       const fileSize = (blob.size / 1024 / 1024).toFixed(2); // MB
 
-      // Create download link
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      
       // Generate filename with current date
       const date = new Date().toISOString().split('T')[0];
-      link.download = `graph-export-${date}.zip`;
+      const filename = `graph-export-${date}.zip`;
       
-      // Trigger download
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      // Use File System Access API for download
+      const saved = await saveFileWithFileSystemAPI(
+        blob,
+        filename,
+        'application/zip',
+        'ZIP files'
+      );
       
-      // Clean up
-      window.URL.revokeObjectURL(url);
-
       const downloadTime = Date.now() - startTime;
       console.log(`[EXPORT] Download completed in ${downloadTime}ms`);
       setFullGraphExportLogs(prev => [
         ...prev, 
-        `[SUCCESS] ZIP file downloaded successfully!`,
+        `[SUCCESS] ZIP file ${saved ? 'saved' : 'downloaded'} successfully!`,
         `[INFO] File size: ${fileSize} MB`,
         `[INFO] Total time: ${downloadTime}ms`
       ]);
@@ -622,41 +670,94 @@ const SafetyDataExchange: React.FC = () => {
     }, 100);
   };
 
-  return (
-    <div style={{ padding: 24 }}>
-      <Title level={2}>Export and Import the Safety Analysis</Title>
-      <Paragraph>
-        Export safety analysis data from Neo4j or import it from a JSON file.
-      </Paragraph>
+  const tabItems = [
+    {
+      key: 'graph-as-code',
+      label: 'Graph-as-Code',
+      children: (
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Card title="Full Graph Export (ZIP Archive)">
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <div>
+                <Button 
+                  type="primary" 
+                  icon={<ExportOutlined />} 
+                  onClick={handleFullGraphExport} 
+                  loading={isExportingFullGraph}
+                >
+                  Export Complete Graph as ZIP
+                </Button>
+              </div>
+              <Paragraph style={{ margin: 0, fontSize: '14px', color: '#666' }}>
+                Exports the entire Neo4j graph as a ZIP archive containing organized files by node labels and relationships. 
+                Fast server-side processing with a single download. Works in all browsers.
+                Uses optimized queries and parallel file writing for better performance.
+                Creates a Git-friendly structure for version control and collaborative editing.
+              </Paragraph>
+            </Space>
+          </Card>
 
-      <Space direction="vertical" style={{ width: '100%' }}>
-        {/* DB Status Button */}
-        <div style={{ marginBottom: 16 }}>
-          <Button 
-            type="default" 
-            icon={<DatabaseOutlined />} 
-            onClick={handleOpenStatusModal}
-          >
-            DB Status and Info
-          </Button>
-        </div>
-
-        <Card title="Export Safety Analysis Data">
-          <Space>
-            <Button onClick={handleExport} loading={isLoading}>
-              Fetch Safety Data from DB
-            </Button>
-            {safetyData && (
-              <Button icon={<DownloadOutlined />} onClick={handleDownloadJson}>
-                Download as JSON
-              </Button>
-            )}
-          </Space>
-          {isLoading && <div style={{ textAlign: 'center', marginTop: 20 }}><Spin size="large" /></div>}
-          {error && <Alert message={error} type="error" showIcon style={{ marginTop: 16 }} />}
-          {safetyData && renderDataAsJson(safetyData, "Fetched Safety Data Preview")}
-        </Card>
-
+          <Card title="Full Graph Import (Graph-as-Code)">
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <div>
+                <Upload
+                  multiple
+                  directory
+                  beforeUpload={() => false}
+                  onChange={(info) => {
+                    console.log('[DEBUG] Upload onChange triggered');
+                    console.log('[DEBUG] info.fileList.length:', info.fileList.length);
+                    
+                    // Process files more efficiently
+                    const files = info.fileList
+                      .map(f => f.originFileObj!)
+                      .filter(Boolean);
+                    
+                    console.log('[DEBUG] Filtered files count:', files.length);
+                    
+                    // Use setTimeout to avoid blocking the UI
+                    setTimeout(() => {
+                      handleImportFileSelect(files);
+                    }, 0);
+                  }}
+                  showUploadList={false}
+                  accept=".json"
+                >
+                  <Button icon={<UploadOutlined />} disabled={isImportingFullGraph}>
+                    {selectedImportFiles.length > 0 
+                      ? `Selected ${selectedImportFiles.length} files` 
+                      : "Select Graph Export Folder"}
+                  </Button>
+                </Upload>
+              </div>
+              {selectedImportFiles.length > 0 && !fullGraphImportError && (
+                <Button
+                  type="primary"
+                  danger
+                  onClick={handleFullGraphImport}
+                  loading={isImportingFullGraph}
+                  style={{ marginTop: 8 }}
+                >
+                  Import Complete Graph (Wipe & Load)
+                </Button>
+              )}
+              <Paragraph style={{ margin: 0, fontSize: '14px', color: '#666' }}>
+                <strong>⚠️ WARNING:</strong> This will COMPLETELY WIPE the current database and import the selected graph files.
+                Select the folder that contains the &ldquo;nodes/&rdquo; directory and &ldquo;relationships.json&rdquo; file from a previous export.
+                This is a three-phase atomic operation: (1) Wipe database, (2) Create nodes, (3) Create relationships.
+              </Paragraph>
+              {fullGraphImportError && (
+                <Alert message={fullGraphImportError} type="error" showIcon style={{ marginTop: 8 }} />
+              )}
+            </Space>
+          </Card>
+        </Space>
+      ),
+    },
+    {
+      key: 'safety-csv',
+      label: 'Safety CSV',
+      children: (
         <Card title="Export Safety Analysis to CSV">
           <Space direction="vertical" style={{ width: '100%' }}>
             <SafetyAnalysisExport />
@@ -666,141 +767,131 @@ const SafetyDataExchange: React.FC = () => {
             </Paragraph>
           </Space>
         </Card>
+      ),
+    },
+    {
+      key: 'safety-json',
+      label: 'Safety JSON',
+      children: (
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Card title="Export Safety Analysis Data">
+            <Space>
+              <Button onClick={handleExport} loading={isLoading}>
+                Fetch Safety Data from DB
+              </Button>
+              {safetyData && (
+                <Button icon={<DownloadOutlined />} onClick={handleDownloadJson}>
+                  Download as JSON
+                </Button>
+              )}
+            </Space>
+            {isLoading && <div style={{ textAlign: 'center', marginTop: 20 }}><Spin size="large" /></div>}
+            {error && <Alert message={error} type="error" showIcon style={{ marginTop: 16 }} />}
+            {safetyData && renderDataAsJson(safetyData, "Fetched Safety Data Preview")}
+          </Card>
 
-        <Card title="Full Graph Export (ZIP Archive)">
+          <Card title="Import Safety Analysis Data">
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Upload
+                beforeUpload={handleFileSelect}
+                showUploadList={false}
+                accept=".json"
+              >
+                <Button icon={<UploadOutlined />} loading={isProcessingFile}>
+                  {importedFileName ? `Selected: ${importedFileName}` : "Select JSON File"}
+                </Button>
+              </Upload>
+              {isProcessingFile && <div style={{ textAlign: 'center', marginTop: 20 }}><Spin /></div>}
+              {importError && <Alert message={importError} type="error" showIcon style={{ marginTop: 16 }} />}
+              {importedData && renderDataAsJson(importedData, "Preview of Data to Import")}
+              {importedData && (
+                <Button
+                  type="primary"
+                  onClick={handleUploadToNeo4j}
+                  loading={isUploading}
+                  style={{ marginTop: 16 }}
+                  disabled={isProcessingFile}
+                >
+                  Upload to Neo4j
+                </Button>
+              )}
+            </Space>
+            {isUploading && (
+              <div style={{ textAlign: 'center', marginTop: 20 }}>
+                <Spin tip="Uploading...">
+                  <div style={{ minHeight: '50px' }} />
+                </Spin>
+              </div>
+            )}
+            {uploadError && <Alert message={uploadError} type="error" showIcon style={{ marginTop: 16 }} />}
+            {uploadLogs.length > 0 && (
+              <Card title="Import Logs" style={{ marginTop: 16 }}>
+                <Input.TextArea
+                  rows={10}
+                  readOnly
+                  value={uploadLogs.join('\n')}
+                  style={{ backgroundColor: '#f0f0f0', fontFamily: 'monospace' }}
+                />
+              </Card>
+            )}
+            
+            {/* Show updated database status after successful import */}
+            {showPostImportStats && uploadLogs.length > 0 && (
+              <Alert 
+                message="Import completed successfully! Click 'DB Status and Info' to view updated database statistics." 
+                type="success" 
+                showIcon 
+                style={{ marginTop: 16 }}
+              />
+            )}
+          </Card>
+        </Space>
+      ),
+    },
+    {
+      key: 'safety-name-based',
+      label: 'Safety Name Based',
+      children: (
+        <Card title="Name-Based Exchange">
           <Space direction="vertical" style={{ width: '100%' }}>
             <div>
               <Button 
                 type="primary" 
-                icon={<ExportOutlined />} 
-                onClick={handleFullGraphExport} 
-                loading={isExportingFullGraph}
+                icon={<LinkOutlined />} 
+                onClick={() => window.open('/arxml-safetyDataExchange/name-based-exchange', '_blank')}
               >
-                Export Complete Graph as ZIP
+                Open Name-Based Exchange Tool
               </Button>
             </div>
             <Paragraph style={{ margin: 0, fontSize: '14px', color: '#666' }}>
-              Exports the entire Neo4j graph as a ZIP archive containing organized files by node labels and relationships. 
-              Fast server-side processing with a single download. Works in all browsers.
-              Uses optimized queries and parallel file writing for better performance.
-              Creates a Git-friendly structure for version control and collaborative editing.
+              Upload JSON files with component safety data and check component names against the database.
+              This tool helps validate component mappings and identify missing components in your safety analysis.
             </Paragraph>
           </Space>
         </Card>
+      ),
+    },
+  ];
 
-        <Card title="Full Graph Import (Graph-as-Code)">
-          <Space direction="vertical" style={{ width: '100%' }}>
-            <div>
-              <Upload
-                multiple
-                directory
-                beforeUpload={() => false}
-                onChange={(info) => {
-                  console.log('[DEBUG] Upload onChange triggered');
-                  console.log('[DEBUG] info.fileList.length:', info.fileList.length);
-                  
-                  // Process files more efficiently
-                  const files = info.fileList
-                    .map(f => f.originFileObj!)
-                    .filter(Boolean);
-                  
-                  console.log('[DEBUG] Filtered files count:', files.length);
-                  
-                  // Use setTimeout to avoid blocking the UI
-                  setTimeout(() => {
-                    handleImportFileSelect(files);
-                  }, 0);
-                }}
-                showUploadList={false}
-                accept=".json"
-              >
-                <Button icon={<UploadOutlined />} disabled={isImportingFullGraph}>
-                  {selectedImportFiles.length > 0 
-                    ? `Selected ${selectedImportFiles.length} files` 
-                    : "Select Graph Export Folder"}
-                </Button>
-              </Upload>
-            </div>
-            {selectedImportFiles.length > 0 && !fullGraphImportError && (
-              <Button
-                type="primary"
-                danger
-                onClick={handleFullGraphImport}
-                loading={isImportingFullGraph}
-                style={{ marginTop: 8 }}
-              >
-                Import Complete Graph (Wipe & Load)
-              </Button>
-            )}
-            <Paragraph style={{ margin: 0, fontSize: '14px', color: '#666' }}>
-              <strong>⚠️ WARNING:</strong> This will COMPLETELY WIPE the current database and import the selected graph files.
-              Select the folder that contains the &ldquo;nodes/&rdquo; directory and &ldquo;relationships.json&rdquo; file from a previous export.
-              This is a three-phase atomic operation: (1) Wipe database, (2) Create nodes, (3) Create relationships.
-            </Paragraph>
-            {fullGraphImportError && (
-              <Alert message={fullGraphImportError} type="error" showIcon style={{ marginTop: 8 }} />
-            )}
-          </Space>
-        </Card>
+  return (
+    <div style={{ padding: 24 }}>
+      <Title level={2}>Export and Import the Safety Analysis</Title>
+      <Paragraph>
+        Export safety analysis data from Neo4j or import it from a JSON file.
+      </Paragraph>
 
-        <Card title="Import Safety Analysis Data">
-          <Space direction="vertical" style={{ width: '100%' }}>
-            <Upload
-              beforeUpload={handleFileSelect}
-              showUploadList={false}
-              accept=".json"
-            >
-              <Button icon={<UploadOutlined />} loading={isProcessingFile}>
-                {importedFileName ? `Selected: ${importedFileName}` : "Select JSON File"}
-              </Button>
-            </Upload>
-            {isProcessingFile && <div style={{ textAlign: 'center', marginTop: 20 }}><Spin /></div>}
-            {importError && <Alert message={importError} type="error" showIcon style={{ marginTop: 16 }} />}
-            {importedData && renderDataAsJson(importedData, "Preview of Data to Import")}
-            {importedData && (
-              <Button
-                type="primary"
-                onClick={handleUploadToNeo4j}
-                loading={isUploading}
-                style={{ marginTop: 16 }}
-                disabled={isProcessingFile}
-              >
-                Upload to Neo4j
-              </Button>
-            )}
-          </Space>
-          {isUploading && (
-            <div style={{ textAlign: 'center', marginTop: 20 }}>
-              <Spin tip="Uploading...">
-                {/* This inner div makes Spin act as a wrapper, satisfying the "nest" pattern for the tip. 
-                    A minHeight ensures space for the spinner and tip. */}
-                <div style={{ minHeight: '50px' }} />
-              </Spin>
-            </div>
-          )}
-          {uploadError && <Alert message={uploadError} type="error" showIcon style={{ marginTop: 16 }} />}
-          {uploadLogs.length > 0 && (
-            <Card title="Import Logs" style={{ marginTop: 16 }}>
-              <Input.TextArea
-                rows={10}
-                readOnly
-                value={uploadLogs.join('\n')}
-                style={{ backgroundColor: '#f0f0f0', fontFamily: 'monospace' }}
-              />
-            </Card>
-          )}
-          
-          {/* Show updated database status after successful import */}
-          {showPostImportStats && uploadLogs.length > 0 && (
-            <Alert 
-              message="Import completed successfully! Click 'DB Status and Info' to view updated database statistics." 
-              type="success" 
-              showIcon 
-              style={{ marginTop: 16 }}
-            />
-          )}
-        </Card>
-      </Space>
+      {/* DB Status Button */}
+      <div style={{ marginBottom: 16 }}>
+        <Button 
+          type="default" 
+          icon={<DatabaseOutlined />} 
+          onClick={handleOpenStatusModal}
+        >
+          DB Status and Info
+        </Button>
+      </div>
+
+      <Tabs items={tabItems} defaultActiveKey="graph-as-code" />
 
       {/* Database Status Modal */}
       <Modal

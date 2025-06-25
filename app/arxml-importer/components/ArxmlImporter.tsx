@@ -205,7 +205,7 @@ const ArxmlImporter: React.FC<ArxmlImporterProps> = () => {
           relationshipCount: neoResult.relationshipCount
         };
         setLastImportSummary(summaryData);
-        generateImportSummary(importedFileNames, startTime, neoResult.nodeCount, neoResult.relationshipCount);
+        await generateImportSummary(importedFileNames, startTime, neoResult.nodeCount, neoResult.relationshipCount);
         
         messageApi.success({
           content: `Successfully imported ${filesToUpload.length} file(s). ${neoResult.nodeCount} nodes, ${neoResult.relationshipCount} relationships created. Import summary downloaded.`,
@@ -242,7 +242,7 @@ const ArxmlImporter: React.FC<ArxmlImporterProps> = () => {
   };
 
   // Generate and download import summary file
-  const generateImportSummary = (importedFiles: string[], startTime: number, nodeCount?: number, relationshipCount?: number) => {
+  const generateImportSummary = async (importedFiles: string[], startTime: number, nodeCount?: number, relationshipCount?: number) => {
     const now = new Date();
     const endTime = Date.now();
     const processingTime = Math.round((endTime - startTime) / 1000); // Convert to seconds
@@ -271,12 +271,53 @@ const ArxmlImporter: React.FC<ArxmlImporterProps> = () => {
       importedFiles.join(', ')
     ].join('\n');
 
+    const filename = `arxml-import-summary-${now.toISOString().slice(0, 19).replace(/[:.]/g, '-')}.txt`;
+
+    try {
+      // Check if File System Access API is supported
+      if ('showSaveFilePicker' in window) {
+        try {
+          const fileHandle = await (window as any).showSaveFilePicker({
+            suggestedName: filename,
+            types: [
+              {
+                description: 'Text files',
+                accept: {
+                  'text/plain': ['.txt'],
+                },
+              },
+            ],
+          });
+
+          const writable = await fileHandle.createWritable();
+          await writable.write(summaryContent);
+          await writable.close();
+          
+          console.log('Summary file saved successfully');
+        } catch (err: any) {
+          if (err.name !== 'AbortError') {
+            console.error('Error saving summary file:', err);
+            // Fallback to traditional download
+            fallbackDownloadSummary(summaryContent, filename);
+          }
+        }
+      } else {
+        // Fallback for browsers that don't support File System Access API
+        fallbackDownloadSummary(summaryContent, filename);
+      }
+    } catch (error) {
+      console.error('Error in generateImportSummary:', error);
+      fallbackDownloadSummary(summaryContent, filename);
+    }
+  };
+
+  const fallbackDownloadSummary = (summaryContent: string, filename: string) => {
     // Create and download the file
     const blob = new Blob([summaryContent], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `arxml-import-summary-${now.toISOString().slice(0, 19).replace(/[:.]/g, '-')}.txt`;
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -422,7 +463,7 @@ const ArxmlImporter: React.FC<ArxmlImporterProps> = () => {
                 {lastImportSummary && (
                   <Button
                     type="default"
-                    onClick={() => generateImportSummary(
+                    onClick={async () => await generateImportSummary(
                       lastImportSummary.files,
                       lastImportSummary.startTime,
                       lastImportSummary.nodeCount,
