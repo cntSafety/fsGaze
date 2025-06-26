@@ -322,6 +322,25 @@ export default function CrossCompFlow() {
     });
 
     Array.from(swComponents.values()).forEach(comp => {
+        // Create a mapping from handle IDs to failure UUIDs for robust lookup
+        const handleToFailureMap = new Map<string, string>();
+        
+        // Map provider port failure handles
+        comp.providerPorts.forEach((port: any) => {
+            port.failureModes.forEach((failure: any) => {
+                const handleId = `failure-${port.uuid}-${failure.uuid}`;
+                handleToFailureMap.set(handleId, failure.uuid);
+            });
+        });
+        
+        // Map receiver port failure handles
+        comp.receiverPorts.forEach((port: any) => {
+            port.failureModes.forEach((failure: any) => {
+                const handleId = `failure-${port.uuid}-${failure.uuid}`;
+                handleToFailureMap.set(handleId, failure.uuid);
+            });
+        });
+
         nodes.push({
             id: comp.uuid,
             type: 'swComponent',
@@ -330,6 +349,7 @@ export default function CrossCompFlow() {
                 component: comp,
                 providerPorts: comp.providerPorts,
                 receiverPorts: comp.receiverPorts,
+                handleToFailureMap: handleToFailureMap, // Add the mapping to node data
             },
         });
     });
@@ -409,50 +429,26 @@ export default function CrossCompFlow() {
   const onConnect = useCallback(async (params: Connection) => {
     if (isCreatingCausation) return;
 
-    // Handle pattern: failure-{portUuid}-{failureUuid}
-    // Extract failure UUIDs by removing the "failure-{portUuid}-" prefix
-    const extractFailureUuid = (handle: string): string | null => {
-      if (!handle || !handle.startsWith('failure-')) return null;
-      
-      // Remove 'failure-' prefix
-      const withoutPrefix = handle.substring(8); // 'failure-'.length = 8
-      
-      // Standard UUIDs are 36 characters long (including dashes)
-      // Format: XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
-      // So port UUID takes first 36 chars, then dash, then failure UUID
-      if (withoutPrefix.length < 37) return null; // At least portUuid + dash
-      
-      const portUuidLength = 36;
-      const dashAfterPortUuid = portUuidLength; // Position of dash after port UUID
-      
-      if (withoutPrefix.charAt(dashAfterPortUuid) !== '-') {
-        console.error('Expected dash after port UUID at position', dashAfterPortUuid);
-        return null;
-      }
-      
-      // Extract failure UUID (everything after port UUID and separating dash)
-      return withoutPrefix.substring(dashAfterPortUuid + 1);
-    };
+    // Find source and target nodes to get their handle mappings
+    const sourceNode = nodes.find(node => node.id === params.source);
+    const targetNode = nodes.find(node => node.id === params.target);
 
-    const sourceFailureUuid = extractFailureUuid(params.sourceHandle || '');
-    const targetFailureUuid = extractFailureUuid(params.targetHandle || '');
+    if (!sourceNode || !targetNode) {
+        message.error('Could not find source or target component node.');
+        return;
+    }
 
-    // Debug logging
-    console.log('🔍 Debug - sourceHandle:', params.sourceHandle);
-    console.log('🔍 Debug - targetHandle:', params.targetHandle);
-    console.log('🔍 Debug - extracted sourceFailureUuid:', sourceFailureUuid);
-    console.log('🔍 Debug - extracted targetFailureUuid:', targetFailureUuid);
-    
-    // Additional validation
-    if (sourceFailureUuid && sourceFailureUuid.length !== 36) {
-      console.warn('⚠️ Source failure UUID length is not 36 characters:', sourceFailureUuid.length);
-    }
-    if (targetFailureUuid && targetFailureUuid.length !== 36) {
-      console.warn('⚠️ Target failure UUID length is not 36 characters:', targetFailureUuid.length);
-    }
+    // Get failure UUIDs from the handle mappings stored in node data
+    const sourceHandleMap = sourceNode.data.handleToFailureMap as Map<string, string>;
+    const targetHandleMap = targetNode.data.handleToFailureMap as Map<string, string>;
+
+    const sourceFailureUuid = sourceHandleMap?.get(params.sourceHandle || '');
+    const targetFailureUuid = targetHandleMap?.get(params.targetHandle || '');
+
+
 
     if (!sourceFailureUuid || !targetFailureUuid) {
-        message.error('Could not determine source or target failure mode.');
+        message.error('Could not determine source or target failure mode from handle mapping.');
         return;
     }
     
@@ -461,7 +457,6 @@ export default function CrossCompFlow() {
     
     try {
       const result = await createCausationBetweenFailureModes(sourceFailureUuid, targetFailureUuid);
-      console.log("sourceFailureUuid, targetFailureUuid", sourceFailureUuid, targetFailureUuid);
       if (result.success) {
         message.success({ content: 'Causation created successfully!', key: 'create-causation', duration: 2 });
         await loadDataAndLayout(); // Reload everything
@@ -473,7 +468,7 @@ export default function CrossCompFlow() {
     } finally {
       setIsCreatingCausation(false);
     }
-  }, [isCreatingCausation, loadDataAndLayout]);
+  }, [isCreatingCausation, loadDataAndLayout, nodes]);
 
   const hideContextMenu = useCallback(() => setContextMenu(null), []);
 
