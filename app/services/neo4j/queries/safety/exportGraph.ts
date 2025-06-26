@@ -1,6 +1,30 @@
+/**
+ * @file Implements the full export of the safety-related graph from Neo4j.
+ */
 import { driver } from '@/app/services/neo4j/config';
 import { SafetyGraphData } from './types';
 
+/**
+ * Fetches a comprehensive snapshot of all safety-related data from the Neo4j database.
+ * This function performs a series of queries to gather all nodes and relationships
+ * that constitute the safety analysis graph.
+ *
+ * The data fetched includes:
+ * - All FAILUREMODE nodes and their properties.
+ * - All CAUSATION nodes and their properties.
+ * - All OCCURRENCE relationships, linking failures to their source elements.
+ * - All CAUSATION links, detailing cause-and-effect chains between failures.
+ * - All RISKRATING nodes and their links to failures.
+ * - All SAFETYTASKS nodes and their links.
+ * - All SAFETYREQ nodes and their links.
+ * - All SAFETYNOTE nodes and their links.
+ *
+ * This function is intended for features that require a complete overview of the
+ * safety graph, such as full graph visualizations or data exports.
+ *
+ * @returns A Promise that resolves to an object containing the success status,
+ *          an optional data object of type `SafetyGraphData`, and an optional message.
+ */
 export async function getSafetyGraph(): Promise<{
     success: boolean;
     data?: SafetyGraphData;
@@ -146,7 +170,9 @@ export async function getSafetyGraph(): Promise<{
             safetyNoteName: record.get('safetyNoteName'),
         }));
 
-/*         console.log("Debug: Export summary:");
+        // Uncomment this block for detailed debugging of the export process
+        /*
+        console.log("Debug: Export summary:");
         console.log(`- failures: ${failures.length}`);
         console.log(`- causations: ${causations.length}`);
         console.log(`- riskRatings: ${riskRatings.length}`);
@@ -158,7 +184,8 @@ export async function getSafetyGraph(): Promise<{
         console.log(`- riskRatingLinks: ${riskRatingLinks.length}`);
         console.log(`- safetyTaskLinks: ${safetyTaskLinks.length}`);
         console.log(`- safetyReqLinks: ${safetyReqLinks.length}`);
-        console.log(`- safetyNoteLinks: ${safetyNoteLinks.length}`); */
+        console.log(`- safetyNoteLinks: ${safetyNoteLinks.length}`);
+        */
 
         return {
             success: true,

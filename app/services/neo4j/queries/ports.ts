@@ -1,9 +1,19 @@
+/**
+ * @file Contains all Neo4j queries related to ARXML ports (P-Ports and R-Ports),
+ * their connections, and associated interfaces.
+ */
 import { driver } from '../config';
 import { QueryResult } from 'neo4j-driver';
 import { AssemblyContextInfo, ProvidedInterfaceInfo, PortInfo } from '../types';
 
 /**
- * Get assembly context information for a P_PORT_PROTOTYPE
+ * Retrieves the assembly context for a given P-Port (Provider Port).
+ * This query finds the software component that the P-Port is connected to
+ * via an assembly connector, effectively identifying the "other end" of the connection.
+ * It filters out the component that contains the P-Port itself.
+ *
+ * @param pPortUuid The UUID of the P_PORT_PROTOTYPE node.
+ * @returns A Promise that resolves to the raw Neo4j QueryResult containing assembly context info.
  */
 export const getAssemblyContextForPPort = async (pPortUuid: string): Promise<QueryResult<AssemblyContextInfo>> => {
   const session = driver.session(); 
@@ -36,7 +46,13 @@ export const getAssemblyContextForPPort = async (pPortUuid: string): Promise<Que
 };
 
 /**
- * Get assembly context information for an R_PORT_PROTOTYPE
+ * Retrieves the assembly context for a given R-Port (Receiver Port).
+ * This query finds the software component that the R-Port is connected to
+ * via an assembly connector. It also fetches details about the connected P-Port
+ * on the other side, including any associated failure modes and their ASIL ratings.
+ *
+ * @param rPortUuid The UUID of the R_PORT_PROTOTYPE node.
+ * @returns A Promise that resolves to the raw Neo4j QueryResult containing assembly context and provider port failure info.
  */
 export const getAssemblyContextForRPort = async (rPortUuid: string): Promise<QueryResult<AssemblyContextInfo>> => {
   const session = driver.session();
@@ -79,7 +95,12 @@ export const getAssemblyContextForRPort = async (rPortUuid: string): Promise<Que
 };
 
 /**
- * Get interface information for a specific port
+ * Fetches the interface information for a specific port (either P-Port or R-Port).
+ * An interface defines the "contract" for the port, such as a SENDER-RECEIVER or CLIENT-SERVER interface.
+ *
+ * @param portUuid The UUID of the port node.
+ * @returns A Promise that resolves to an object containing the success status and, if successful,
+ *          the `ProvidedInterfaceInfo` data.
  */
 export const getInformationForPort = async (portUuid: string): Promise<{
   success: boolean;
@@ -90,7 +111,9 @@ export const getInformationForPort = async (portUuid: string): Promise<{
   const session = driver.session();
   
   try {
-    // console.log(`🔍 Fetching interface information for port UUID: ${portUuid}`);
+    /*
+    console.log(`🔍 Fetching interface information for port UUID: ${portUuid}`);
+    */
     
     const result = await session.run(
       `MATCH (port) 
@@ -101,7 +124,9 @@ export const getInformationForPort = async (portUuid: string): Promise<{
     );
 
     if (result.records.length === 0) {
-      // console.log(`❌ No interface found for port UUID: ${portUuid}`);
+      /*
+      console.log(`❌ No interface found for port UUID: ${portUuid}`);
+      */
       return {
         success: false,
         message: `No interface reference found for port with UUID: ${portUuid}`,
@@ -126,7 +151,9 @@ export const getInformationForPort = async (portUuid: string): Promise<{
       uuid: interfaceRef.properties.uuid || '',
     };
 
-    // console.log(`✅ Interface information retrieved for port ${portUuid}:`, interfaceInfo);
+    /*
+    console.log(`✅ Interface information retrieved for port ${portUuid}:`, interfaceInfo);
+    */
 
     return {
       success: true,
@@ -148,7 +175,11 @@ export const getInformationForPort = async (portUuid: string): Promise<{
 };
 
 /**
- * Get provider ports (P_PORT_PROTOTYPE) for a given SW component UUID
+ * Retrieves all provider ports (P_PORT_PROTOTYPE) contained within a given software component.
+ *
+ * @param swComponentUuid The UUID of the software component.
+ * @returns A Promise that resolves to an object containing the success status and, if successful,
+ *          an array of `PortInfo` objects.
  */
 export const getProviderPortsForSWComponent = async (swComponentUuid: string): Promise<{
   success: boolean;
@@ -159,7 +190,9 @@ export const getProviderPortsForSWComponent = async (swComponentUuid: string): P
   const session = driver.session();
   
   try {
-    // console.log(`🔍 Fetching provider ports for SW component UUID: ${swComponentUuid}`);
+    /*
+    console.log(`🔍 Fetching provider ports for SW component UUID: ${swComponentUuid}`);
+    */
     
     const result = await session.run(
       `MATCH (SWcomponent) 
@@ -170,7 +203,9 @@ export const getProviderPortsForSWComponent = async (swComponentUuid: string): P
     );
 
     if (result.records.length === 0) {
-      // console.log(`❌ No provider ports found for SW component UUID: ${swComponentUuid}`);
+      /*
+      console.log(`❌ No provider ports found for SW component UUID: ${swComponentUuid}`);
+      */
       return {
         success: true,
         data: [],
@@ -189,7 +224,9 @@ export const getProviderPortsForSWComponent = async (swComponentUuid: string): P
       };
     });
 
-    // console.log(`✅ Found ${providerPorts.length} provider ports for SW component ${swComponentUuid}:`, providerPorts);
+    /*
+    console.log(`✅ Found ${providerPorts.length} provider ports for SW component ${swComponentUuid}:`, providerPorts);
+    */
 
     return {
       success: true,
@@ -211,7 +248,11 @@ export const getProviderPortsForSWComponent = async (swComponentUuid: string): P
 };
 
 /**
- * Get receiver ports (R_PORT_PROTOTYPE) for a given SW component UUID
+ * Retrieves all receiver ports (R_PORT_PROTOTYPE) contained within a given software component.
+ *
+ * @param swComponentUuid The UUID of the software component.
+ * @returns A Promise that resolves to an object containing the success status and, if successful,
+ *          an array of `PortInfo` objects.
  */
 export const getReceiverPortsForSWComponent = async (swComponentUuid: string): Promise<{
   success: boolean;
@@ -222,7 +263,9 @@ export const getReceiverPortsForSWComponent = async (swComponentUuid: string): P
   const session = driver.session();
   
   try {
-    // console.log(`🔍 Fetching receiver ports for SW component UUID: ${swComponentUuid}`);
+    /*
+    console.log(`🔍 Fetching receiver ports for SW component UUID: ${swComponentUuid}`);
+    */
     
     const result = await session.run(
       `MATCH (SWcomponent) 
@@ -233,7 +276,9 @@ export const getReceiverPortsForSWComponent = async (swComponentUuid: string): P
     );
 
     if (result.records.length === 0) {
-      // console.log(`❌ No receiver ports found for SW component UUID: ${swComponentUuid}`);
+      /*
+      console.log(`❌ No receiver ports found for SW component UUID: ${swComponentUuid}`);
+      */
       return {
         success: true,
         data: [],
@@ -252,7 +297,9 @@ export const getReceiverPortsForSWComponent = async (swComponentUuid: string): P
       };
     });
 
-    // console.log(`✅ Found ${receiverPorts.length} receiver ports for SW component ${swComponentUuid}:`, receiverPorts);
+    /*
+    console.log(`✅ Found ${receiverPorts.length} receiver ports for SW component ${swComponentUuid}:`, receiverPorts);
+    */
 
     return {
       success: true,
@@ -274,9 +321,13 @@ export const getReceiverPortsForSWComponent = async (swComponentUuid: string): P
 };
 
 /**
- * Find the source package for R-Ports that have a MODE_SWITCH_INTERFACE.
- * This function traces through the required interface to find the source package
- * that contains the MODE_SWITCH_INTERFACE.
+ * For a given R-Port that is part of a MODE-SWITCH-INTERFACE, this query finds the
+ * "partner" P-Port on the other side of the connection. This is useful for tracing
+ * mode switch dependencies.
+ *
+ * @param rPortUuid The UUID of the R_PORT_PROTOTYPE that has a MODE-SWITCH-INTERFACE.
+ * @returns A Promise that resolves to an object containing the success status and, if successful,
+ *          an array of partner port details.
  */
 export const getSourcePackageForModeSwitchInterface = async (rPortUuid: string): Promise<{
   success: boolean;
@@ -291,7 +342,9 @@ export const getSourcePackageForModeSwitchInterface = async (rPortUuid: string):
   const session = driver.session();
   
   try {
-    // console.log(`🔍 Finding source package for MODE_SWITCH_INTERFACE. R-Port UUID: ${rPortUuid}`);
+    /*
+    console.log(`🔍 Fetching source package for mode switch interface, R-Port UUID: ${rPortUuid}`);
+    */
     
     const result = await session.run(
       `MATCH (Rports) WHERE Rports.uuid = $rPortUuid
@@ -310,11 +363,12 @@ export const getSourcePackageForModeSwitchInterface = async (rPortUuid: string):
     );
 
     if (result.records.length === 0) {
-      // console.log(`❌ No source package found for MODE_SWITCH_INTERFACE with R-Port UUID: ${rPortUuid}`);
+      /*
+      console.log(`❌ No source package found for R-Port UUID: ${rPortUuid}`);
+      */
       return {
-        success: true,
-        data: [],
-        message: `No source package found for MODE_SWITCH_INTERFACE with R-Port UUID: ${rPortUuid}`,
+        success: false,
+        message: `No source package found for R-Port with UUID: ${rPortUuid}`,
       };
     }
 
@@ -325,7 +379,9 @@ export const getSourcePackageForModeSwitchInterface = async (rPortUuid: string):
       partnerPath: record.get('partnerPath') || '',
     }));
 
-    // console.log(`✅ Found ${partners.length} source packages for MODE_SWITCH_INTERFACE with R-Port ${rPortUuid}:`, partners);
+    /*
+    console.log(`✅ Found ${partners.length} source packages for R-Port ${rPortUuid}:`, partners);
+    */
 
     return {
       success: true,
