@@ -5,6 +5,8 @@ import { Select, Alert, Spin, Card, Divider, Checkbox } from 'antd';
 import { NodeCollapseOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import * as d3 from 'd3';
 import { getAllSwComponentPrototypes, getComponentDependencyGraph, ComponentVisualizationResult } from '@/app/services/ArxmlToNeoService';
+import { getFailuresForPorts } from '@/app/services/neo4j/queries/safety/failureModes';
+import { getEffectFailureModes } from '@/app/services/neo4j/queries/safety/causation';
 
 const { Option } = Select;
 
@@ -18,7 +20,7 @@ interface SwcPrototype {
 interface D3Node extends d3.SimulationNodeDatum {
   id: string;
   name: string;
-  RenderingInfoType: 'center' | 'partner' | 'port';
+  RenderingInfoType: 'center' | 'partner' | 'port' | 'failure';
   subtype?: 'P_PORT' | 'R_PORT' | 'INTERFACE' | 'UNKNOWN';
   parentId?: string;
   group: number;
@@ -30,16 +32,38 @@ interface D3Node extends d3.SimulationNodeDatum {
   interfaceGroup?: string;
   interfaceName?: string;
   arxmlPath?: string;
+  // Failure mode specific properties
+  asil?: string;
+  failureDescription?: string;
+  isFailureMode?: boolean;
+  connectedPortId?: string;
 }
 
 interface D3Link extends d3.SimulationLinkDatum<D3Node> {
   source: string | D3Node;
   target: string | D3Node;
-  type: 'connection' | 'contains';
+  type: 'connection' | 'contains' | 'failure' | 'causation';
   connectionType?: string;
   strokeWidth?: number;
   strokeColor?: string;
   strokeDasharray?: string | null;
+}
+
+interface FailureModeData {
+  failureUuid: string;
+  failureName: string | null;
+  failureDescription: string | null;
+  asil: string | null;
+  relationshipType: string;
+  connectedPortId: string;
+}
+
+interface CausationData {
+  causationUuid: string;
+  causationName: string | null;
+  effectFailureModeUuid: string;
+  effectFailureModeName: string | null;
+  sourceFailureModeUuid: string; // This will be added when we collect the data
 }
 
 const SWCProtoGraph: React.FC = () => {
@@ -49,6 +73,16 @@ const SWCProtoGraph: React.FC = () => {
   const [loadingPrototypes, setLoadingPrototypes] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [graphData, setGraphData] = useState<ComponentVisualizationResult | null>(null);
+  
+  // Failure mode state
+  const [failureModeData, setFailureModeData] = useState<FailureModeData[]>([]);
+  const [loadingFailureModes, setLoadingFailureModes] = useState(false);
+  const [showFailureModes, setShowFailureModes] = useState(true);
+  
+  // Causation state
+  const [causationData, setCausationData] = useState<CausationData[]>([]);
+  const [loadingCausations, setLoadingCausations] = useState(false);
+  const [showCausations, setShowCausations] = useState(true);
   
   // Visibility state for node types
   const [visibleNodeTypes, setVisibleNodeTypes] = useState<Set<string>>(new Set([
@@ -61,7 +95,8 @@ const SWCProtoGraph: React.FC = () => {
     'P_PORT_PROTOTYPE',
     'R_PORT_PROTOTYPE',
     'VirtualArxmlRefTarget',
-    'COMPOSITION_SW_COMPONENT_TYPE'
+    'COMPOSITION_SW_COMPONENT_TYPE',
+    'FAILUREMODE'
   ]));
   
   // Visibility state for relationship types
@@ -72,7 +107,10 @@ const SWCProtoGraph: React.FC = () => {
     'TARGET-R-PORT-REF',
     'PROVIDED-INTERFACE-TREF',
     'CONTAINS',
-    'REQUIRED-INTERFACE-TREF'
+    'REQUIRED-INTERFACE-TREF',
+    'OCCURRENCE',
+    'FIRST',
+    'THEN'
   ]));
   
   const svgRef = useRef<SVGSVGElement>(null);
@@ -100,24 +138,37 @@ const SWCProtoGraph: React.FC = () => {
   const createTooltipText = (d: D3Node) => {
     let tooltip = `Name: ${d.name}\nUUID: ${d.id}\nRenderingInfoType: ${d.RenderingInfoType}`;
     
-    if (d.subtype) {
-      tooltip += `\nSubtype: ${d.subtype}`;
-    }
-    
-    if (d.prototype) {
-      tooltip += `\nPrototype: ${d.prototype}`;
-    }
-    
-    if (d.interfaceGroup) {
-      tooltip += `\nInterface Group: ${d.interfaceGroup}`;
-    }
-    
-    if (d.interfaceName) {
-      tooltip += `\nInterface: ${d.interfaceName}`;
-    }
-    
-    if (d.arxmlPath) {
-      tooltip += `\nARXML Path: ${d.arxmlPath}`;
+    if (d.isFailureMode) {
+      tooltip += `\nType: Failure Mode`;
+      if (d.asil) {
+        tooltip += `\nASIL: ${d.asil}`;
+      }
+      if (d.failureDescription) {
+        tooltip += `\nDescription: ${d.failureDescription}`;
+      }
+      if (d.connectedPortId) {
+        tooltip += `\nConnected Port: ${d.connectedPortId}`;
+      }
+    } else {
+      if (d.subtype) {
+        tooltip += `\nSubtype: ${d.subtype}`;
+      }
+      
+      if (d.prototype) {
+        tooltip += `\nPrototype: ${d.prototype}`;
+      }
+      
+      if (d.interfaceGroup) {
+        tooltip += `\nInterface Group: ${d.interfaceGroup}`;
+      }
+      
+      if (d.interfaceName) {
+        tooltip += `\nInterface: ${d.interfaceName}`;
+      }
+      
+      if (d.arxmlPath) {
+        tooltip += `\nARXML Path: ${d.arxmlPath}`;
+      }
     }
     
     tooltip += '\n\n🖱️ Drag to move and pin\n⏸️ Double-click to unpin\n🖱️ Right-click to copy complete data';
@@ -181,6 +232,110 @@ const SWCProtoGraph: React.FC = () => {
     fetchDependencyGraph();
   }, [selectedPrototype]);
 
+  // Fetch failure modes for ports when graph data changes
+  useEffect(() => {
+    if (!graphData || !showFailureModes) {
+      setFailureModeData([]);
+      return;
+    }
+
+    const fetchFailureModesForPorts = async () => {
+      try {
+        setLoadingFailureModes(true);
+        
+        // Extract port nodes from the graph data
+        const portNodes = graphData.nodes.filter(node => 
+          node.type === 'P_PORT_PROTOTYPE' || node.type === 'R_PORT_PROTOTYPE'
+        );
+
+        if (portNodes.length === 0) {
+          setFailureModeData([]);
+          return;
+        }
+
+        // console.log('🔍 Fetching failure modes for ports:', portNodes.length);
+        
+        // Make parallel calls to get failures for each port
+        const failurePromises = portNodes.map(async (portNode) => {
+          try {
+            const result = await getFailuresForPorts(portNode.id);
+            if (result.success && result.data) {
+              return result.data.map(failure => ({
+                ...failure,
+                connectedPortId: portNode.id
+              }));
+            }
+            return [];
+          } catch (error) {
+            console.error(`❌ Error fetching failures for port ${portNode.id}:`, error);
+            return [];
+          }
+        });
+
+        const failureResults = await Promise.all(failurePromises);
+        const allFailures = failureResults.flat();
+        
+        // console.log('✅ Loaded failure modes:', allFailures.length);
+        setFailureModeData(allFailures);
+        
+      } catch (error) {
+        console.error('❌ Error fetching failure modes:', error);
+        setFailureModeData([]);
+      } finally {
+        setLoadingFailureModes(false);
+      }
+    };
+
+    fetchFailureModesForPorts();
+  }, [graphData, showFailureModes]);
+
+  // Fetch causation relationships when failure modes are loaded
+  useEffect(() => {
+    if (!failureModeData.length || !showCausations) {
+      setCausationData([]);
+      return;
+    }
+
+    const fetchCausationRelationships = async () => {
+      try {
+        setLoadingCausations(true);
+        
+        // console.log('🔗 Fetching causation relationships for failure modes:', failureModeData.length);
+        
+        // Make parallel calls to get causation effects for each failure mode
+        const causationPromises = failureModeData.map(async (failureMode) => {
+          try {
+            const result = await getEffectFailureModes(failureMode.failureUuid);
+            if (result.success && result.data) {
+              return result.data.map(causation => ({
+                ...causation,
+                sourceFailureModeUuid: failureMode.failureUuid
+              }));
+            }
+            return [];
+          } catch (error) {
+            console.error(`❌ Error fetching causations for failure mode ${failureMode.failureUuid}:`, error);
+            return [];
+          }
+        });
+
+        const causationResults = await Promise.all(causationPromises);
+        const allCausations = causationResults.flat();
+        
+        // console.log('✅ Loaded causation relationships:', allCausations.length);
+        setCausationData(allCausations);
+        
+      } catch (error) {
+        console.error('❌ Error fetching causation relationships:', error);
+        setCausationData([]);
+      } finally {
+        setLoadingCausations(false);
+      }
+    };
+
+    fetchCausationRelationships();
+  }, [failureModeData, showCausations]);
+
   // Helper functions for managing visibility
   const toggleNodeTypeVisibility = (nodeType: string) => {
     setVisibleNodeTypes(prev => {
@@ -239,20 +394,21 @@ const SWCProtoGraph: React.FC = () => {
     });
   }, [graphData]); // Only depend on graphData, not the visibility sets
 
-  // Create D3 visualization when graph data or visibility changes
+  // Create D3 visualization when graph data, failure modes, causations, or visibility changes
   useEffect(() => {
     if (!graphData || !svgRef.current) return;
 
     // console.log('🎨 Creating D3 visualization with data:', graphData);
-    createD3Visualization(graphData);
-  }, [graphData, visibleNodeTypes, visibleRelationshipTypes]);
+    createD3Visualization(graphData, failureModeData, causationData);
+  }, [graphData, failureModeData, causationData, visibleNodeTypes, visibleRelationshipTypes, showFailureModes, showCausations]);
 
-  const createD3Visualization = useCallback((data: ComponentVisualizationResult) => {
+  const createD3Visualization = useCallback((data: ComponentVisualizationResult, failureData: FailureModeData[] = [], causationData: CausationData[] = []) => {
     if (!svgRef.current || !containerRef.current) return;
 
     // console.log('🎨 Creating D3 visualization with simplified data:', data);
     // console.log('📊 Nodes count:', data.nodes?.length || 0);
     // console.log('📊 Relationships count:', data.relationships?.length || 0);
+    // console.log('📊 Failure modes count:', failureData?.length || 0);
     // console.log('📊 Metadata:', data.metadata);
     
     // Log all available node types and relationship types
@@ -388,6 +544,26 @@ const SWCProtoGraph: React.FC = () => {
       });
     });
 
+    // Add failure mode nodes if they should be visible and shown
+    if (showFailureModes && visibleNodeTypes.has('FAILUREMODE') && failureData.length > 0) {
+      failureData.forEach((failure) => {
+        nodes.push({
+          id: failure.failureUuid,
+          name: failure.failureName || 'Unknown Failure',
+          RenderingInfoType: 'failure',
+          group: 11, // New group for failure modes
+          size: 14,
+          shape: 'circle',
+          nodeLabel: 'FAILUREMODE',
+          prototype: 'FAILUREMODE',
+          isFailureMode: true,
+          asil: failure.asil || undefined,
+          failureDescription: failure.failureDescription || undefined,
+          connectedPortId: failure.connectedPortId
+        });
+      });
+    }
+
     // Convert relationships to D3 links
     // let filteredRelTypeCount = 0;
     // let filteredNodeVisibilityCount = 0;
@@ -456,6 +632,15 @@ const SWCProtoGraph: React.FC = () => {
           strokeWidth = 1;
           strokeColor = '#9C27B0'; // Purple
           break;
+        case 'OCCURRENCE':
+          strokeWidth = 2;
+          strokeColor = '#f44336'; // Red
+          break;
+        case 'CAUSATION':
+          strokeWidth = 3;
+          strokeColor = '#9c27b0'; // Purple
+          strokeDasharray = '5,5'; // Dashed
+          break;
         default:
           strokeWidth = 1;
           strokeColor = '#666';
@@ -471,6 +656,51 @@ const SWCProtoGraph: React.FC = () => {
         strokeDasharray: strokeDasharray
       });
     });
+
+    // Add failure mode relationships (OCCURRENCE) if failure modes are shown
+    if (showFailureModes && visibleRelationshipTypes.has('OCCURRENCE') && failureData.length > 0) {
+      failureData.forEach((failure) => {
+        // Check if both failure node and connected port are visible
+        const failureNodeExists = nodes.some(n => n.id === failure.failureUuid);
+        const portNodeExists = nodes.some(n => n.id === failure.connectedPortId);
+        
+        if (failureNodeExists && portNodeExists) {
+          links.push({
+            source: failure.failureUuid,
+            target: failure.connectedPortId,
+            type: 'failure',
+            connectionType: 'OCCURRENCE',
+            strokeWidth: 2,
+            strokeColor: '#f44336', // Red color for failure relationships
+            strokeDasharray: null
+          });
+        }
+      });
+    }
+
+    // Add causation relationships between failure modes if causations are shown
+    if (showCausations && causationData.length > 0) {
+      causationData.forEach((causation) => {
+        // Check if both source and target failure nodes are visible
+        const sourceFailureExists = nodes.some(n => n.id === causation.sourceFailureModeUuid);
+        const targetFailureExists = nodes.some(n => n.id === causation.effectFailureModeUuid);
+        
+        if (sourceFailureExists && targetFailureExists) {
+          // Add direct causation link from source failure to effect failure
+          if (visibleRelationshipTypes.has('FIRST') || visibleRelationshipTypes.has('THEN')) {
+            links.push({
+              source: causation.sourceFailureModeUuid,
+              target: causation.effectFailureModeUuid,
+              type: 'causation',
+              connectionType: 'CAUSATION',
+              strokeWidth: 3,
+              strokeColor: '#9c27b0', // Purple color for causation relationships
+              strokeDasharray: '5,5' // Dashed line to distinguish from other relationships
+            });
+          }
+        }
+      });
+    }
 
     // console.log('📊 D3 Graph Data:', { nodes: nodes.length, links: links.length });
     // console.log('📊 Filtering Summary:', {
@@ -530,6 +760,8 @@ const SWCProtoGraph: React.FC = () => {
           return '#E0E0E0'; // Light Gray
         case 'COMPOSITION_SW_COMPONENT_TYPE':
           return '#C8E6C9'; // Light Green
+        case 'FAILUREMODE':
+          return '#ffcdd2'; // Light red for failure modes
         default:
           return '#9E9E9E'; // Default gray
       }
@@ -557,6 +789,8 @@ const SWCProtoGraph: React.FC = () => {
           return '#757575'; // Medium gray border
         case 'COMPOSITION_SW_COMPONENT_TYPE':
           return '#4CAF50'; // Green border
+        case 'FAILUREMODE':
+          return '#d32f2f'; // Dark red border for failure modes
         default:
           return '#666';
       }
@@ -578,6 +812,8 @@ const SWCProtoGraph: React.FC = () => {
           return 2; // Medium border
         case 'COMPOSITION_SW_COMPONENT_TYPE':
           return 2;
+        case 'FAILUREMODE':
+          return 2; // Medium border for failure modes
         default:
           return 1;
       }
@@ -745,6 +981,19 @@ const SWCProtoGraph: React.FC = () => {
       .attr('fill', '#00695C')
       .style('pointer-events', 'none');
 
+    // Add text labels for FAILUREMODE nodes (F)
+    const failureLabels = nodeGroup.selectAll('text.failure-label')
+      .data(nodes.filter(d => d.shape === 'circle' && d.nodeLabel === 'FAILUREMODE'))
+      .enter().append('text')
+      .attr('class', 'failure-label')
+      .text('F')
+      .attr('font-size', '10px')
+      .attr('font-weight', 'bold')
+      .attr('text-anchor', 'middle')
+      .attr('dy', '0.3em')
+      .attr('fill', '#d32f2f')
+      .style('pointer-events', 'none');
+
     // Combine all interactive nodes for unified behavior
     const allNodes = nodeGroup.selectAll('circle, rect, path.half-circle, path.triangle');
 
@@ -855,6 +1104,10 @@ const SWCProtoGraph: React.FC = () => {
         .attr('x', (d: D3Node) => d.x || 0)
         .attr('y', (d: D3Node) => d.y || 0);
 
+      failureLabels
+        .attr('x', (d: D3Node) => d.x || 0)
+        .attr('y', (d: D3Node) => d.y || 0);
+
       label
         .attr('x', (d: D3Node) => d.x || 0)
         .attr('y', (d: D3Node) => d.y || 0);
@@ -909,7 +1162,7 @@ const SWCProtoGraph: React.FC = () => {
       
       // console.log('📍 Unpinned node:', node.name);
     });
-  }, [visibleNodeTypes, visibleRelationshipTypes]);
+  }, [visibleNodeTypes, visibleRelationshipTypes, showFailureModes, showCausations]);
 
   const selectedPrototypeName = prototypes.find(p => p.uuid === selectedPrototype)?.name || '';
 
@@ -963,6 +1216,20 @@ const SWCProtoGraph: React.FC = () => {
         </div>
       )}
 
+      {loadingFailureModes && (
+        <div style={{ textAlign: 'center', padding: '20px' }}>
+          <Spin size="small" />
+          <span style={{ marginLeft: '10px' }}>Loading failure modes...</span>
+        </div>
+      )}
+
+      {loadingCausations && (
+        <div style={{ textAlign: 'center', padding: '20px' }}>
+          <Spin size="small" />
+          <span style={{ marginLeft: '10px' }}>Loading causation relationships...</span>
+        </div>
+      )}
+
       {graphData && !loading && (
         <>
           <Divider orientation="left">
@@ -970,10 +1237,30 @@ const SWCProtoGraph: React.FC = () => {
           </Divider>
           
           <div style={{ marginBottom: '16px' }}>
-            <div style={{ display: 'flex', gap: '20px', fontSize: '14px' }}>
+            <div style={{ display: 'flex', gap: '20px', fontSize: '14px', alignItems: 'center', flexWrap: 'wrap' }}>
               <span><strong>Nodes:</strong> {graphData.metadata.totalNodes}</span>
               <span><strong>Relationships:</strong> {graphData.metadata.totalRelationships}</span>
               <span><strong>Component:</strong> {graphData.metadata.componentName}</span>
+              {failureModeData.length > 0 && (
+                <span><strong>Failure Modes:</strong> {failureModeData.length}</span>
+              )}
+              {causationData.length > 0 && (
+                <span><strong>Causations:</strong> {causationData.length}</span>
+              )}
+              <Checkbox
+                checked={showFailureModes}
+                onChange={(e) => setShowFailureModes(e.target.checked)}
+                style={{ marginLeft: '10px' }}
+              >
+                Show Failure Modes
+              </Checkbox>
+              <Checkbox
+                checked={showCausations}
+                onChange={(e) => setShowCausations(e.target.checked)}
+                style={{ marginLeft: '10px' }}
+              >
+                Show Causations
+              </Checkbox>
             </div>
           </div>
 
@@ -1054,6 +1341,12 @@ const SWCProtoGraph: React.FC = () => {
                 >
                   <span style={{ color: '#C8E6C9' }}>⚬ COMPOSITION_SW_COMPONENT_TYPE</span>
                 </Checkbox>
+                <Checkbox
+                  checked={visibleNodeTypes.has('FAILUREMODE')}
+                  onChange={() => toggleNodeTypeVisibility('FAILUREMODE')}
+                >
+                  <span style={{ color: '#ffcdd2' }}>● FAILUREMODE</span>
+                </Checkbox>
               </div>
             </div>
             
@@ -1102,16 +1395,40 @@ const SWCProtoGraph: React.FC = () => {
                 >
                   <span style={{ color: '#FF9800' }}>— PROVIDED-INTERFACE-TREF</span>
                 </Checkbox>
+                <Checkbox
+                  checked={visibleRelationshipTypes.has('OCCURRENCE')}
+                  onChange={() => toggleRelationshipTypeVisibility('OCCURRENCE')}
+                >
+                  <span style={{ color: '#f44336' }}>— OCCURRENCE</span>
+                </Checkbox>
+                <Checkbox
+                  checked={visibleRelationshipTypes.has('FIRST')}
+                  onChange={() => toggleRelationshipTypeVisibility('FIRST')}
+                >
+                  <span style={{ color: '#9c27b0' }}>⋯ FIRST (Causation)</span>
+                </Checkbox>
+                <Checkbox
+                  checked={visibleRelationshipTypes.has('THEN')}
+                  onChange={() => toggleRelationshipTypeVisibility('THEN')}
+                >
+                  <span style={{ color: '#9c27b0' }}>⋯ THEN (Causation)</span>
+                </Checkbox>
               </div>
             </div>
             <div>
               <strong>Controls:</strong>
               <span style={{ marginLeft: '10px' }}>🖱️ Drag nodes to reposition and pin</span>
               <span style={{ marginLeft: '10px' }}>⏸️ Double-click node to unpin</span>
-              <span style={{ marginLeft: '10px' }}>🖱️ Right-click node to copy complete component data</span>
+              <span style={{ marginLeft: '10px' }}>🖱️ Right-click node to copy complete data</span>
               <span style={{ marginLeft: '10px' }}>🔍 Scroll to zoom in/out</span>
               <span style={{ marginLeft: '10px' }}>🖱️ Drag background to pan</span>
               <span style={{ marginLeft: '10px' }}>⏸️ Double-click background to reset zoom</span>
+            </div>
+            <div style={{ marginTop: '8px', fontSize: '12px', color: '#666' }}>
+              <strong>Legend:</strong>
+              <span style={{ marginLeft: '10px' }}>F = Failure Mode (light red circles with ASIL ratings)</span>
+              <span style={{ marginLeft: '10px' }}>Red lines = OCCURRENCE relationships to ports</span>
+              <span style={{ marginLeft: '10px' }}>Purple dashed lines = CAUSATION relationships between failure modes</span>
             </div>
           </div>
         </>

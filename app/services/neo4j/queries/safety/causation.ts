@@ -160,3 +160,89 @@ export const deleteCausationNode = async (
     await session.close();
   }
 };
+
+/**
+ * Get the causation nodes and connected failure mode effects for a given failure mode cause
+ * @param failureModeUuid UUID of the failure mode that acts as a cause
+ */
+export const getEffectFailureModes = async (
+  failureModeUuid: string
+): Promise<{
+  success: boolean;
+  data?: Array<{
+    causationUuid: string;
+    causationName: string | null;
+    effectFailureModeUuid: string;
+    effectFailureModeName: string | null;
+  }>;
+  message?: string;
+  error?: string;
+}> => {
+  const session = driver.session();
+  
+  try {
+    // First verify the failure mode exists
+    const verificationResult = await session.run(
+      `MATCH (fmCause:FAILUREMODE)
+       WHERE fmCause.uuid = $failureModeUuid
+       RETURN fmCause.name AS causeName`,
+      { failureModeUuid }
+    );
+
+    if (verificationResult.records.length === 0) {
+      return {
+        success: false,
+        message: `No failure mode found with UUID: ${failureModeUuid}`,
+      };
+    }
+
+    const causeName = verificationResult.records[0].get('causeName');
+
+    // Get the causation nodes and connected failure mode effects
+    const result = await session.run(
+      `MATCH (fmCause:FAILUREMODE) 
+       WHERE fmCause.uuid = $failureModeUuid
+       MATCH (fmCause)<-[:FIRST]-(causation:CAUSATION) 
+       MATCH (causation)-[:THEN]->(fmEffect:FAILUREMODE) 
+       RETURN causation.uuid AS causationUuid, 
+              causation.name AS causationName, 
+              fmEffect.uuid AS fmEffectUuid, 
+              fmEffect.name AS fmEffectName
+       ORDER BY causation.name, fmEffect.name`,
+      { failureModeUuid }
+    );
+
+    if (result.records.length === 0) {
+      return {
+        success: true,
+        data: [],
+        message: `No effect failure modes found for cause: "${causeName}"`,
+      };
+    }
+
+    const effectFailureModes = result.records.map(record => ({
+      causationUuid: record.get('causationUuid'),
+      causationName: record.get('causationName'),
+      effectFailureModeUuid: record.get('fmEffectUuid'),
+      effectFailureModeName: record.get('fmEffectName'),
+    }));
+
+    return {
+      success: true,
+      data: effectFailureModes,
+      message: `Found ${effectFailureModes.length} effect failure mode(s) for cause: "${causeName}"`,
+    };
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error(`❌ Error fetching effect failure modes for UUID ${failureModeUuid}:`, error);
+    
+    return {
+      success: false,
+      message: `Error fetching effect failure modes for failure mode ${failureModeUuid}.`,
+      error: errorMessage,
+    };
+  } finally {
+    await session.close();
+  }
+};

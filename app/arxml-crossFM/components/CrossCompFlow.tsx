@@ -409,11 +409,47 @@ export default function CrossCompFlow() {
   const onConnect = useCallback(async (params: Connection) => {
     if (isCreatingCausation) return;
 
-    const sourceHandleParts = params.sourceHandle?.split('-');
-    const targetHandleParts = params.targetHandle?.split('-');
+    // Handle pattern: failure-{portUuid}-{failureUuid}
+    // Extract failure UUIDs by removing the "failure-{portUuid}-" prefix
+    const extractFailureUuid = (handle: string): string | null => {
+      if (!handle || !handle.startsWith('failure-')) return null;
+      
+      // Remove 'failure-' prefix
+      const withoutPrefix = handle.substring(8); // 'failure-'.length = 8
+      
+      // Standard UUIDs are 36 characters long (including dashes)
+      // Format: XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+      // So port UUID takes first 36 chars, then dash, then failure UUID
+      if (withoutPrefix.length < 37) return null; // At least portUuid + dash
+      
+      const portUuidLength = 36;
+      const dashAfterPortUuid = portUuidLength; // Position of dash after port UUID
+      
+      if (withoutPrefix.charAt(dashAfterPortUuid) !== '-') {
+        console.error('Expected dash after port UUID at position', dashAfterPortUuid);
+        return null;
+      }
+      
+      // Extract failure UUID (everything after port UUID and separating dash)
+      return withoutPrefix.substring(dashAfterPortUuid + 1);
+    };
 
-    const sourceFailureUuid = sourceHandleParts?.[sourceHandleParts.length - 1];
-    const targetFailureUuid = targetHandleParts?.[targetHandleParts.length - 1];
+    const sourceFailureUuid = extractFailureUuid(params.sourceHandle || '');
+    const targetFailureUuid = extractFailureUuid(params.targetHandle || '');
+
+    // Debug logging
+    console.log('🔍 Debug - sourceHandle:', params.sourceHandle);
+    console.log('🔍 Debug - targetHandle:', params.targetHandle);
+    console.log('🔍 Debug - extracted sourceFailureUuid:', sourceFailureUuid);
+    console.log('🔍 Debug - extracted targetFailureUuid:', targetFailureUuid);
+    
+    // Additional validation
+    if (sourceFailureUuid && sourceFailureUuid.length !== 36) {
+      console.warn('⚠️ Source failure UUID length is not 36 characters:', sourceFailureUuid.length);
+    }
+    if (targetFailureUuid && targetFailureUuid.length !== 36) {
+      console.warn('⚠️ Target failure UUID length is not 36 characters:', targetFailureUuid.length);
+    }
 
     if (!sourceFailureUuid || !targetFailureUuid) {
         message.error('Could not determine source or target failure mode.');
@@ -425,6 +461,7 @@ export default function CrossCompFlow() {
     
     try {
       const result = await createCausationBetweenFailureModes(sourceFailureUuid, targetFailureUuid);
+      console.log("sourceFailureUuid, targetFailureUuid", sourceFailureUuid, targetFailureUuid);
       if (result.success) {
         message.success({ content: 'Causation created successfully!', key: 'create-causation', duration: 2 });
         await loadDataAndLayout(); // Reload everything
