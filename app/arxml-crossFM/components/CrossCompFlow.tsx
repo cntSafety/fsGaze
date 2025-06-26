@@ -10,7 +10,7 @@
  */
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, memo } from 'react';
 import ReactFlow, {
     Controls,
     Background,
@@ -19,6 +19,7 @@ import ReactFlow, {
     ConnectionLineType,
     Position,
     Handle,
+    NodeProps,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { Card, Typography, Space, Tag, Button, Spin, Tooltip } from 'antd';
@@ -27,15 +28,25 @@ import InteractiveSmoothStepEdge from './InteractiveSmoothStepEdge';
 import { getAsilColor } from '@/app/components/asilColors';
 import { useSafetyData } from '@/app/arxml-crossFM/hooks/useSafetyData';
 import { useCausationManager } from '@/app/arxml-crossFM/hooks/useCausationManager';
+import PortConnectionDetailsModal from './PortConnectionDetailsModal';
 
 const { Text } = Typography;
+
+interface SwComponentNodeData {
+  component: any;
+  providerPorts: any[];
+  receiverPorts: any[];
+  handleToFailureMap: Map<string, string>;
+  onPortClick: (port: any, type: 'provider' | 'receiver') => void;
+}
 
 /**
  * A custom React Flow node to display a Software Component (SWC) and its ports.
  * This is a pure presentation component; all its data is passed in via props.
  */
-function SwComponentNode({ data }: { data: any }) {
-  const { component, providerPorts, receiverPorts } = data;
+const SwComponentNode = memo(({ data }: NodeProps<SwComponentNodeData>) => {
+  const { component, providerPorts, receiverPorts, onPortClick } = data;
+  const nodeRef = React.useRef<HTMLDivElement>(null);
   
   return (
     <div style={{
@@ -78,7 +89,7 @@ function SwComponentNode({ data }: { data: any }) {
           minWidth: '120px'
         }}>
           {receiverPorts.map((port: any) => (
-            <div key={port.uuid}>
+            <div key={port.uuid} style={{ cursor: 'pointer' }} onClick={() => onPortClick(port, 'receiver')}>
               <Tooltip title={port.name} placement="left">
                 <div style={{
                   fontSize: '10px',
@@ -153,7 +164,7 @@ function SwComponentNode({ data }: { data: any }) {
           minWidth: '120px'
         }}>
           {providerPorts.map((port: any) => (
-            <div key={port.uuid}>
+            <div key={port.uuid} style={{ cursor: 'pointer' }} onClick={() => onPortClick(port, 'provider')}>
               <Tooltip title={port.name} placement="right">
                 <div style={{
                   fontSize: '10px',
@@ -232,7 +243,7 @@ function SwComponentNode({ data }: { data: any }) {
       </div>
     </div>
   );
-}
+});
 
 /**
  * The main component for the Cross-Component Failure Flow page.
@@ -248,7 +259,11 @@ export default function CrossCompFlow() {
       onEdgesChange,
       setEdges,
       loadDataAndLayout,
+      setNodes,
   } = useSafetyData();
+  
+  const [selectedPortInfo, setSelectedPortInfo] = useState<{port: any; type: 'provider' | 'receiver'} | null>(null);
+  const [isPortModalVisible, setIsPortModalVisible] = useState(false);
   
   const {
       contextMenu,
@@ -257,6 +272,26 @@ export default function CrossCompFlow() {
       handleDeleteCausation,
       hideContextMenu,
   } = useCausationManager(nodes, setEdges);
+
+  const handlePortClick = (port: any, type: 'provider' | 'receiver') => {
+    setSelectedPortInfo({ port, type });
+    setIsPortModalVisible(true);
+  };
+  
+  const handleClosePortModal = () => {
+    setIsPortModalVisible(false);
+    setSelectedPortInfo(null);
+  };
+
+  const nodesWithHandlers = useMemo(() => {
+    return nodes.map(node => ({
+        ...node,
+        data: {
+            ...node.data,
+            onPortClick: handlePortClick,
+        },
+    }));
+  }, [nodes]);
 
   const nodeTypes: NodeTypes = useMemo(() => ({
     swComponent: SwComponentNode,
@@ -275,9 +310,9 @@ export default function CrossCompFlow() {
   }
 
   return (
-    <div style={{ height: '80vh', width: '100%', position: 'relative' }} onClick={hideContextMenu}>
+    <div style={{ height: 'calc(100vh - 200px)', position: 'relative' }} onClick={hideContextMenu}>
         <ReactFlow
-          nodes={nodes}
+          nodes={nodesWithHandlers}
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
@@ -311,32 +346,33 @@ export default function CrossCompFlow() {
         {contextMenu && (
           <div
             style={{
-              position: 'fixed',
+              position: 'absolute',
               top: contextMenu.y,
               left: contextMenu.x,
+              zIndex: 10,
               backgroundColor: 'white',
-              border: '1px solid #d9d9d9',
+              border: '1px solid #ddd',
+              boxShadow: '0 2px 5px rgba(0,0,0,0.15)',
               borderRadius: '4px',
-              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-              zIndex: 1000,
+              padding: '8px',
             }}
           >
-            <div style={{ padding: '8px 12px', borderBottom: '1px solid #f0f0f0' }}>
-              <Text strong>Delete Causation</Text>
-            </div>
-            <div style={{ padding: '4px 0' }}>
-              <Button
-                type="text"
-                icon={<DeleteOutlined />}
-                onClick={handleDeleteCausation}
-                style={{ width: '100%', textAlign: 'left', color: '#ff4d4f' }}
-                danger
-              >
-                Delete
-              </Button>
-            </div>
+            <Button
+              type="primary"
+              danger
+              icon={<DeleteOutlined />}
+              onClick={handleDeleteCausation}
+            >
+              Delete Causation
+            </Button>
           </div>
         )}
+
+        <PortConnectionDetailsModal
+          isVisible={isPortModalVisible}
+          onClose={handleClosePortModal}
+          portInfo={selectedPortInfo}
+        />
     </div>
   );
 }
