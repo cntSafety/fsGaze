@@ -1,61 +1,39 @@
+/**
+ * @file This file implements the main view for the Cross-Component Failure Flow diagram.
+ * It has been refactored to use a modular, hook-based architecture for better separation of concerns.
+ * 
+ * The main responsibilities of this component are:
+ * - Orchestrating the `useSafetyData` and `useCausationManager` hooks.
+ * - Rendering the ReactFlow canvas and its UI elements (Controls, Panel, etc.).
+ * - Defining the custom node and edge types to be used in the diagram.
+ * - Displaying the loading state and the final rendered graph.
+ */
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import ReactFlow, {
-    Node,
-    Edge,
     Controls,
     Background,
-    useNodesState,
-    useEdgesState,
     Panel,
-    MarkerType,
     NodeTypes,
     ConnectionLineType,
     Position,
     Handle,
-    Connection,
-    addEdge,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { Card, Typography, Space, Tag, Button, message, Spin, Alert, Tooltip, Modal } from 'antd';
-import { NodeCollapseOutlined, ReloadOutlined, DeleteOutlined } from '@ant-design/icons';
-import { getSafetyGraph } from '@/app/services/neo4j/queries/safety/exportGraph';
-import { SafetyGraphData } from '@/app/services/neo4j/queries/safety/types';
-import { deleteCausationNode, createCausationBetweenFailureModes } from '@/app/services/neo4j/queries/safety/causation';
-import { getLayoutedElements } from '../services/diagramLayoutService';
+import { Card, Typography, Space, Tag, Button, Spin, Tooltip } from 'antd';
+import { ReloadOutlined, DeleteOutlined } from '@ant-design/icons';
 import InteractiveSmoothStepEdge from './InteractiveSmoothStepEdge';
 import { getAsilColor } from '@/app/components/asilColors';
+import { useSafetyData } from '@/app/arxml-crossFM/hooks/useSafetyData';
+import { useCausationManager } from '@/app/arxml-crossFM/hooks/useCausationManager';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
-interface ComponentData {
-  uuid: string;
-  name: string;
-  type: 'SW_COMPONENT';
-  providerPorts: PortData[];
-  receiverPorts: PortData[];
-}
-
-interface PortData {
-  uuid: string;
-  name: string;
-  type: 'P_PORT_PROTOTYPE' | 'R_PORT_PROTOTYPE';
-  failureModes: FailureModeData[];
-}
-
-interface FailureModeData {
-  uuid: string;
-  name: string;
-  asil: string;
-  description: string;
-}
-
-interface CrossCompFlowProps {
-  onFailureSelect?: (failure: { uuid: string; name: string; asil: string }) => void;
-}
-
-// Custom node component for SW Components
+/**
+ * A custom React Flow node to display a Software Component (SWC) and its ports.
+ * This is a pure presentation component; all its data is passed in via props.
+ */
 function SwComponentNode({ data }: { data: any }) {
   const { component, providerPorts, receiverPorts } = data;
   
@@ -256,20 +234,29 @@ function SwComponentNode({ data }: { data: any }) {
   );
 }
 
+/**
+ * The main component for the Cross-Component Failure Flow page.
+ * It integrates the data loading and causation management hooks to provide
+ * an interactive graph visualization of failure mode causations.
+ */
 export default function CrossCompFlow() {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const [loading, setLoading] = useState(true);
-  const [isCreatingCausation, setIsCreatingCausation] = useState(false);
+  const {
+      nodes,
+      edges,
+      loading,
+      onNodesChange,
+      onEdgesChange,
+      setEdges,
+      loadDataAndLayout,
+  } = useSafetyData();
   
-  const [contextMenu, setContextMenu] = useState<{
-    visible: boolean;
-    x: number;
-    y: number;
-    edgeId: string;
-    causationUuid: string;
-    causationName: string;
-  } | null>(null);
+  const {
+      contextMenu,
+      onConnect,
+      onEdgeContextMenu,
+      handleDeleteCausation,
+      hideContextMenu,
+  } = useCausationManager(nodes, setEdges);
 
   const nodeTypes: NodeTypes = useMemo(() => ({
     swComponent: SwComponentNode,
@@ -278,268 +265,6 @@ export default function CrossCompFlow() {
   const edgeTypes = useMemo(() => ({
     interactive: InteractiveSmoothStepEdge,
   }), []);
-
-  const buildFlowDiagram = (safetyGraph: SafetyGraphData) => {
-    const nodes: Node[] = [];
-    const edges: Edge[] = [];
-
-    const swComponents = new Map<string, any>();
-
-    safetyGraph.occurrences.forEach(occ => {
-        if (!occ.occuranceSourceArxmlPath || !occ.occuranceSourceLabels) return;
-
-        const pathParts = occ.occuranceSourceArxmlPath.split('/');
-        const componentName = pathParts[2];
-        const portName = pathParts[3];
-
-        // If there's no port name, this is an internal failure, so we skip it.
-        if (!portName) {
-            return;
-        }
-
-        const portType = occ.occuranceSourceLabels.includes('P_PORT_PROTOTYPE') ? 'provider' : 'receiver';
-
-        if (!swComponents.has(componentName)) {
-            swComponents.set(componentName, {
-                uuid: componentName,
-                name: componentName,
-                providerPorts: [],
-                receiverPorts: [],
-            });
-        }
-
-        const component = swComponents.get(componentName);
-        const portArray = portType === 'provider' ? component.providerPorts : component.receiverPorts;
-        
-        let port = portArray.find((p: any) => p.name === portName);
-        if (!port) {
-            port = {
-                uuid: occ.occuranceSourceUuid,
-                name: portName,
-                failureModes: [],
-            };
-            portArray.push(port);
-        }
-
-        const failure = safetyGraph.failures.find(f => f.uuid === occ.failureUuid);
-        if (failure) {
-            port.failureModes.push({
-                uuid: failure.uuid,
-                name: failure.properties.name,
-                asil: failure.properties.asil,
-                description: failure.properties.description,
-            });
-        }
-    });
-
-    Array.from(swComponents.values()).forEach(comp => {
-        // Create a mapping from handle IDs to failure UUIDs for robust lookup
-        const handleToFailureMap = new Map<string, string>();
-        
-        // Map provider port failure handles
-        comp.providerPorts.forEach((port: any) => {
-            port.failureModes.forEach((failure: any) => {
-                const handleId = `failure-${port.uuid}-${failure.uuid}`;
-                handleToFailureMap.set(handleId, failure.uuid);
-            });
-        });
-        
-        // Map receiver port failure handles
-        comp.receiverPorts.forEach((port: any) => {
-            port.failureModes.forEach((failure: any) => {
-                const handleId = `failure-${port.uuid}-${failure.uuid}`;
-                handleToFailureMap.set(handleId, failure.uuid);
-            });
-        });
-
-        nodes.push({
-            id: comp.uuid,
-            type: 'swComponent',
-            position: { x: 0, y: 0 },
-            data: {
-                component: comp,
-                providerPorts: comp.providerPorts,
-                receiverPorts: comp.receiverPorts,
-                handleToFailureMap: handleToFailureMap, // Add the mapping to node data
-            },
-        });
-    });
-
-    if (safetyGraph.causationLinks) {
-        safetyGraph.causationLinks.forEach((causation, index) => {
-            const causeOccurrences = safetyGraph.occurrences.filter(o => o.failureUuid === causation.causeFailureUuid);
-            const effectOccurrences = safetyGraph.occurrences.filter(o => o.failureUuid === causation.effectFailureUuid);
-
-            causeOccurrences.forEach((causeOcc, causeIndex) => {
-                effectOccurrences.forEach((effectOcc, effectIndex) => {
-                    if (causeOcc?.occuranceSourceArxmlPath && effectOcc?.occuranceSourceArxmlPath) {
-                        
-                        // Ensure we only link failures that are on ports
-                        if (!causeOcc.occuranceSourceArxmlPath.split('/')[3] || !effectOcc.occuranceSourceArxmlPath.split('/')[3]) {
-                            return;
-                        }
-
-                        const causeComponent = swComponents.get(causeOcc.occuranceSourceArxmlPath.split('/')[2]);
-                        const effectComponent = swComponents.get(effectOcc.occuranceSourceArxmlPath.split('/')[2]);
-
-                        if (causeComponent && effectComponent) {
-                            const sourceHandle = `failure-${causeOcc.occuranceSourceUuid}-${causeOcc.failureUuid}`;
-                            const targetHandle = `failure-${effectOcc.occuranceSourceUuid}-${effectOcc.failureUuid}`;
-                            
-                            edges.push({
-                                id: `causation-${causation.causationUuid}-${causeOcc.occuranceSourceUuid}-${effectOcc.occuranceSourceUuid}`,
-                                source: causeComponent.uuid,
-                                target: effectComponent.uuid,
-                                sourceHandle,
-                                targetHandle,
-                                type: 'interactive',
-                                animated: false,
-                                markerEnd: {
-                                    type: MarkerType.ArrowClosed,
-                                },
-                                data: {
-                                    causationUuid: causation.causationUuid,
-                                    causationName: causation.causationName,
-                                    type: 'causation'
-                                }
-                            });
-                        }
-                    }
-                });
-            });
-        });
-    }
-    return { nodes, edges };
-  };
-
-  const loadDataAndLayout = useCallback(async () => {
-    setLoading(true);
-    const safetyData = await getSafetyGraph();
-    console.log("safetyData::::", safetyData);
-    
-    if (safetyData.success && safetyData.data) {
-      const { nodes: initialNodes, edges: initialEdges } = buildFlowDiagram(safetyData.data);
-      if(initialNodes.length > 0) {
-        const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(initialNodes, initialEdges);
-        setNodes(layoutedNodes);
-        setEdges(layoutedEdges);
-      } else {
-        setNodes([]);
-        setEdges([]);
-      }
-    } else {
-      message.error("Failed to load safety graph data.");
-    }
-    setLoading(false);
-  }, [setNodes, setEdges]);
-
-  useEffect(() => {
-    loadDataAndLayout();
-  }, [loadDataAndLayout]);
-
-  const onConnect = useCallback(async (params: Connection) => {
-    if (isCreatingCausation) return;
-
-    // Find source and target nodes to get their handle mappings
-    const sourceNode = nodes.find(node => node.id === params.source);
-    const targetNode = nodes.find(node => node.id === params.target);
-
-    if (!sourceNode || !targetNode) {
-        message.error('Could not find source or target component node.');
-        return;
-    }
-
-    // Get failure UUIDs from the handle mappings stored in node data
-    const sourceHandleMap = sourceNode.data.handleToFailureMap as Map<string, string>;
-    const targetHandleMap = targetNode.data.handleToFailureMap as Map<string, string>;
-
-    const sourceFailureUuid = sourceHandleMap?.get(params.sourceHandle || '');
-    const targetFailureUuid = targetHandleMap?.get(params.targetHandle || '');
-
-
-
-    if (!sourceFailureUuid || !targetFailureUuid) {
-        message.error('Could not determine source or target failure mode from handle mapping.');
-        return;
-    }
-    
-    setIsCreatingCausation(true);
-    message.loading({ content: 'Creating causation...', key: 'create-causation' });
-    
-    try {
-      const result = await createCausationBetweenFailureModes(sourceFailureUuid, targetFailureUuid);
-      if (result.success && result.causationUuid) {
-        message.success({ content: 'Causation created successfully!', key: 'create-causation', duration: 2 });
-        
-        // Instead of reloading, add the new edge to the state
-        const newEdge = {
-          id: `causation-${result.causationUuid}`,
-          source: params.source!,
-          target: params.target!,
-          sourceHandle: params.sourceHandle,
-          targetHandle: params.targetHandle,
-          type: 'interactive',
-          animated: false,
-          style: {
-            strokeWidth: 1.5,
-            stroke: '#94a3b8', // A neutral slate color
-          },
-          markerEnd: {
-              type: MarkerType.ArrowClosed,
-          },
-          data: {
-              causationUuid: result.causationUuid,
-              causationName: result.message, // Using the message as a placeholder for name
-              type: 'causation'
-          }
-        };
-
-        setEdges((eds) => addEdge(newEdge, eds));
-      } else {
-        message.error({ content: `Failed to create causation: ${result.message}`, key: 'create-causation', duration: 4 });
-      }
-    } catch (error) {
-      message.error({ content: 'An error occurred while creating causation.', key: 'create-causation', duration: 4 });
-    } finally {
-      setIsCreatingCausation(false);
-    }
-  }, [isCreatingCausation, nodes, setEdges]);
-
-  const hideContextMenu = useCallback(() => setContextMenu(null), []);
-
-  const onEdgeContextMenu = useCallback((event: React.MouseEvent, edge: Edge) => {
-    event.preventDefault();
-    if (edge.data?.type === 'causation') {
-      setContextMenu({
-        visible: true,
-        x: event.clientX,
-        y: event.clientY,
-        edgeId: edge.id,
-        causationUuid: edge.data.causationUuid,
-        causationName: edge.data.causationName
-      });
-    }
-  }, []);
-
-  const handleDeleteCausation = useCallback(async () => {
-    if (!contextMenu) return;
-
-    message.loading({ content: 'Deleting causation...', key: 'delete-causation' });
-    try {
-      const result = await deleteCausationNode(contextMenu.causationUuid);
-      if (result.success) {
-        message.success({ content: 'Causation deleted successfully!', key: 'delete-causation', duration: 2 });
-        // Instead of reloading, remove the edge from the state
-        setEdges((eds) => eds.filter((edge) => edge.id !== contextMenu.edgeId));
-      } else {
-        message.error({ content: `Failed to delete causation: ${result.message}`, key: 'delete-causation', duration: 4 });
-      }
-    } catch (error) {
-      message.error({ content: 'An error occurred while deleting causation.', key: 'delete-causation', duration: 4 });
-    } finally {
-      hideContextMenu();
-    }
-  }, [contextMenu, hideContextMenu, setEdges]);
 
   if (loading) {
     return (
