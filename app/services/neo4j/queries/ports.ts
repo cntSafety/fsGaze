@@ -17,8 +17,9 @@ export const getAssemblyContextForPPort = async (pPortUuid: string): Promise<Que
       MATCH (swConnector)-[:\`CONTEXT-COMPONENT-REF\`]->(swCompPro)
       WHERE swCompPro:SW_COMPONENT_PROTOTYPE OR swCompPro:VirtualArxmlRefTarget
       //find the APPLICATION_SW_COMPONENT_TYPE which is connected for filtering out
-      MATCH (containingSwc:APPLICATION_SW_COMPONENT_TYPE) -[:CONTAINS]->(pPortNode)
-      WHERE swCompPro.name <> containingSwc.name
+      MATCH (containingSwc) -[:CONTAINS]->(pPortNode)
+      WHERE (containingSwc:APPLICATION_SW_COMPONENT_TYPE OR containingSwc:COMPOSITION_SW_COMPONENT_TYPE OR containingSwc:SERVICE_SW_COMPONENT_TYPE)
+        AND swCompPro.name <> containingSwc.name
       RETURN DISTINCT 
        swConnector.name as assemblySWConnectorName,
        swConnector.uuid as assemblySWConnectorUUID,
@@ -49,8 +50,9 @@ export const getAssemblyContextForRPort = async (rPortUuid: string): Promise<Que
       MATCH (swConnector)-[:\`CONTEXT-COMPONENT-REF\`]->(swCompPro)
       WHERE swCompPro:SW_COMPONENT_PROTOTYPE OR swCompPro:VirtualArxmlRefTarget
       //find the APPLICATION_SW_COMPONENT_TYPE which is connected for filtering out
-      MATCH (containingSwc:APPLICATION_SW_COMPONENT_TYPE) -[:CONTAINS]->(rPortNode)
-      WHERE swCompPro.name <> containingSwc.name
+      MATCH (containingSwc) -[:CONTAINS]->(rPortNode)
+      WHERE (containingSwc:APPLICATION_SW_COMPONENT_TYPE OR containingSwc:COMPOSITION_SW_COMPONENT_TYPE OR containingSwc:SERVICE_SW_COMPONENT_TYPE)
+        AND swCompPro.name <> containingSwc.name
       
       // Get the connected P_PORT and its failure modes with ASIL information
       OPTIONAL MATCH (swConnector)-[:\`TARGET-P-PORT-REF\`]->(pPortNode:P_PORT_PROTOTYPE)
