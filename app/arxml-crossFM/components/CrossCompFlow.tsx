@@ -493,9 +493,16 @@ export default function CrossCompFlow() {
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           fitView
-          fitViewOptions={{ padding: 0.2 }}
+          fitViewOptions={{ 
+            padding: 0.1,
+            includeHiddenNodes: false,
+            minZoom: 0.1,
+            maxZoom: 1.2
+          }}
           proOptions={{ hideAttribution: true }}
           connectionLineType={ConnectionLineType.Straight}
+          minZoom={0.1}
+          maxZoom={2}
         >
           <Panel position="top-right">
             <Space>
