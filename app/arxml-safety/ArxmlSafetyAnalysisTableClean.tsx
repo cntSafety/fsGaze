@@ -15,6 +15,7 @@ import { SafetyTableRow } from './types';
 import { ASIL_OPTIONS, PLACEHOLDER_VALUES, MESSAGES } from './utils/constants';
 import RiskRatingModal from './components/RiskRatingModal';
 import SafetyTaskModal from './components/SafetyTaskModal';
+import { CascadeDeleteModal } from '../components/CascadeDeleteModal';
 
 const { Option } = Select;
 
@@ -121,6 +122,8 @@ export default function ArxmlSafetyAnalysisTable() {
   const [existingSafetyTasks, setExistingSafetyTasks] = useState<any[]>([]);
   const [activeSafetyTask, setActiveSafetyTask] = useState<any | null>(null);
   const [activeSafetyTaskIndex, setActiveSafetyTaskIndex] = useState(0);
+  const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
+  const [failureToDelete, setFailureToDelete] = useState<SafetyTableRow | null>(null);
 
   useEffect(() => {
     loadData();
@@ -248,21 +251,36 @@ export default function ArxmlSafetyAnalysisTable() {
       message.error(MESSAGES.ERROR.NO_UUID);
       return;
     }
-
+    // Prevent duplicate delete/preview if already deleting this node
+    if (failureToDelete && failureToDelete.failureUuid === record.failureUuid && isDeleteModalVisible) {
+      return;
+    }
     try {
       setIsAddingFailure(true);
-      
-      const result = await deleteFailureModeNode(record.failureUuid);
-      
-      if (result.success) {
-        await loadData();
-        message.success(MESSAGES.SUCCESS.FAILURE_DELETED);
-      } else {
-        message.error(`Error deleting failure: ${result.message}`);
+      // Use the new cascade delete API
+      const response = await fetch('/api/safety/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'preview',
+          nodeUuid: record.failureUuid,
+          nodeType: 'FAILUREMODE'
+        }),
+      });
+      const previewResult = await response.json();
+      if (!previewResult.success) {
+        message.error(`Error previewing deletion: ${previewResult.message}`);
+        return;
       }
+      // Show cascade delete modal with preview data
+      setFailureToDelete(record);
+      setIsDeleteModalVisible(true);
     } catch (error) {
       console.error('Error deleting failure:', error);
-      message.error(MESSAGES.ERROR.DELETE_FAILED);    } finally {
+      message.error(MESSAGES.ERROR.DELETE_FAILED);
+    } finally {
       setIsAddingFailure(false);
     }
   };
@@ -721,6 +739,24 @@ export default function ArxmlSafetyAnalysisTable() {
         activeTask={activeSafetyTask}
         existingTasks={existingSafetyTasks}
         activeTabIndex={activeSafetyTaskIndex}
+      />
+      {/* Delete Confirmation Modal */}
+      <CascadeDeleteModal
+        visible={isDeleteModalVisible && !!failureToDelete}
+        onCancel={() => {
+          setIsDeleteModalVisible(false);
+          setFailureToDelete(null);
+        }}
+        onSuccess={async () => {
+          if (failureToDelete?.failureUuid) {
+            setTableData(prev => prev.filter(row => row.failureUuid !== failureToDelete.failureUuid));
+          }
+          setIsDeleteModalVisible(false);
+          setFailureToDelete(null);
+        }}
+        nodeUuid={failureToDelete?.failureUuid || ''}
+        nodeType="FAILUREMODE"
+        nodeName={failureToDelete?.failureName || ''}
       />
     </Form>
   );

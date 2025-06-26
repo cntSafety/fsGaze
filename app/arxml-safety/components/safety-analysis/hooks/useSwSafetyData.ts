@@ -15,6 +15,7 @@ export const useSwSafetyData = (swComponentUuid: string) => {
   const [receiverPortFailures, setReceiverPortFailures] = useState<{[portUuid: string]: PortFailure[]}>({});
 
   const loadData = useCallback(async () => {
+    console.log('🚀 useSwSafetyData: loadData called for component', swComponentUuid);
     try {
       setLoading(true);
       
@@ -36,8 +37,15 @@ export const useSwSafetyData = (swComponentUuid: string) => {
 
       // Handle SW component failures
       if (failuresResult.success && failuresResult.data) {
+        console.log('💾 useSwSafetyData: Setting failures', {
+          count: failuresResult.data.length,
+          failures: failuresResult.data.map(f => ({ uuid: f.failureUuid, name: f.failureName }))
+        });
         setFailures(failuresResult.data);
         // console.log('SW Component Failures:', failuresResult.data);
+      } else {
+        console.log('💾 useSwSafetyData: No failures found, setting empty array');
+        setFailures([]);
       }
       
       // Handle provider ports

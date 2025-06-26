@@ -222,56 +222,9 @@ export const useReceiverPortFailures = (
       message.error('Cannot delete failure: No failure UUID found');
       return;
     }
-
-    try {
-      setIsSavingPort(true);
-      
-      const result = await deleteFailureModeNode(record.failureUuid);
-      
-      if (result.success) {
-        // Update local state instead of reloading everything
-        const portUuid = record.swComponentUuid!;
-        
-        // Update port failureModes map and handle UI updates
-        const updatedPortFailures = {
-          ...portFailures,
-          [portUuid]: portFailures[portUuid]?.filter(f => f.failureUuid !== record.failureUuid) || []
-        };
-        
-        // Check if this was the last failure for this port
-        const remainingFailures = updatedPortFailures[portUuid] || [];
-        
-        if (remainingFailures.length === 0) {
-          // Replace with "No failureModes defined" row
-          const port = receiverPorts.find(p => p.uuid === portUuid);
-          const placeholderRow: SafetyTableRow = {
-            key: `${portUuid}-empty`,
-            swComponentUuid: portUuid,
-            swComponentName: `${port?.name || 'Unknown'} (${port?.type || 'R_PORT_PROTOTYPE'})`,
-            failureName: 'No failureModes defined',
-            failureDescription: '-',
-            asil: '-'
-          };
-          
-          setPortTableData(prev => prev.map(row => 
-            row.failureUuid === record.failureUuid ? placeholderRow : row
-          ));
-        } else {
-          // Just remove the deleted row
-          setPortTableData(prev => prev.filter(row => row.failureUuid !== record.failureUuid));
-        }
-        
-        setPortFailures(updatedPortFailures);
-        message.success('Port failure mode deleted successfully!');
-      } else {
-        message.error(`Error deleting failure: ${result.message}`);
-      }
-    } catch (error) {
-      console.error('Error deleting port failure:', error);
-      message.error('Failed to delete port failure mode');
-    } finally {
-      setIsSavingPort(false);
-    }
+    // The modal-based delete flow will be triggered by the parent component.
+    // This function can just set the record to delete or call a parent handler if needed.
+    setEditingPortKey(''); // Optionally clear editing state
   };
 
   const handleAddPortFailure = (portUuid: string, portName: string) => {

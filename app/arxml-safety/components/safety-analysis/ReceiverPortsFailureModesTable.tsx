@@ -1,8 +1,11 @@
 import React from 'react';
-import { SafetyTableColumn } from '../CoreSafetyTable';
+import { SafetyTableColumn, SafetyTableRow } from '../CoreSafetyTable';
 import { useReceiverPortFailures } from './hooks/useReceiverPortFailures';
 import { PortFailure, ProviderPort } from './types';
 import { BaseFailureModeTable } from './BaseFailureModeTable';
+import { CascadeDeleteModal } from '../CascadeDeleteModal';
+import type { DeletionPreview } from '../CascadeDeleteModal';
+import { message } from 'antd';
 
 interface ReceiverPortsFailureModesTableProps {
   receiverPorts: ProviderPort[];
@@ -14,6 +17,7 @@ interface ReceiverPortsFailureModesTableProps {
     first: { uuid: string; name: string } | null;
     second: { uuid: string; name: string } | null;
   };
+  refreshData?: () => Promise<void>;
 }
 
 export default function ReceiverPortsFailureModesTable({
@@ -22,6 +26,7 @@ export default function ReceiverPortsFailureModesTable({
   setPortFailures,
   onFailureSelect,
   selectedFailures,
+  refreshData,
 }: ReceiverPortsFailureModesTableProps) {
   const {
     form,
@@ -38,6 +43,55 @@ export default function ReceiverPortsFailureModesTable({
     handleDeletePort,
     handleAddPortFailure
   } = useReceiverPortFailures(receiverPorts, portFailures, setPortFailures);
+
+  const [isDeleteModalVisible, setIsDeleteModalVisible] = React.useState(false);
+  const [failureToDelete, setFailureToDelete] = React.useState<PortFailure | null>(null);
+  const [portUuidToDelete, setPortUuidToDelete] = React.useState<string | null>(null);
+  const [deletePreview, setDeletePreview] = React.useState<DeletionPreview | null>(null);
+
+  // Override the handleDelete from the hook to implement modal logic
+  const handleDeleteWithModal = async (record: SafetyTableRow) => {
+    if (!record.failureUuid) {
+      message.error('Cannot delete failure: No failure UUID found');
+      return;
+    }
+
+    try {
+      // Fetch preview data first
+      const previewResponse = await fetch('/api/safety/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'preview',
+          nodeUuid: record.failureUuid,
+          nodeType: 'FAILUREMODE'
+        }),
+      });
+      
+      const previewResult = await previewResponse.json();
+      
+      if (previewResult.success && previewResult.data) {
+        setDeletePreview(previewResult.data);
+        setFailureToDelete({
+          failureUuid: record.failureUuid,
+          failureName: record.failureName,
+          failureDescription: record.failureDescription,
+          asil: record.asil,
+          failureType: null,
+          relationshipType: 'HAS_FAILURE'
+        });
+        setPortUuidToDelete(record.swComponentUuid || null);
+        setIsDeleteModalVisible(true);
+      } else {
+        message.error(`Failed to preview deletion: ${previewResult.message}`);
+      }
+    } catch (error) {
+      console.error('Error previewing deletion:', error);
+      message.error('Failed to preview deletion');
+    }
+  };
 
   // Define columns for the receiver ports failure modes table
   const portColumns: SafetyTableColumn[] = [
@@ -109,7 +163,7 @@ export default function ReceiverPortsFailureModesTable({
       onSave={handleSavePort}
       onCancel={handleCancelPort}
       onAdd={handleAddPortFailure}
-      onDelete={handleDeletePort}
+      onDelete={handleDeleteWithModal}
       isSaving={isSavingPort}
       showComponentActions={true}
       form={form}
@@ -147,6 +201,56 @@ export default function ReceiverPortsFailureModesTable({
           ? `Receiver ports: ${receiverPorts.map(port => port.name).join(', ')}`
           : undefined,
       }}
+    />
+    <CascadeDeleteModal
+      open={isDeleteModalVisible && !!deletePreview}
+      onCancel={() => {
+        setIsDeleteModalVisible(false);
+        setDeletePreview(null);
+        setFailureToDelete(null);
+        setPortUuidToDelete(null);
+      }}
+      onConfirm={async () => {
+        if (failureToDelete?.failureUuid && portUuidToDelete) {
+          try {
+            // Call the backend API to actually delete the data
+            const response = await fetch('/api/safety/delete', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                action: 'execute',
+                nodeUuid: failureToDelete.failureUuid,
+                nodeType: 'FAILUREMODE'
+              }),
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+              // Refresh parent data instead of just updating local state
+              if (refreshData) {
+                await refreshData();
+              }
+              message.success('Receiver port failure mode deleted successfully');
+            } else {
+              message.error(`Failed to delete receiver port failure mode: ${result.message}`);
+              return; // Don't close modal or update state if deletion failed
+            }
+          } catch (error) {
+            console.error('Error deleting receiver port failure mode:', error);
+            message.error('Failed to delete receiver port failure mode');
+            return; // Don't close modal or update state if deletion failed
+          }
+        }
+        setIsDeleteModalVisible(false);
+        setDeletePreview(null);
+        setFailureToDelete(null);
+        setPortUuidToDelete(null);
+      }}
+      previewData={deletePreview}
+      loading={false}
     />
     </div>
   );

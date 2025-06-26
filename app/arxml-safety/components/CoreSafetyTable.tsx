@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Table, Form, Input, Select, Button, Space, Tooltip, Dropdown, Modal, Popconfirm } from 'antd';
+import { Table, Form, Input, Select, Button, Space, Tooltip, Dropdown, Modal, Popconfirm, message } from 'antd';
 import { SearchOutlined, DeleteOutlined, EditOutlined, PlusOutlined, LinkOutlined, DashboardOutlined, MoreOutlined, ExclamationCircleOutlined, FileTextOutlined, CheckSquareOutlined, EditFilled } from '@ant-design/icons';
 import type { TableProps, ColumnType } from 'antd/es/table';
 import type { FormInstance } from 'antd/es/form';
@@ -10,6 +10,7 @@ import { Resizable } from 'react-resizable';
 import ElementDetailsModal, { ElementDetails } from './ElementDetailsModal';
 import RiskRatingModal from './RiskRatingModal';
 import SafetyNoteManager from './safety-analysis/SafetyNoteManager';
+// import { CascadeDeleteModal } from '../../components/CascadeDeleteModal'; // Removed: Now handled by parent components
 
 const { Option } = Select;
 
@@ -235,9 +236,7 @@ export default function CoreSafetyTable({
   const [selectedFailureForRiskRating, setSelectedFailureForRiskRating] = useState<SafetyTableRow | null>(null);
   const [isRiskRatingSaving, setIsRiskRatingSaving] = useState(false);
   
-  // Delete confirmation modal state
-  const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
-  const [failureToDelete, setFailureToDelete] = useState<SafetyTableRow | null>(null);
+  // Delete confirmation modal state - Removed: Now handled by parent components
     // Safety notes modal state
   const [isSafetyNotesModalVisible, setIsSafetyNotesModalVisible] = useState(false);
   const [selectedFailureForNotes, setSelectedFailureForNotes] = useState<SafetyTableRow | null>(null);
@@ -344,23 +343,14 @@ export default function CoreSafetyTable({
   };
 
   // Delete confirmation handlers
-  const handleDeleteClick = (record: SafetyTableRow) => {
-    setFailureToDelete(record);
-    setIsDeleteModalVisible(true);
-  };
-
-  const handleDeleteConfirm = () => {
-    if (failureToDelete && onDelete) {
-      onDelete(failureToDelete);
+  const handleDeleteClick = async (record: SafetyTableRow) => {
+    // Call the parent's delete handler directly instead of opening our own modal
+    if (onDelete) {
+      await onDelete(record);
     }
-    setIsDeleteModalVisible(false);
-    setFailureToDelete(null);
   };
 
-  const handleDeleteCancel = () => {
-    setIsDeleteModalVisible(false);
-    setFailureToDelete(null);
-  };
+  // handleDeleteCancel - Removed: No longer needed since modal is handled by parent components
 
   // Safety notes handlers
   const handleSafetyNotesClick = (record: SafetyTableRow) => {
@@ -922,29 +912,7 @@ export default function CoreSafetyTable({
         failureName={selectedFailureForRiskRating?.failureName || ''}        loading={isRiskRatingSaving}
       />
       
-      {/* Delete Confirmation Modal */}
-      <Modal
-        title="Confirm Deletion"
-        open={isDeleteModalVisible}
-        onOk={handleDeleteConfirm}
-        onCancel={handleDeleteCancel}
-        okText="Delete"
-        cancelText="Cancel"
-        okButtonProps={{ danger: true }}
-        centered
-      >
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-          <ExclamationCircleOutlined style={{ color: '#ff4d4f', fontSize: '22px', marginTop: '2px' }} />
-          <div>
-            <p style={{ margin: '0 0 8px 0', fontSize: '16px', fontWeight: 500 }}>
-              Are you sure you want to delete the failure &ldquo;<strong>{failureToDelete?.failureName}</strong>&rdquo;?
-            </p>
-            <p style={{ margin: 0, color: '#8c8c8c', fontSize: '14px' }}>
-              This action cannot be undone.
-            </p>
-          </div>
-        </div>
-      </Modal>
+      {/* Delete Confirmation Modal - Removed: Now handled by parent components */}
       
       {/* Safety Notes Modal */}
       <Modal

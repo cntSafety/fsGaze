@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Form, message } from 'antd';
-import { createFailureModeNode, deleteFailureModeNode, updateFailureModeNode } from '../../../../services/neo4j/queries/safety/failureModes';
+import { createFailureModeNode, updateFailureModeNode } from '../../../../services/neo4j/queries/safety/failureModes';
 import { SwComponent, Failure } from '../types';
 import { SafetyTableRow } from '../../CoreSafetyTable';
 
 export const useSwFailureModes = (
   swComponentUuid: string,
   swComponent: SwComponent | null,
-  failureModes: Failure[],
-  setFailureModes: (failureModes: Failure[]) => void
+  failures: Failure[],
+  setFailures: (failures: Failure[]) => void
 ) => {
   const [form] = Form.useForm();
   const [tableData, setTableData] = useState<SafetyTableRow[]>([]);
@@ -16,12 +16,22 @@ export const useSwFailureModes = (
   const [isSaving, setIsSaving] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
+  const [recordToDelete, setRecordToDelete] = useState<SafetyTableRow | null>(null);
+  const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
+  const [failureToDelete, setFailureToDelete] = useState<Failure | null>(null);
 
-  // Update table data when failureModes or component changes
+  // Update table data when failures or component changes
   useEffect(() => {
+    console.log('🔄 useSwFailureModes: useEffect triggered', {
+      swComponent: swComponent?.name,
+      failuresCount: failures.length,
+      failures: failures.map(f => ({ uuid: f.failureUuid, name: f.failureName }))
+    });
+    
     if (!swComponent) return;
     
-    if (failureModes.length === 0) {
+    if (failures.length === 0) {
+      console.log('📝 useSwFailureModes: Setting empty state');
       setTableData([{
         key: `${swComponentUuid}-empty`,
         swComponentUuid,
@@ -31,7 +41,8 @@ export const useSwFailureModes = (
         asil: '-'
       }]);
     } else {
-      const tableRows: SafetyTableRow[] = failureModes.map(failure => ({
+      console.log('📝 useSwFailureModes: Setting table data with failures');
+      const tableRows: SafetyTableRow[] = failures.map(failure => ({
         key: failure.failureUuid,
         swComponentUuid: swComponentUuid,
         swComponentName: swComponent.name,
@@ -42,7 +53,7 @@ export const useSwFailureModes = (
       }));
       setTableData(tableRows);
     }
-  }, [failureModes, swComponent, swComponentUuid]);
+  }, [failures, swComponent, swComponentUuid]);
 
   const handleEdit = (record: SafetyTableRow) => {
     form.setFieldsValue({
@@ -81,8 +92,8 @@ export const useSwFailureModes = (
             relationshipType: 'HAS_FAILURE'
           };
           
-          // Update failureModes array
-          setFailureModes([...failureModes, newFailure]);
+          // Update failures array
+          setFailures([...failures, newFailure]);
           
           // Update table data with the new failure
           const newTableRow: SafetyTableRow = {
@@ -127,8 +138,8 @@ export const useSwFailureModes = (
         );
 
         if (result.success) {
-          // Update local failureModes array
-          const updatedFailures = failureModes.map(failure => 
+          // Update local failures array
+          const updatedFailures = failures.map(failure => 
             failure.failureUuid === record.failureUuid 
               ? {
                   ...failure,
@@ -138,7 +149,7 @@ export const useSwFailureModes = (
                 }
               : failure
           );
-          setFailureModes(updatedFailures);
+          setFailures(updatedFailures);
 
           // Update table data
           const newData = [...tableData];
@@ -171,8 +182,8 @@ export const useSwFailureModes = (
     setTableData(prev => {
       const filtered = prev.filter(row => !row.isNewRow || row.key !== editingKey);
       
-      // If we removed the only row and there are no real failureModes, add back "No failureModes defined"
-      if (filtered.length === 0 && failureModes.length === 0 && swComponent) {
+      // If we removed the only row and there are no real failures, add back "No failureModes defined"
+      if (filtered.length === 0 && failures.length === 0 && swComponent) {
         return [{
           key: `${swComponentUuid}-empty`,
           swComponentUuid,
@@ -196,40 +207,14 @@ export const useSwFailureModes = (
 
     try {
       setIsSaving(true);
+      setRecordToDelete(record);
       
-      const result = await deleteFailureModeNode(record.failureUuid);
-      
-      if (result.success) {
-        // Update local state instead of reloading everything
-        const newFailures = failureModes.filter(f => f.failureUuid !== record.failureUuid);
-        setFailureModes(newFailures);
-        
-        // Update table data and check if we need to add "No failureModes defined"
-        setTableData(prev => {
-          const filtered = prev.filter(row => row.failureUuid !== record.failureUuid);
-          
-          // If this was the last failure for the component, add "No failureModes defined"
-          if (newFailures.length === 0 && swComponent) {
-            return [{
-              key: `${swComponentUuid}-empty`,
-              swComponentUuid,
-              swComponentName: swComponent.name,
-              failureName: 'No failureModes defined',
-              failureDescription: '-',
-              asil: '-'
-            }];
-          }
-          
-          return filtered;
-        });
-        
-        message.success('Failure mode deleted successfully!');
-      } else {
-        message.error(`Error deleting failure: ${result.message}`);
-      }
+      // The modal will be shown by the parent component, and the user can confirm or cancel
+      // We'll handle the execution in the parent component's onConfirm callback
     } catch (error) {
       console.error('Error deleting failure:', error);
       message.error('Failed to delete failure mode');
+      setRecordToDelete(null);
     } finally {
       setIsSaving(false);
     }
@@ -279,6 +264,10 @@ export const useSwFailureModes = (
     handleSave,
     handleCancel,
     handleDelete,
-    handleAddFailure
+    handleAddFailure,
+    isDeleteModalVisible,
+    setIsDeleteModalVisible,
+    failureToDelete,
+    setFailureToDelete
   };
 };

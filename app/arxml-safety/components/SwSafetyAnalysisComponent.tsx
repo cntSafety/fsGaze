@@ -151,6 +151,7 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
           setFailures={setFailures}
           onFailureSelect={handleFailureSelectionWrapper}
           selectedFailures={selectedFailures}
+          refreshData={refreshData}
         />
 
         <ProviderPortsFailureModesTable 
@@ -159,6 +160,7 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
           setPortFailures={setPortFailures}
           onFailureSelect={handleFailureSelectionWrapper}
           selectedFailures={selectedFailures}
+          refreshData={refreshData}
         />
         
         <ReceiverPortsFailureModesTable 
@@ -167,6 +169,7 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
           setPortFailures={setReceiverPortFailures}
           onFailureSelect={handleFailureSelectionWrapper}
           selectedFailures={selectedFailures}
+          refreshData={refreshData}
         />
       </div>
 

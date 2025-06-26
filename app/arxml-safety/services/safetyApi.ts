@@ -74,9 +74,23 @@ export class SafetyApiService {
    */
   static async deleteFailure(failureUuid: string): Promise<ApiResponse<any>> {
     try {
-      const result = await deleteFailureModeNode(failureUuid);
+      // Use the new cascade delete API
+      const response = await fetch('/api/safety/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'execute',
+          nodeUuid: failureUuid,
+          nodeType: 'FAILUREMODE'
+        }),
+      });
+
+      const result = await response.json();
+      
       if (result.success) {
-        message.success(MESSAGES.SUCCESS.FAILURE_DELETED);
+        message.success(`Failure mode and ${result.data.totalNodesDeleted - 1} dependent nodes deleted successfully!`);
       } else {
         message.error(`Error deleting failure: ${result.message}`);
       }

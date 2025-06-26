@@ -15,6 +15,7 @@ export const useProviderPortFailures = (
   const [isSavingPort, setIsSavingPort] = useState(false);
   const [portCurrentPage, setPortCurrentPage] = useState(1);
   const [portPageSize, setPortPageSize] = useState(50);
+  const [recordToDelete, setRecordToDelete] = useState<SafetyTableRow | null>(null);
 
   // Update port table data when portFailures or providerPorts change
   useEffect(() => {
@@ -225,50 +226,12 @@ export const useProviderPortFailures = (
 
     try {
       setIsSavingPort(true);
-      
-      const result = await deleteFailureModeNode(record.failureUuid);
-      
-      if (result.success) {
-        // Update local state instead of reloading everything
-        const portUuid = record.swComponentUuid!;
-        
-        // Update port failureModes map and handle UI updates
-        const updatedPortFailures = {
-          ...portFailures,
-          [portUuid]: portFailures[portUuid]?.filter(f => f.failureUuid !== record.failureUuid) || []
-        };
-        
-        // Check if this was the last failure for this port
-        const remainingFailures = updatedPortFailures[portUuid] || [];
-        
-        if (remainingFailures.length === 0) {
-          // Replace with "No failureModes defined" row
-          const port = providerPorts.find(p => p.uuid === portUuid);
-          const placeholderRow: SafetyTableRow = {
-            key: `${portUuid}-empty`,
-            swComponentUuid: portUuid,
-            swComponentName: `${port?.name || 'Unknown'} (${port?.type || 'P_PORT_PROTOTYPE'})`,
-            failureName: 'No failureModes defined',
-            failureDescription: '-',
-            asil: '-'
-          };
-          
-          setPortTableData(prev => prev.map(row => 
-            row.failureUuid === record.failureUuid ? placeholderRow : row
-          ));
-        } else {
-          // Just remove the deleted row
-          setPortTableData(prev => prev.filter(row => row.failureUuid !== record.failureUuid));
-        }
-        
-        setPortFailures(updatedPortFailures);
-        message.success('Port failure mode deleted successfully!');
-      } else {
-        message.error(`Error deleting failure: ${result.message}`);
-      }
+      setRecordToDelete(record);
+      // The modal will be shown by the hook, and the user can confirm or cancel
     } catch (error) {
       console.error('Error deleting port failure:', error);
       message.error('Failed to delete port failure mode');
+      setRecordToDelete(null);
     } finally {
       setIsSavingPort(false);
     }
@@ -338,6 +301,6 @@ export const useProviderPortFailures = (
     handleSavePort,
     handleCancelPort,
     handleDeletePort,
-    handleAddPortFailure
+    handleAddPortFailure,
   };
 };
