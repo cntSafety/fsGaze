@@ -25,6 +25,7 @@ import { SafetyGraphData } from '@/app/services/neo4j/queries/safety/types';
 import { deleteCausationNode, createCausationBetweenFailureModes } from '@/app/services/neo4j/queries/safety/causation';
 import { getLayoutedElements } from '../services/diagramLayoutService';
 import InteractiveSmoothStepEdge from './InteractiveSmoothStepEdge';
+import { getAsilColor } from '@/app/components/asilColors';
 
 const { Title, Text } = Typography;
 
@@ -123,12 +124,13 @@ function SwComponentNode({ data }: { data: any }) {
                     id={`failure-${port.uuid}-${failure.uuid}`}
                     style={{
                       background: '#3B82F6',
-                      width: '10px',
-                      height: '10px',
-                      left: '-18px',
+                      width: '8px',
+                      height: '8px',
+                      left: '-20px',
                       top: '50%',
                       transform: 'translateY(-50%)',
-                      border: '1px solid white'
+                      border: '1px solid white',
+                      zIndex: 10
                     }}
                   />
                   <div style={{
@@ -140,20 +142,24 @@ function SwComponentNode({ data }: { data: any }) {
                     overflow: 'hidden',
                     textOverflow: 'ellipsis'
                   }}>
-                    {failure.name}
-                    <Tag 
+                    <span style={{
+                      fontWeight: 'bold',
+                      color: '#CC5500' // Dark orange color
+                    }}>
+                      {failure.name.replace(/_/g, ' ')}
+                    </span>
+                    {failure.asil && <Tag 
+                      color={getAsilColor(failure.asil)}
                       style={{ 
                         fontSize: '8px', 
                         marginLeft: '4px',
-                        backgroundColor: '#6B7280',
-                        color: 'white',
                         border: 'none',
                         padding: '1px 4px',
                         lineHeight: '1'
                       }}
                     >
                       {failure.asil}
-                    </Tag>
+                    </Tag>}
                   </div>
                 </div>
               ))}
@@ -193,12 +199,13 @@ function SwComponentNode({ data }: { data: any }) {
                     id={`failure-${port.uuid}-${failure.uuid}`}
                     style={{
                       background: '#F59E0B',
-                      width: '10px',
-                      height: '10px',
-                      right: '-18px',
+                      width: '8px',
+                      height: '8px',
+                      right: '-20px',
                       top: '50%',
                       transform: 'translateY(-50%)',
-                      border: '1px solid white'
+                      border: '1px solid white',
+                      zIndex: 10
                     }}
                   />
                   <div style={{
@@ -210,20 +217,24 @@ function SwComponentNode({ data }: { data: any }) {
                     overflow: 'hidden',
                     textOverflow: 'ellipsis'
                   }}>
-                    <Tag 
+                    {failure.asil && <Tag 
+                      color={getAsilColor(failure.asil)}
                       style={{ 
                         fontSize: '8px', 
                         marginRight: '4px',
-                        backgroundColor: '#6B7280',
-                        color: 'white',
                         border: 'none',
                         padding: '1px 4px',
                         lineHeight: '1'
                       }}
                     >
                       {failure.asil}
-                    </Tag>
-                    {failure.name}
+                    </Tag>}
+                    <span style={{
+                      fontWeight: 'bold',
+                      color: '#CC5500' // Dark orange color
+                    }}>
+                      {failure.name.replace(/_/g, ' ')}
+                    </span>
                   </div>
                 </div>
               ))}
@@ -315,7 +326,7 @@ export default function CrossCompFlow() {
             port.failureModes.push({
                 uuid: failure.uuid,
                 name: failure.properties.name,
-                asil: failure.properties.ASIL,
+                asil: failure.properties.asil,
                 description: failure.properties.description,
             });
         }
@@ -457,9 +468,33 @@ export default function CrossCompFlow() {
     
     try {
       const result = await createCausationBetweenFailureModes(sourceFailureUuid, targetFailureUuid);
-      if (result.success) {
+      if (result.success && result.causationUuid) {
         message.success({ content: 'Causation created successfully!', key: 'create-causation', duration: 2 });
-        await loadDataAndLayout(); // Reload everything
+        
+        // Instead of reloading, add the new edge to the state
+        const newEdge = {
+          id: `causation-${result.causationUuid}`,
+          source: params.source!,
+          target: params.target!,
+          sourceHandle: params.sourceHandle,
+          targetHandle: params.targetHandle,
+          type: 'interactive',
+          animated: false,
+          style: {
+            strokeWidth: 1.5,
+            stroke: '#94a3b8', // A neutral slate color
+          },
+          markerEnd: {
+              type: MarkerType.ArrowClosed,
+          },
+          data: {
+              causationUuid: result.causationUuid,
+              causationName: result.message, // Using the message as a placeholder for name
+              type: 'causation'
+          }
+        };
+
+        setEdges((eds) => addEdge(newEdge, eds));
       } else {
         message.error({ content: `Failed to create causation: ${result.message}`, key: 'create-causation', duration: 4 });
       }
@@ -468,7 +503,7 @@ export default function CrossCompFlow() {
     } finally {
       setIsCreatingCausation(false);
     }
-  }, [isCreatingCausation, loadDataAndLayout, nodes]);
+  }, [isCreatingCausation, nodes, setEdges]);
 
   const hideContextMenu = useCallback(() => setContextMenu(null), []);
 
@@ -494,7 +529,8 @@ export default function CrossCompFlow() {
       const result = await deleteCausationNode(contextMenu.causationUuid);
       if (result.success) {
         message.success({ content: 'Causation deleted successfully!', key: 'delete-causation', duration: 2 });
-        await loadDataAndLayout(); // Reload everything
+        // Instead of reloading, remove the edge from the state
+        setEdges((eds) => eds.filter((edge) => edge.id !== contextMenu.edgeId));
       } else {
         message.error({ content: `Failed to delete causation: ${result.message}`, key: 'delete-causation', duration: 4 });
       }
@@ -503,7 +539,7 @@ export default function CrossCompFlow() {
     } finally {
       hideContextMenu();
     }
-  }, [contextMenu, hideContextMenu, loadDataAndLayout]);
+  }, [contextMenu, hideContextMenu, setEdges]);
 
   if (loading) {
     return (

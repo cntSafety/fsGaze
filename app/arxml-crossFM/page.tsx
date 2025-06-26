@@ -5,7 +5,7 @@ import CrossCompFlow from './components/CrossCompFlow';
 export default function ArxmlCrossFMPage() {
   return (
     <div className="container mx-auto">
-      {/* <CrossComponentFailureChain /> */}
+      {/* <CrossComponentFailureChain /> */} 
       <div className="mb-6">
         <Link 
           href="/arxml-crossFM/safety-tree" 
