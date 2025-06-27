@@ -4,6 +4,7 @@ import { InfoCircleOutlined, LinkOutlined } from '@ant-design/icons';
 import { getAssemblyContextForPPort, getAssemblyContextForRPort, getSourcePackageForModeSwitchInterface } from '@/app/services/neo4j/queries/ports';
 import { AssemblyContextInfo } from '@/app/services/neo4j/types';
 import Link from 'next/link';
+import { getAsilColor } from '@/app/components/asilColors';
 
 const { Text } = Typography;
 
@@ -262,13 +263,19 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
                           <Text strong style={{ color: '#1890ff' }}>
                             Connected to: 
                           </Text>
-                          <Link href={`/arxml-safety/${context.swComponentClassUUID || context.swComponentUUID}`} legacyBehavior>
-                            <a style={{ marginLeft: '8px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', textDecoration: 'underline', color: '#08979c', display: 'inline-block' }}>
-                              <Tag color="cyan" style={{ fontSize: '13px', fontWeight: 'bold', margin: 0 }}>
-                                {context.swComponentName || 'Unknown Component'}
-                              </Tag>
-                            </a>
-                          </Link>
+                          {context.swComponentClassUUID ? (
+                            <Link href={`/arxml-safety/${context.swComponentClassUUID}`} legacyBehavior>
+                              <a style={{ marginLeft: '8px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', textDecoration: 'underline', color: '#08979c', display: 'inline-block' }}>
+                                <Tag color={getAsilColor(context.failureModeASIL || '') || 'cyan'} style={{ fontSize: '13px', fontWeight: 'bold', margin: 0 }}>
+                                  {context.swComponentName || 'Unknown Component'}
+                                </Tag>
+                              </a>
+                            </Link>
+                          ) : (
+                            <Tag color={getAsilColor(context.failureModeASIL || '') || 'cyan'} style={{ marginLeft: '8px', fontSize: '13px', fontWeight: 'bold' }}>
+                              {context.swComponentName || 'Unknown Component'}
+                            </Tag>
+                          )}
                         </div>
                         
                         {/* Provider Port Information */}
@@ -290,7 +297,7 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
                                 {context.failureModeName}
                               </Tag>
                               {context.failureModeASIL && (
-                                <Tag color="orange" style={{ fontSize: '11px', marginLeft: '4px' }}>
+                                <Tag color={getAsilColor(context.failureModeASIL || '')} style={{ fontSize: '11px', marginLeft: '4px' }}>
                                   ASIL: {context.failureModeASIL}
                                 </Tag>
                               )}
