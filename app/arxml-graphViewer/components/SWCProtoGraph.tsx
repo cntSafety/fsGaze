@@ -102,7 +102,6 @@ const SWCProtoGraph: React.FC = () => {
   // Visibility state for relationship types
   const [visibleRelationshipTypes, setVisibleRelationshipTypes] = useState<Set<string>>(new Set([
     'TYPE-TREF',
-    'CONTEXT-COMPONENT-REF',
     'TARGET-P-PORT-REF',
     'TARGET-R-PORT-REF',
     'PROVIDED-INTERFACE-TREF',
@@ -386,6 +385,7 @@ const SWCProtoGraph: React.FC = () => {
       let hasChanges = false;
       availableRelationshipTypes.forEach(type => {
         if (!newSet.has(type)) {
+          if (type === 'CONTEXT-COMPONENT-REF') return; // Do not auto-enable this type
           newSet.add(type);
           hasChanges = true;
         }
@@ -712,7 +712,7 @@ const SWCProtoGraph: React.FC = () => {
     //   relationshipsFilteredByType: filteredRelTypeCount,
     //   relationshipsFilteredByNodeVisibility: filteredNodeVisibilityCount
     // });
-    // console.log('📊 Nodes:', nodes.map(n => ({ id: n.id, name: n.name, RenderingInfoType: n.RenderingInfoType })));
+    // console.log('�� Nodes:', nodes.map(n => ({ id: n.id, name: n.name, RenderingInfoType: n.RenderingInfoType })));
     // console.log('📊 Links:', links.map(l => ({ 
     //   source: typeof l.source === 'string' ? l.source : l.source.id, 
     //   target: typeof l.target === 'string' ? l.target : l.target.id, 
@@ -1378,6 +1378,12 @@ const SWCProtoGraph: React.FC = () => {
                   <span style={{ color: '#2196F3' }}>— TARGET-R-PORT-REF</span>
                 </Checkbox>
                 <Checkbox
+                  checked={visibleRelationshipTypes.has('PROVIDED-INTERFACE-TREF')}
+                  onChange={() => toggleRelationshipTypeVisibility('PROVIDED-INTERFACE-TREF')}
+                >
+                  <span style={{ color: '#FF9800' }}>— PROVIDED-INTERFACE-TREF</span>
+                </Checkbox>
+                <Checkbox
                   checked={visibleRelationshipTypes.has('CONTAINS')}
                   onChange={() => toggleRelationshipTypeVisibility('CONTAINS')}
                 >
@@ -1388,12 +1394,6 @@ const SWCProtoGraph: React.FC = () => {
                   onChange={() => toggleRelationshipTypeVisibility('REQUIRED-INTERFACE-TREF')}
                 >
                   <span style={{ color: '#9C27B0' }}>— REQUIRED-INTERFACE-TREF</span>
-                </Checkbox>
-                <Checkbox
-                  checked={visibleRelationshipTypes.has('PROVIDED-INTERFACE-TREF')}
-                  onChange={() => toggleRelationshipTypeVisibility('PROVIDED-INTERFACE-TREF')}
-                >
-                  <span style={{ color: '#FF9800' }}>— PROVIDED-INTERFACE-TREF</span>
                 </Checkbox>
                 <Checkbox
                   checked={visibleRelationshipTypes.has('OCCURRENCE')}
