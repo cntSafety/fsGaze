@@ -10,7 +10,7 @@
  */
 'use client';
 
-import React, { useMemo, useState, memo } from 'react';
+import React, { useMemo, useState, memo, useEffect } from 'react';
 import ReactFlow, {
     Controls,
     Background,
@@ -20,15 +20,18 @@ import ReactFlow, {
     Position,
     Handle,
     NodeProps,
+    Edge,
+    MarkerType,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { Card, Typography, Space, Tag, Button, Spin, Tooltip } from 'antd';
+import { Card, Typography, Space, Tag, Button, Spin, Tooltip, Switch } from 'antd';
 import { ReloadOutlined, DeleteOutlined } from '@ant-design/icons';
 import InteractiveSmoothStepEdge from './InteractiveSmoothStepEdge';
 import { getAsilColor } from '@/app/components/asilColors';
 import { useSafetyData } from '@/app/arxml-crossFM/hooks/useSafetyData';
 import { useCausationManager } from '@/app/arxml-crossFM/hooks/useCausationManager';
 import PortConnectionDetailsModal from './PortConnectionDetailsModal';
+import { getAssemblyContextForRPort } from '@/app/services/neo4j/queries/ports';
 
 const { Text } = Typography;
 
@@ -89,69 +92,77 @@ const SwComponentNode = memo(({ data }: NodeProps<SwComponentNodeData>) => {
           minWidth: '120px'
         }}>
           {receiverPorts.map((port: any) => (
-            <div key={port.uuid} style={{ cursor: 'pointer' }} onClick={() => onPortClick(port, 'receiver')}>
-              <Tooltip title={port.name} placement="left">
-                <div style={{
-                  fontSize: '10px',
-                  color: '#6B7280',
-                  textAlign: 'left',
-                  paddingLeft: '8px',
-                  marginBottom: '4px',
-                  fontWeight: '500',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis'
-                }}>
-                  {port.name}
-                </div>
-              </Tooltip>
-              {port.failureModes.map((failure: any, index: number) => (
-                <div key={`${failure.uuid}-${index}`} style={{ position: 'relative', marginBottom: '2px' }}>
-                  <Handle
-                    type="target"
-                    position={Position.Left}
-                    id={`failure-${port.uuid}-${failure.uuid}`}
-                    style={{
-                      background: '#3B82F6',
-                      width: '8px',
-                      height: '8px',
-                      left: '-20px',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      border: '1px solid white',
-                      zIndex: 10
-                    }}
-                  />
+            <div key={port.uuid} style={{ position: 'relative', paddingLeft: '20px' }}>
+              <Handle
+                type="target"
+                position={Position.Left}
+                id={`port-${port.uuid}`}
+                style={{ top: '50%', background: '#4b5563', left: '0px', zIndex: 10 }}
+              />
+              <div style={{cursor: 'pointer'}} onClick={() => onPortClick(port, 'receiver')}>
+                <Tooltip title={port.name} placement="left">
                   <div style={{
-                    fontSize: '11px',
-                    color: '#374151',
+                    fontSize: '10px',
+                    color: '#6B7280',
                     textAlign: 'left',
-                    paddingLeft: '12px',
+                    paddingLeft: '8px',
+                    marginBottom: '4px',
+                    fontWeight: '500',
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis'
                   }}>
-                    <span style={{
-                      fontWeight: 'bold',
-                      color: '#CC5500' // Dark orange color
-                    }}>
-                      {failure.name.replace(/_/g, ' ')}
-                    </span>
-                    {failure.asil && <Tag 
-                      color={getAsilColor(failure.asil)}
-                      style={{ 
-                        fontSize: '8px', 
-                        marginLeft: '4px',
-                        border: 'none',
-                        padding: '1px 4px',
-                        lineHeight: '1'
-                      }}
-                    >
-                      {failure.asil}
-                    </Tag>}
+                    {port.name}
                   </div>
-                </div>
-              ))}
+                </Tooltip>
+                {port.failureModes.map((failure: any, index: number) => (
+                  <div key={`${failure.uuid}-${index}`} style={{ position: 'relative', marginBottom: '2px' }}>
+                    <Handle
+                      type="target"
+                      position={Position.Left}
+                      id={`failure-${port.uuid}-${failure.uuid}`}
+                      style={{
+                        background: '#3B82F6',
+                        width: '8px',
+                        height: '8px',
+                        left: '-20px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        border: '1px solid white',
+                        zIndex: 10
+                      }}
+                    />
+                    <div style={{
+                      fontSize: '11px',
+                      color: '#374151',
+                      textAlign: 'left',
+                      paddingLeft: '12px',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}>
+                      <span style={{
+                        fontWeight: 'bold',
+                        color: '#CC5500' // Dark orange color
+                      }}>
+                        {failure.name.replace(/_/g, ' ')}
+                      </span>
+                      {failure.asil && <Tag 
+                        color={getAsilColor(failure.asil)}
+                        style={{ 
+                          fontSize: '8px', 
+                          marginLeft: '4px',
+                          border: 'none',
+                          padding: '1px 4px',
+                          lineHeight: '1'
+                        }}
+                      >
+                        {failure.asil}
+                      </Tag>}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
         </div>
@@ -164,69 +175,77 @@ const SwComponentNode = memo(({ data }: NodeProps<SwComponentNodeData>) => {
           minWidth: '120px'
         }}>
           {providerPorts.map((port: any) => (
-            <div key={port.uuid} style={{ cursor: 'pointer' }} onClick={() => onPortClick(port, 'provider')}>
-              <Tooltip title={port.name} placement="right">
-                <div style={{
-                  fontSize: '10px',
-                  color: '#6B7280',
-                  textAlign: 'right',
-                  paddingRight: '8px',
-                  marginBottom: '4px',
-                  fontWeight: '500',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis'
-                }}>
-                  {port.name}
-                </div>
-              </Tooltip>
-              {port.failureModes.map((failure: any, index: number) => (
-                <div key={`${failure.uuid}-${index}`} style={{ position: 'relative', marginBottom: '2px' }}>
-                  <Handle
-                    type="source"
-                    position={Position.Right}
-                    id={`failure-${port.uuid}-${failure.uuid}`}
-                    style={{
-                      background: '#F59E0B',
-                      width: '8px',
-                      height: '8px',
-                      right: '-20px',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      border: '1px solid white',
-                      zIndex: 10
-                    }}
-                  />
+            <div key={port.uuid} style={{ position: 'relative', paddingRight: '20px' }}>
+              <Handle
+                type="source"
+                position={Position.Right}
+                id={`port-${port.uuid}`}
+                style={{ top: '50%', background: '#4b5563', right: '0px', zIndex: 10 }}
+              />
+              <div style={{cursor: 'pointer'}} onClick={() => onPortClick(port, 'provider')}>
+                <Tooltip title={port.name} placement="right">
                   <div style={{
-                    fontSize: '11px',
-                    color: '#374151',
+                    fontSize: '10px',
+                    color: '#6B7280',
                     textAlign: 'right',
-                    paddingRight: '12px',
+                    paddingRight: '8px',
+                    marginBottom: '4px',
+                    fontWeight: '500',
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis'
                   }}>
-                    {failure.asil && <Tag 
-                      color={getAsilColor(failure.asil)}
-                      style={{ 
-                        fontSize: '8px', 
-                        marginRight: '4px',
-                        border: 'none',
-                        padding: '1px 4px',
-                        lineHeight: '1'
-                      }}
-                    >
-                      {failure.asil}
-                    </Tag>}
-                    <span style={{
-                      fontWeight: 'bold',
-                      color: '#CC5500' // Dark orange color
-                    }}>
-                      {failure.name.replace(/_/g, ' ')}
-                    </span>
+                    {port.name}
                   </div>
-                </div>
-              ))}
+                </Tooltip>
+                {port.failureModes.map((failure: any, index: number) => (
+                  <div key={`${failure.uuid}-${index}`} style={{ position: 'relative', marginBottom: '2px' }}>
+                    <Handle
+                      type="source"
+                      position={Position.Right}
+                      id={`failure-${port.uuid}-${failure.uuid}`}
+                      style={{
+                        background: '#F59E0B',
+                        width: '8px',
+                        height: '8px',
+                        right: '-20px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        border: '1px solid white',
+                        zIndex: 10
+                      }}
+                    />
+                    <div style={{
+                      fontSize: '11px',
+                      color: '#374151',
+                      textAlign: 'right',
+                      paddingRight: '12px',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}>
+                      {failure.asil && <Tag 
+                        color={getAsilColor(failure.asil)}
+                        style={{ 
+                          fontSize: '8px', 
+                          marginRight: '4px',
+                          border: 'none',
+                          padding: '1px 4px',
+                          lineHeight: '1'
+                        }}
+                      >
+                        {failure.asil}
+                      </Tag>}
+                      <span style={{
+                        fontWeight: 'bold',
+                        color: '#CC5500' // Dark orange color
+                      }}>
+                        {failure.name.replace(/_/g, ' ')}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
         </div>
@@ -264,6 +283,9 @@ export default function CrossCompFlow() {
   
   const [selectedPortInfo, setSelectedPortInfo] = useState<{port: any; type: 'provider' | 'receiver'} | null>(null);
   const [isPortModalVisible, setIsPortModalVisible] = useState(false);
+  const [showPortConnections, setShowPortConnections] = useState(false);
+  const [isFetchingPortConnections, setIsFetchingPortConnections] = useState(false);
+  const [portConnectionEdges, setPortConnectionEdges] = useState<Edge[]>([]);
   
   const {
       contextMenu,
@@ -272,6 +294,64 @@ export default function CrossCompFlow() {
       handleDeleteCausation,
       hideContextMenu,
   } = useCausationManager(nodes, setEdges);
+
+  useEffect(() => {
+      const fetchPortConnections = async () => {
+          if (!showPortConnections) {
+              setPortConnectionEdges([]);
+              return;
+          }
+
+          setIsFetchingPortConnections(true);
+          
+          const rPorts = nodes.flatMap(node =>
+              node.data.receiverPorts.map((p: any) => ({ port: p, componentId: node.id }))
+          );
+
+          const promises = rPorts.map(async ({ port, componentId }) => {
+              const result = await getAssemblyContextForRPort(port.uuid);
+              
+              if (result.records && result.records.length > 0) {
+                  console.group(`Connections found for R-Port: ${port.name} (${port.uuid})`);
+                  console.table(result.records.map(r => r.toObject()));
+                  console.groupEnd();
+              }
+              
+              if (result.records) {
+                  return result.records.map(record => {
+                      const context = record.toObject() as any;
+                      if (context.providerPortUUID && context.swComponentUUID) {
+                          return {
+                              id: `pconn-${port.uuid}-${context.providerPortUUID}`,
+                              source: context.swComponentUUID,
+                              target: componentId,
+                              sourceHandle: `port-${context.providerPortUUID}`,
+                              targetHandle: `port-${port.uuid}`,
+                              type: 'smoothstep',
+                              style: { stroke: '#0ea5e9', strokeWidth: 2, strokeDasharray: '5 5' },
+                              markerEnd: { type: MarkerType.ArrowClosed, color: '#0ea5e9' },
+                              zIndex: 0,
+                          };
+                      }
+                      return null;
+                  }).filter(Boolean) as Edge[];
+              }
+              return [];
+          });
+
+          try {
+              const results = await Promise.all(promises);
+              setPortConnectionEdges(results.flat());
+          } catch (error) {
+              console.error("Failed to fetch port connections:", error);
+          } finally {
+              setIsFetchingPortConnections(false);
+          }
+      };
+
+      fetchPortConnections();
+
+  }, [showPortConnections, nodes]);
 
   const handlePortClick = (port: any, type: 'provider' | 'receiver') => {
     setSelectedPortInfo({ port, type });
@@ -313,7 +393,7 @@ export default function CrossCompFlow() {
     <div style={{ height: 'calc(100vh - 200px)', position: 'relative' }} onClick={hideContextMenu}>
         <ReactFlow
           nodes={nodesWithHandlers}
-          edges={edges}
+          edges={[...edges, ...portConnectionEdges]}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
@@ -334,6 +414,14 @@ export default function CrossCompFlow() {
         >
           <Panel position="top-right">
             <Space>
+              <Switch
+                checkedChildren="Port Links"
+                unCheckedChildren="Port Links"
+                loading={isFetchingPortConnections}
+                checked={showPortConnections}
+                onChange={setShowPortConnections}
+                size="small"
+              />
               <Button onClick={loadDataAndLayout} icon={<ReloadOutlined />} size="small">
                 Reload Layout
               </Button>
