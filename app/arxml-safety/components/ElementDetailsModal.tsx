@@ -3,6 +3,7 @@ import { Modal, Typography, Descriptions, Tag, Spin, Alert } from 'antd';
 import { InfoCircleOutlined, LinkOutlined } from '@ant-design/icons';
 import { getAssemblyContextForPPort, getAssemblyContextForRPort, getSourcePackageForModeSwitchInterface } from '@/app/services/neo4j/queries/ports';
 import { AssemblyContextInfo } from '@/app/services/neo4j/types';
+import Link from 'next/link';
 
 const { Text } = Typography;
 
@@ -261,9 +262,13 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
                           <Text strong style={{ color: '#1890ff' }}>
                             Connected to: 
                           </Text>
-                          <Tag color="cyan" style={{ marginLeft: '8px', fontSize: '13px', fontWeight: 'bold' }}>
-                            {context.swComponentName || 'Unknown Component'}
-                          </Tag>
+                          <Link href={`/arxml-safety/${context.swComponentClassUUID || context.swComponentUUID}`} legacyBehavior>
+                            <a style={{ marginLeft: '8px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', textDecoration: 'underline', color: '#08979c', display: 'inline-block' }}>
+                              <Tag color="cyan" style={{ fontSize: '13px', fontWeight: 'bold', margin: 0 }}>
+                                {context.swComponentName || 'Unknown Component'}
+                              </Tag>
+                            </a>
+                          </Link>
                         </div>
                         
                         {/* Provider Port Information */}

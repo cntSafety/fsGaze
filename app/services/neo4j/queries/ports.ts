@@ -30,12 +30,26 @@ export const getAssemblyContextForPPort = async (pPortUuid: string): Promise<Que
       MATCH (containingSwc) -[:CONTAINS]->(pPortNode)
       WHERE (containingSwc:APPLICATION_SW_COMPONENT_TYPE OR containingSwc:COMPOSITION_SW_COMPONENT_TYPE OR containingSwc:SERVICE_SW_COMPONENT_TYPE)
         AND swCompPro.name <> containingSwc.name
+      // Get the connected R_PORT and its failure modes with ASIL information
+      OPTIONAL MATCH (swConnector)-[:\`TARGET-R-PORT-REF\`]->(rPortNode)
+      OPTIONAL MATCH (rPortNode)<-[:OCCURRENCE]-(FM:FAILUREMODE)
+      //new --> get also the SW Component Type from prototype compoent to enable uuid based navigation
+      OPTIONAL MATCH (swCompPro)-[:\`TYPE-TREF\`]->(swCompClass)
+      WHERE (swCompClass:APPLICATION_SW_COMPONENT_TYPE OR swCompClass:COMPOSITION_SW_COMPONENT_TYPE OR swCompClass:SERVICE_SW_COMPONENT_TYPE)
       RETURN DISTINCT 
        swConnector.name as assemblySWConnectorName,
        swConnector.uuid as assemblySWConnectorUUID,
        swCompPro.name as swComponentName,
        swCompPro.uuid as swComponentUUID,
-       labels(swCompPro)[0] as swComponentType
+       labels(swCompPro)[0] as swComponentType,
+       rPortNode.uuid as receiverPortUUID,
+       rPortNode.name as receiverPortName,
+       FM.name as failureModeName,
+       FM.uuid as failureModeUUID,
+       FM.asil as failureModeASIL,
+       swCompClass.name as swComponentClassName,
+       swCompClass.uuid as swComponentClassUUID,
+       labels(swCompClass)[0] as swComponentClassType
       `,
       { pPortUuid }
     );

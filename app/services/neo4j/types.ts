@@ -73,6 +73,10 @@ export interface AssemblyContextInfo {
   failureModeName?: string | null;
   failureModeUUID?: string | null;
   failureModeASIL?: string | null;
+  // Added for navigation to correct component type
+  swComponentClassName?: string | null;
+  swComponentClassUUID?: string | null;
+  swComponentClassType?: string | null;
 }
 
 // Port and interface interfaces
