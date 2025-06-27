@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Button, Spin, Card, Typography } from 'antd';
+import { Button, Spin, Card, Typography, Divider } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import { useSwSafetyData } from './safety-analysis/hooks/useSwSafetyData';
@@ -191,16 +191,10 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
         receiverPortFailures={receiverPortFailures}
       />
 
-      {/* ASIL-FM Check Section */}
-      <ASILFMCheck
-        swComponentUuid={swComponentUuid}
-        swComponentName={swComponent?.name}
-        failures={failures}
-        providerPorts={providerPorts}
-        receiverPorts={receiverPorts}
-        portFailures={portFailures}
-        receiverPortFailures={receiverPortFailures}
-      />
+      <Divider>ASIL Mismatch Check</Divider>
+      <div style={{ padding: '20px' }}>
+        <ASILFMCheck />
+      </div>
     </div>
   );
 }

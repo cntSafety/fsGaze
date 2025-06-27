@@ -264,6 +264,8 @@ const SwComponentNode = memo(({ data }: NodeProps<SwComponentNodeData>) => {
   );
 });
 
+SwComponentNode.displayName = 'SwComponentNode';
+
 /**
  * The main component for the Cross-Component Failure Flow page.
  * It integrates the data loading and causation management hooks to provide

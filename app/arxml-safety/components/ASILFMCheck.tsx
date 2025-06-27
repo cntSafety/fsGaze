@@ -25,11 +25,7 @@ interface ASILMismatch {
   severity: 'critical' | 'warning' | 'info';
 }
 
-interface ASILFMCheckProps {
-  // No props needed for this version
-}
-
-const ASILFMCheck: React.FC<ASILFMCheckProps> = () => {
+const ASILFMCheck: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [failureModes, setFailureModes] = useState<FailureModeInfo[]>([]);
   const [asilMismatches, setAsilMismatches] = useState<ASILMismatch[]>([]);
