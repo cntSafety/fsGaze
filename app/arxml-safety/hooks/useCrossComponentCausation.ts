@@ -22,14 +22,16 @@ export const useCrossComponentCausation = (
   const handleFailureSelection = useCallback(async (
     failureUuid: string,
     failureName: string,
-    sourceType: 'component' | 'provider-port' | 'receiver-port' = 'component'
+    sourceType: 'component' | 'provider-port' | 'receiver-port' = 'component',
+    overrideComponentUuid?: string,
+    overrideComponentName?: string
   ) => {
     // Add selection to storage
     const newState = addSelection({
       failureUuid,
       failureName,
-      componentUuid: currentComponentUuid,
-      componentName: currentComponentName,
+      componentUuid: overrideComponentUuid || currentComponentUuid,
+      componentName: overrideComponentName || currentComponentName,
       sourceType
     });
 

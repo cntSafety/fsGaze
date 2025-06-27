@@ -21,6 +21,10 @@ interface SwFailureModesTableProps {
     second: { uuid: string; name: string } | null;
   };
   refreshData?: () => Promise<void>;
+  // Add causation linking props for modal
+  getFailureSelectionState?: (failureUuid: string) => 'first' | 'second' | null;
+  handleFailureSelection?: (failureUuid: string, failureName: string, sourceType: 'component' | 'provider-port' | 'receiver-port', componentUuid?: string, componentName?: string) => void | Promise<void>;
+  isCauseSelected?: boolean;
 }
 
 export default function SwFailureModesTable({
@@ -31,6 +35,9 @@ export default function SwFailureModesTable({
   onFailureSelect,
   selectedFailures,
   refreshData,
+  getFailureSelectionState,
+  handleFailureSelection,
+  isCauseSelected,
 }: SwFailureModesTableProps) {
   const {
     form,
@@ -211,6 +218,9 @@ export default function SwFailureModesTable({
           primaryMessage: 'No failure modes defined for this SW component',
           secondaryMessage: `Component: ${swComponent.name}`,
         }}
+        getFailureSelectionState={getFailureSelectionState}
+        handleFailureSelection={handleFailureSelection}
+        isCauseSelected={isCauseSelected}
       />
       <CascadeDeleteModal
         open={isDeleteModalVisible && !!deletePreview}

@@ -11,13 +11,15 @@ interface ProviderPortsFailureModesTableProps {
   providerPorts: ProviderPort[];
   portFailures: {[portUuid: string]: PortFailure[]};
   setPortFailures: (portFailures: {[portUuid: string]: PortFailure[]}) => void;
-  // Add linking props
   onFailureSelect?: (failure: { uuid: string; name: string }) => void;
   selectedFailures?: {
     first: { uuid: string; name: string } | null;
     second: { uuid: string; name: string } | null;
   };
   refreshData?: () => Promise<void>;
+  getFailureSelectionState?: (failureUuid: string) => 'first' | 'second' | null;
+  handleFailureSelection?: (failureUuid: string, failureName: string, sourceType: 'component' | 'provider-port' | 'receiver-port', componentUuid?: string, componentName?: string) => void | Promise<void>;
+  isCauseSelected?: boolean;
 }
 
 export default function ProviderPortsFailureModesTable({
@@ -27,6 +29,9 @@ export default function ProviderPortsFailureModesTable({
   onFailureSelect,
   selectedFailures,
   refreshData,
+  getFailureSelectionState,
+  handleFailureSelection,
+  isCauseSelected,
 }: ProviderPortsFailureModesTableProps) {
   const {
     form,
@@ -194,13 +199,12 @@ export default function ProviderPortsFailureModesTable({
         },
       }}
       emptyStateConfig={{
-        primaryMessage: providerPorts.length === 0 
-          ? 'No provider ports found for this component'
-          : 'No failure modes defined for any provider ports',
-        secondaryMessage: providerPorts.length > 0 
-          ? `Provider ports: ${providerPorts.map(port => port.name).join(', ')}`
-          : undefined,
+        primaryMessage: 'No provider ports or failure modes defined',
+        secondaryMessage: 'Click "Add Failure" on a port to define its first failure mode.',
       }}
+      getFailureSelectionState={getFailureSelectionState}
+      handleFailureSelection={handleFailureSelection}
+      isCauseSelected={isCauseSelected}
     />
     <CascadeDeleteModal
       open={isDeleteModalVisible && !!deletePreview}

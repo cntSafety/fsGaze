@@ -35,6 +35,9 @@ interface BaseFailureModeTableProps {
     itemsList?: string[];
   };
   onSafetyTaskClick?: (failureUuid: string, failureName: string, failureDescription?: string) => Promise<void>;
+  getFailureSelectionState?: (failureUuid: string) => 'first' | 'second' | null;
+  handleFailureSelection?: (failureUuid: string, failureName: string, sourceType: 'component' | 'provider-port' | 'receiver-port', componentUuid?: string, componentName?: string) => void | Promise<void>;
+  isCauseSelected?: boolean;
 }
 
 export const BaseFailureModeTable: React.FC<BaseFailureModeTableProps> = ({
@@ -56,6 +59,9 @@ export const BaseFailureModeTable: React.FC<BaseFailureModeTableProps> = ({
   pagination,
   emptyStateConfig,
   onSafetyTaskClick,
+  getFailureSelectionState,
+  handleFailureSelection,
+  isCauseSelected,
 }) => {  return (
     <RiskRatingManager>
       {({ handleRiskRatingClick }) => (
@@ -93,6 +99,9 @@ export const BaseFailureModeTable: React.FC<BaseFailureModeTableProps> = ({
                   onFailureSelect={onFailureSelect}
                   selectedFailures={selectedFailures}
                   pagination={pagination}
+                  getFailureSelectionState={getFailureSelectionState}
+                  handleFailureSelection={handleFailureSelection}
+                  isCauseSelected={isCauseSelected}
                 />
               ) : (
                 <div style={{ 

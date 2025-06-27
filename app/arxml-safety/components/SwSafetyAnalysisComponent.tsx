@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Button, Spin, Card, Typography, Divider } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
@@ -16,6 +16,7 @@ import InterfaceCheck from './InterfaceCheck';
 import ASILFMCheck from './ASILFMCheck';
 import CrossComponentCausationIndicator from './CrossComponentCausationIndicator';
 import { SwSafetyAnalysisProps } from './safety-analysis/types';
+import ElementDetailsModal from './ElementDetailsModal';
 
 const { Text } = Typography;
 
@@ -46,6 +47,15 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
     swComponentUuid,
     swComponent?.name || 'Unknown Component'
   );
+
+  // Modal state for ElementDetailsModal
+  const [isModalVisible, setIsModalVisible] = useState(false);
+  const [selectedElement, setSelectedElement] = useState(null);
+
+  const handleModalClose = () => {
+    setIsModalVisible(false);
+    setSelectedElement(null);
+  };
 
   const handleBackClick = () => {
     router.push('/arxml-safety');
@@ -83,6 +93,7 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
 
   // Get selection display info for the indicator
   const selectionDisplayInfo = getSelectionDisplayInfo();
+  const isCauseSelected = !!selectionDisplayInfo.first;
 
   // Create wrapper for failure selection to match expected interface
   const handleFailureSelectionWrapper = (failure: { uuid: string; name: string }) => {
@@ -152,6 +163,9 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
           onFailureSelect={handleFailureSelectionWrapper}
           selectedFailures={selectedFailures}
           refreshData={refreshData}
+          getFailureSelectionState={getFailureSelectionState}
+          handleFailureSelection={handleFailureSelection}
+          isCauseSelected={isCauseSelected}
         />
 
         <ProviderPortsFailureModesTable 
@@ -161,6 +175,9 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
           onFailureSelect={handleFailureSelectionWrapper}
           selectedFailures={selectedFailures}
           refreshData={refreshData}
+          getFailureSelectionState={getFailureSelectionState}
+          handleFailureSelection={handleFailureSelection}
+          isCauseSelected={isCauseSelected}
         />
         
         <ReceiverPortsFailureModesTable 
@@ -170,6 +187,9 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
           onFailureSelect={handleFailureSelectionWrapper}
           selectedFailures={selectedFailures}
           refreshData={refreshData}
+          getFailureSelectionState={getFailureSelectionState}
+          handleFailureSelection={handleFailureSelection}
+          isCauseSelected={isCauseSelected}
         />
       </div>
 
@@ -195,6 +215,15 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
       <div style={{ padding: '20px' }}>
         <ASILFMCheck />
       </div>
+
+      <ElementDetailsModal
+        isVisible={isModalVisible}
+        onClose={handleModalClose}
+        elementDetails={selectedElement}
+        getFailureSelectionState={getFailureSelectionState}
+        handleFailureSelection={handleFailureSelection as (failureUuid: string, failureName: string, sourceType: 'component' | 'provider-port' | 'receiver-port', componentUuid?: string, componentName?: string) => void | Promise<void>}
+        isCauseSelected={isCauseSelected}
+      />
     </div>
   );
 }

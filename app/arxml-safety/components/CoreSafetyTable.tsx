@@ -164,6 +164,10 @@ interface CoreSafetyTableProps {
   };
   // New prop for element click callback
   onElementClick?: (element: ElementDetails) => void;
+  // Causation linking for modal
+  getFailureSelectionState?: (failureUuid: string) => 'first' | 'second' | null;
+  handleFailureSelection?: (failureUuid: string, failureName: string, sourceType: 'component' | 'provider-port' | 'receiver-port', componentUuid?: string, componentName?: string) => void | Promise<void>;
+  isCauseSelected?: boolean;
 }
 
 const getColumnSearchProps = (dataIndex: string): ColumnType<SafetyTableRow> => ({
@@ -225,6 +229,9 @@ export default function CoreSafetyTable({
   onFailureSelect,
   selectedFailures,
   onElementClick,
+  getFailureSelectionState,
+  handleFailureSelection,
+  isCauseSelected,
 }: CoreSafetyTableProps) {
   const isEditing = (record: SafetyTableRow) => record.key === editingKey;
     // Modal state management
@@ -249,13 +256,6 @@ export default function CoreSafetyTable({
   const isFailureSelected = (failureUuid: string) => {
     return selectedFailures?.first?.uuid === failureUuid || 
            selectedFailures?.second?.uuid === failureUuid;
-  };
-
-  // Helper function to get selection state for visual feedback
-  const getFailureSelectionState = (failureUuid: string) => {
-    if (selectedFailures?.first?.uuid === failureUuid) return 'first';
-    if (selectedFailures?.second?.uuid === failureUuid) return 'second';
-    return null;
   };
 
   // Helper function to handle element click for modal
@@ -699,7 +699,7 @@ export default function CoreSafetyTable({
                               record.failureUuid && 
                               (onRiskRating || onRiskRatingClick);
         
-        const selectionState = canLink ? getFailureSelectionState(record.failureUuid!) : null;
+        const selectionState = canLink ? getFailureSelectionState && getFailureSelectionState(record.failureUuid!) : null;
         
         return editable ? (
           <Space size="small">
@@ -902,6 +902,9 @@ export default function CoreSafetyTable({
         isVisible={isModalVisible}
         onClose={handleModalClose}
         elementDetails={selectedElement}
+        getFailureSelectionState={getFailureSelectionState}
+        handleFailureSelection={handleFailureSelection}
+        isCauseSelected={isCauseSelected}
       />
       
       {/* Risk Rating Modal */}

@@ -11,13 +11,15 @@ interface ReceiverPortsFailureModesTableProps {
   receiverPorts: ProviderPort[];
   portFailures: {[portUuid: string]: PortFailure[]};
   setPortFailures: (portFailures: {[portUuid: string]: PortFailure[]}) => void;
-  // Add linking props
   onFailureSelect?: (failure: { uuid: string; name: string }) => void;
   selectedFailures?: {
     first: { uuid: string; name: string } | null;
     second: { uuid: string; name: string } | null;
   };
   refreshData?: () => Promise<void>;
+  getFailureSelectionState?: (failureUuid: string) => 'first' | 'second' | null;
+  handleFailureSelection?: (failureUuid: string, failureName: string, sourceType: 'component' | 'provider-port' | 'receiver-port', componentUuid?: string, componentName?: string) => void | Promise<void>;
+  isCauseSelected?: boolean;
 }
 
 export default function ReceiverPortsFailureModesTable({
@@ -27,6 +29,9 @@ export default function ReceiverPortsFailureModesTable({
   onFailureSelect,
   selectedFailures,
   refreshData,
+  getFailureSelectionState,
+  handleFailureSelection,
+  isCauseSelected,
 }: ReceiverPortsFailureModesTableProps) {
   const {
     form,
@@ -201,6 +206,9 @@ export default function ReceiverPortsFailureModesTable({
           ? `Receiver ports: ${receiverPorts.map(port => port.name).join(', ')}`
           : undefined,
       }}
+      getFailureSelectionState={getFailureSelectionState}
+      handleFailureSelection={handleFailureSelection}
+      isCauseSelected={isCauseSelected}
     />
     <CascadeDeleteModal
       open={isDeleteModalVisible && !!deletePreview}

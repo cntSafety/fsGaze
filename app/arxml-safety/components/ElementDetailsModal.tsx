@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Typography, Descriptions, Tag, Spin, Alert } from 'antd';
+import { Modal, Typography, Descriptions, Tag, Spin, Alert, Button } from 'antd';
 import { InfoCircleOutlined, LinkOutlined } from '@ant-design/icons';
 import { getAssemblyContextForPPort, getAssemblyContextForRPort, getSourcePackageForModeSwitchInterface } from '@/app/services/neo4j/queries/ports';
 import { AssemblyContextInfo } from '@/app/services/neo4j/types';
@@ -23,12 +23,18 @@ interface ElementDetailsModalProps {
   isVisible: boolean;
   onClose: () => void;
   elementDetails: ElementDetails | null;
+  getFailureSelectionState?: (failureUuid: string) => 'first' | 'second' | null;
+  handleFailureSelection?: (failureUuid: string, failureName: string, sourceType: 'component' | 'provider-port' | 'receiver-port', componentUuid?: string, componentName?: string) => void | Promise<void>;
+  isCauseSelected?: boolean;
 }
 
 const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
   isVisible,
   onClose,
   elementDetails,
+  getFailureSelectionState,
+  handleFailureSelection,
+  isCauseSelected,
 }) => {
   const [assemblyContext, setAssemblyContext] = useState<AssemblyContextInfo[]>([]);
   const [communicationPartners, setCommunicationPartners] = useState<Array<{
@@ -252,7 +258,7 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
                     <Text strong style={{ color: '#1890ff', fontSize: '14px', marginBottom: '12px', display: 'block' }}>
                       🔗 Assembly Connector Connections ({assemblyContext.length}):
                     </Text>
-                      {assemblyContext.map((context, index) => (
+                      {assemblyContext.map((context, index) => ( 
                       <div key={`assembly-${index}`} style={{ 
                         marginBottom: '16px',
                         padding: '12px',
@@ -287,22 +293,59 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
                           </div>
                         )}
                           {/* Failure Mode Information */}
-                        {context.failureModeName && (
-                          <div style={{ marginBottom: '6px' }}>
-                            <Text type="secondary" style={{ fontSize: '12px' }}>
-                              <strong>Failure Mode:</strong> 
-                            </Text>
-                            <div style={{ marginLeft: '12px', marginTop: '4px' }}>
-                              <Tag color="red" style={{ fontSize: '11px' }}>
-                                {context.failureModeName}
-                              </Tag>
-                              {context.failureModeASIL && (
-                                <Tag color={getAsilColor(context.failureModeASIL || '')} style={{ fontSize: '11px', marginLeft: '4px' }}>
-                                  ASIL: {context.failureModeASIL}
+                        {context.failureModeName && (() => {
+                          // Debug log for button rendering
+                          console.log(
+                            'DEBUG: failureModeUUID', context.failureModeUUID,
+                            'getFailureSelectionState', !!getFailureSelectionState,
+                            'handleFailureSelection', !!handleFailureSelection
+                          );
+                          return (
+                            <div style={{ marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <Text type="secondary" style={{ fontSize: '12px' }}>
+                                <strong>Failure Mode:</strong> 
+                              </Text>
+                              <div style={{ marginLeft: '12px', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Tag color="red" style={{ fontSize: '11px' }}>
+                                  {context.failureModeName}
                                 </Tag>
-                              )}
-                            </div>                          </div>
-                        )}
+                                {context.failureModeASIL && (
+                                  <Tag color={getAsilColor(context.failureModeASIL || '')} style={{ fontSize: '11px', marginLeft: '4px' }}>
+                                    ASIL: {context.failureModeASIL}
+                                  </Tag>
+                                )}
+                                {context.failureModeUUID && getFailureSelectionState && handleFailureSelection && (() => {
+                                  const selectionState = getFailureSelectionState(context.failureModeUUID);
+                                  const buttonText =
+                                    selectionState === 'first' ? 'Selected as Cause' :
+                                    selectionState === 'second' ? 'Selected as Effect' :
+                                    isCauseSelected ? 'Set as Effect' : 'Set as Cause';
+
+                                  return (
+                                    <Button
+                                      icon={<LinkOutlined />}
+                                      size="small"
+                                      type={selectionState ? 'primary' : 'default'}
+                                      style={{
+                                        color: selectionState === 'first' ? '#1890ff' :
+                                               selectionState === 'second' ? '#ff7875' : undefined
+                                      }}
+                                      onClick={() => handleFailureSelection(
+                                        context.failureModeUUID!, 
+                                        context.failureModeName!, 
+                                        context.providerPortUUID ? 'provider-port' : 'receiver-port',
+                                        context.swComponentUUID!,
+                                        context.swComponentName!
+                                      )}
+                                    >
+                                      {buttonText}
+                                    </Button>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     ))}
                   </>
