@@ -28,51 +28,49 @@ export const buildFlowDiagram = (safetyGraph: SafetyGraphData): { nodes: Node[],
 
     // Step 1 & 2: Aggregate components, ports, and failure modes from occurrences
     safetyGraph.occurrences.forEach(occ => {
-        if (!occ.occuranceSourceArxmlPath || !occ.occuranceSourceLabels) return;
-
-        const pathParts = occ.occuranceSourceArxmlPath.split('/');
-        const componentName = pathParts[2];
-        const portName = pathParts[3];
-
-        // If there's no port name, this is an internal failure, so we skip it.
-        if (!portName) {
-            return;
+        if (!occ.componentUuid || !occ.occuranceSourceArxmlPath) {
+            return; // Skip if we don't have the essential data
         }
 
-        const portType = occ.occuranceSourceLabels.includes('P_PORT_PROTOTYPE') ? 'provider' : 'receiver';
+        const portType = occ.occuranceSourceLabels && occ.occuranceSourceLabels.includes('P_PORT_PROTOTYPE') ? 'provider' : 'receiver';
 
-        if (!swComponents.has(componentName)) {
-            swComponents.set(componentName, {
-                uuid: componentName,
-                name: componentName,
+        // Use the new, reliable component data
+        if (!swComponents.has(occ.componentUuid)) {
+            swComponents.set(occ.componentUuid, {
+                uuid: occ.componentUuid,
+                name: occ.componentName,
                 providerPorts: [],
                 receiverPorts: [],
             });
         }
 
-        const component = swComponents.get(componentName);
-        const portArray = portType === 'provider' ? component.providerPorts : component.receiverPorts;
+        const component = swComponents.get(occ.componentUuid);
         
-        let port = portArray.find((p: any) => p.name === portName);
-        if (!port) {
-            port = {
-                uuid: occ.occuranceSourceUuid,
-                name: portName,
-                failureModes: [],
-            };
-            portArray.push(port);
-        }
+        // Check if the occurrence is on a port
+        if (occ.occuranceSourceLabels && (occ.occuranceSourceLabels.includes('P_PORT_PROTOTYPE') || occ.occuranceSourceLabels.includes('R_PORT_PROTOTYPE'))) {
+            const portArray = portType === 'provider' ? component.providerPorts : component.receiverPorts;
+            
+            let port = portArray.find((p: any) => p.uuid === occ.occuranceSourceUuid);
+            if (!port) {
+                port = {
+                    uuid: occ.occuranceSourceUuid,
+                    name: occ.occuranceSourceName,
+                    failureModes: [],
+                };
+                portArray.push(port);
+            }
 
-        const failure = safetyGraph.failures.find(f => f.uuid === occ.failureUuid);
-        if (failure) {
-            // Avoid adding duplicate failure modes to the same port
-            if (!port.failureModes.some((fm: any) => fm.uuid === failure.uuid)) {
-                port.failureModes.push({
-                    uuid: failure.uuid,
-                    name: failure.properties.name,
-                    asil: failure.properties.asil,
-                    description: failure.properties.description,
-                });
+            const failure = safetyGraph.failures.find(f => f.uuid === occ.failureUuid);
+            if (failure && failure.properties) {
+                // Avoid adding duplicate failure modes to the same port
+                if (!port.failureModes.some((fm: any) => fm.uuid === failure.uuid)) {
+                    port.failureModes.push({
+                        uuid: failure.uuid,
+                        name: failure.properties.name,
+                        asil: failure.properties.asil,
+                        description: failure.properties.description,
+                    });
+                }
             }
         }
     });
@@ -116,41 +114,33 @@ export const buildFlowDiagram = (safetyGraph: SafetyGraphData): { nodes: Node[],
 
             causeOccurrences.forEach((causeOcc) => {
                 effectOccurrences.forEach((effectOcc) => {
-                    if (causeOcc?.occuranceSourceArxmlPath && effectOcc?.occuranceSourceArxmlPath) {
+                    // Ensure both occurrences have a component UUID
+                    if (causeOcc.componentUuid && effectOcc.componentUuid) {
                         
-                        if (!causeOcc.occuranceSourceArxmlPath.split('/')[3] || !effectOcc.occuranceSourceArxmlPath.split('/')[3]) {
-                            return;
-                        }
-
-                        const causeComponent = swComponents.get(causeOcc.occuranceSourceArxmlPath.split('/')[2]);
-                        const effectComponent = swComponents.get(effectOcc.occuranceSourceArxmlPath.split('/')[2]);
-
-                        if (causeComponent && effectComponent) {
-                            const sourceHandle = `failure-${causeOcc.occuranceSourceUuid}-${causeOcc.failureUuid}`;
-                            const targetHandle = `failure-${effectOcc.occuranceSourceUuid}-${effectOcc.failureUuid}`;
-                            
-                            edges.push({
-                                id: `causation-${causation.causationUuid}-${causeOcc.occuranceSourceUuid}-${effectOcc.occuranceSourceUuid}`,
-                                source: causeComponent.uuid,
-                                target: effectComponent.uuid,
-                                sourceHandle,
-                                targetHandle,
-                                type: 'interactive',
-                                animated: false,
-                                style: {
-                                    strokeWidth: 1.5,
-                                    stroke: '#94a3b8',
-                                },
-                                markerEnd: {
-                                    type: MarkerType.ArrowClosed,
-                                },
-                                data: {
-                                    causationUuid: causation.causationUuid,
-                                    causationName: causation.causationName,
-                                    type: 'causation'
-                                }
-                            });
-                        }
+                        const sourceHandle = `failure-${causeOcc.occuranceSourceUuid}-${causeOcc.failureUuid}`;
+                        const targetHandle = `failure-${effectOcc.occuranceSourceUuid}-${effectOcc.failureUuid}`;
+                        
+                        edges.push({
+                            id: `causation-${causation.causationUuid}-${causeOcc.occuranceSourceUuid}-${effectOcc.occuranceSourceUuid}`,
+                            source: causeOcc.componentUuid,
+                            target: effectOcc.componentUuid,
+                            sourceHandle,
+                            targetHandle,
+                            type: 'interactive',
+                            animated: false,
+                            style: {
+                                strokeWidth: 1.5,
+                                stroke: '#94a3b8',
+                            },
+                            markerEnd: {
+                                type: MarkerType.ArrowClosed,
+                            },
+                            data: {
+                                causationUuid: causation.causationUuid,
+                                causationName: causation.causationName,
+                                type: 'causation'
+                            }
+                        });
                     }
                 });
             });

@@ -4,7 +4,7 @@
  */
 import { driver } from '../config';
 import { QueryResult } from 'neo4j-driver';
-import { AssemblyContextInfo, ProvidedInterfaceInfo, PortInfo } from '../types';
+import { AssemblyContextInfo, ProvidedInterfaceInfo, PortInfo, FullPortConnectionInfo } from '../types';
 
 /**
  * Retrieves the assembly context for a given P-Port (Provider Port).
@@ -400,4 +400,58 @@ export const getSourcePackageForModeSwitchInterface = async (rPortUuid: string):
   } finally {
     await session.close();
   }
+};
+
+/**
+ * Fetches all assembly port connections from the database, including names.
+ * This is a global query and does not depend on specific diagram contents.
+ * @returns A Promise that resolves to an array of FullPortConnectionInfo objects.
+ */
+export const getAllPortConnections = async (): Promise<{
+    success: boolean;
+    data?: FullPortConnectionInfo[];
+    message?: string;
+}> => {
+    const session = driver.session();
+    try {
+        const result = await session.run(
+            `
+            MATCH (p_port:P_PORT_PROTOTYPE)<-[:\`TARGET-P-PORT-REF\`]-(connector:ASSEMBLY_SW_CONNECTOR)
+            MATCH (r_port:R_PORT_PROTOTYPE)<-[:\`TARGET-R-PORT-REF\`]-(connector)
+            
+            MATCH (p_comp)-[:CONTAINS]->(p_port)
+            MATCH (r_comp)-[:CONTAINS]->(r_port)
+
+            RETURN DISTINCT
+              p_port.uuid AS sourcePortUuid,
+              p_port.name AS sourcePortName,
+              p_comp.uuid AS sourceComponentUuid,
+              p_comp.name AS sourceComponentName,
+              r_port.uuid AS targetPortUuid,
+              r_port.name AS targetPortName,
+              r_comp.uuid AS targetComponentUuid,
+              r_comp.name AS targetComponentName
+            `
+        );
+
+        const connections: FullPortConnectionInfo[] = result.records.map(record => ({
+            sourcePortUuid: record.get('sourcePortUuid'),
+            sourcePortName: record.get('sourcePortName'),
+            sourceComponentUuid: record.get('sourceComponentUuid'),
+            sourceComponentName: record.get('sourceComponentName'),
+            targetPortUuid: record.get('targetPortUuid'),
+            targetPortName: record.get('targetPortName'),
+            targetComponentUuid: record.get('targetComponentUuid'),
+            targetComponentName: record.get('targetComponentName'),
+        }));
+        
+        return { success: true, data: connections };
+
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'An unknown error occurred.';
+        console.error("Error in getAllPortConnections:", message);
+        return { success: false, message };
+    } finally {
+        await session.close();
+    }
 };

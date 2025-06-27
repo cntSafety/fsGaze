@@ -211,3 +211,59 @@ export async function getSafetyGraph(): Promise<{
         await session.close();
     }
 }
+
+/**
+ * Fetches a snapshot of the safety graph specifically tailored for diagramming.
+ * This version of the query ensures that for every failure occurrence, the parent
+ * component's UUID and name are also fetched. This is critical for reliably
+ * constructing diagram nodes with stable UUIDs.
+ *
+ * @returns A Promise resolving to the safety graph data for diagrams.
+ */
+export async function getSafetyGraphForDiagram(): Promise<{
+    success: boolean;
+    data?: SafetyGraphData;
+    message?: string;
+}> {
+    const session = driver.session();
+    try {
+        const fullGraph = await getSafetyGraph();
+
+        if (!fullGraph.success || !fullGraph.data) {
+            return { success: false, message: 'Failed to fetch base safety graph.' };
+        }
+        
+        const occurrencesResult = await session.run(`
+            MATCH (f:FAILUREMODE)-[:OCCURRENCE]->(src)
+            MATCH (component)-[:CONTAINS]->(src)
+            WHERE component:APPLICATION_SW_COMPONENT_TYPE OR component:COMPOSITION_SW_COMPONENT_TYPE OR component:SERVICE_SW_COMPONENT_TYPE
+            RETURN f.uuid AS failureUuid, f.name AS failureName, 
+                   src.uuid AS occuranceSourceUuid, src.name AS occuranceSourceName, 
+                   src.arxmlPath AS occuranceSourceArxmlPath, 
+                   labels(src) AS occuranceSourceLabels,
+                   component.uuid AS componentUuid,
+                   component.name AS componentName
+        `);
+        
+        const occurrences = occurrencesResult.records.map(record => ({
+            failureUuid: record.get('failureUuid'),
+            failureName: record.get('failureName') || '',
+            occuranceSourceUuid: record.get('occuranceSourceUuid'),
+            occuranceSourceName: record.get('occuranceSourceName'),
+            occuranceSourceArxmlPath: record.get('occuranceSourceArxmlPath'),
+            occuranceSourceLabels: record.get('occuranceSourceLabels'),
+            componentUuid: record.get('componentUuid'),
+            componentName: record.get('componentName'),
+        }));
+
+        fullGraph.data.occurrences = occurrences;
+
+        return fullGraph;
+
+    } catch (error: any) {
+        console.error("Error fetching safety graph for diagram:", error);
+        return { success: false, message: error.message };
+    } finally {
+        await session.close();
+    }
+}

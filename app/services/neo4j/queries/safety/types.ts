@@ -12,6 +12,8 @@ export interface OccurrenceLink {
     occuranceSourceArxmlPath?: string;
     occuranceSourceoriginalXmlTag?: string;
     occuranceSourceLabels?: string[]; // Neo4j labels of the source node
+    componentUuid?: string; // UUID of the parent SW Component
+    componentName?: string; // Name of the parent SW Component
     // Optional: any properties for the OCCURRENCE relationship itself
 }
 

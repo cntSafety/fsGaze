@@ -116,6 +116,31 @@ export interface ProvidedInterfaceInfo {
   uuid: string;
 }
 
+/**
+ * Represents the connection information between two ports for diagramming purposes.
+ */
+export interface PortConnectionInfo {
+  sourcePortUuid: string;
+  sourceComponentId: string;
+  targetPortUuid: string;
+  targetComponentId: string;
+}
+
+/**
+ * Represents the connection information between two ports for diagramming purposes,
+ * including component and port names.
+ */
+export interface FullPortConnectionInfo {
+  sourcePortUuid: string;
+  sourcePortName: string;
+  sourceComponentUuid: string;
+  sourceComponentName: string;
+  targetPortUuid: string;
+  targetPortName: string;
+  targetComponentUuid: string;
+  targetComponentName: string;
+}
+
 // Constants for specific Node Labels and Relationship Types
 export const SPECIFIC_NODE_LABELS = {
   DATA_ELEMENT_REF_TARGET: "ArxmlDataElementRefTarget", // For target nodes of *-REF elements

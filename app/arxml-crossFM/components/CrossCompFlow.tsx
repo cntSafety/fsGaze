@@ -31,7 +31,7 @@ import { getAsilColor } from '@/app/components/asilColors';
 import { useSafetyData } from '@/app/arxml-crossFM/hooks/useSafetyData';
 import { useCausationManager } from '@/app/arxml-crossFM/hooks/useCausationManager';
 import PortConnectionDetailsModal from './PortConnectionDetailsModal';
-import { getAssemblyContextForRPort } from '@/app/services/neo4j/queries/ports';
+import { getAllPortConnections } from '@/app/services/neo4j/queries/ports';
 
 const { Text } = Typography;
 
@@ -270,6 +270,10 @@ const SwComponentNode = memo(({ data }: NodeProps<SwComponentNodeData>) => {
  * an interactive graph visualization of failure mode causations.
  */
 export default function CrossCompFlow() {
+  const [isBigPictureMode, setIsBigPictureMode] = useState(false);
+  const [showPortConnections, setShowPortConnections] = useState(false);
+  const [isFetchingPortConnections, setIsFetchingPortConnections] = useState(false);
+
   const {
       nodes,
       edges,
@@ -279,13 +283,10 @@ export default function CrossCompFlow() {
       setEdges,
       loadDataAndLayout,
       setNodes,
-  } = useSafetyData();
+  } = useSafetyData(isBigPictureMode, showPortConnections);
   
   const [selectedPortInfo, setSelectedPortInfo] = useState<{port: any; type: 'provider' | 'receiver'} | null>(null);
   const [isPortModalVisible, setIsPortModalVisible] = useState(false);
-  const [showPortConnections, setShowPortConnections] = useState(false);
-  const [isFetchingPortConnections, setIsFetchingPortConnections] = useState(false);
-  const [portConnectionEdges, setPortConnectionEdges] = useState<Edge[]>([]);
   
   const {
       contextMenu,
@@ -294,64 +295,6 @@ export default function CrossCompFlow() {
       handleDeleteCausation,
       hideContextMenu,
   } = useCausationManager(nodes, setEdges);
-
-  useEffect(() => {
-      const fetchPortConnections = async () => {
-          if (!showPortConnections) {
-              setPortConnectionEdges([]);
-              return;
-          }
-
-          setIsFetchingPortConnections(true);
-          
-          const rPorts = nodes.flatMap(node =>
-              node.data.receiverPorts.map((p: any) => ({ port: p, componentId: node.id }))
-          );
-
-          const promises = rPorts.map(async ({ port, componentId }) => {
-              const result = await getAssemblyContextForRPort(port.uuid);
-              
-              if (result.records && result.records.length > 0) {
-                  console.group(`Connections found for R-Port: ${port.name} (${port.uuid})`);
-                  console.table(result.records.map(r => r.toObject()));
-                  console.groupEnd();
-              }
-              
-              if (result.records) {
-                  return result.records.map(record => {
-                      const context = record.toObject() as any;
-                      if (context.providerPortUUID && context.swComponentUUID) {
-                          return {
-                              id: `pconn-${port.uuid}-${context.providerPortUUID}`,
-                              source: context.swComponentUUID,
-                              target: componentId,
-                              sourceHandle: `port-${context.providerPortUUID}`,
-                              targetHandle: `port-${port.uuid}`,
-                              type: 'smoothstep',
-                              style: { stroke: '#0ea5e9', strokeWidth: 2, strokeDasharray: '5 5' },
-                              markerEnd: { type: MarkerType.ArrowClosed, color: '#0ea5e9' },
-                              zIndex: 0,
-                          };
-                      }
-                      return null;
-                  }).filter(Boolean) as Edge[];
-              }
-              return [];
-          });
-
-          try {
-              const results = await Promise.all(promises);
-              setPortConnectionEdges(results.flat());
-          } catch (error) {
-              console.error("Failed to fetch port connections:", error);
-          } finally {
-              setIsFetchingPortConnections(false);
-          }
-      };
-
-      fetchPortConnections();
-
-  }, [showPortConnections, nodes]);
 
   const handlePortClick = (port: any, type: 'provider' | 'receiver') => {
     setSelectedPortInfo({ port, type });
@@ -393,7 +336,7 @@ export default function CrossCompFlow() {
     <div style={{ height: 'calc(100vh - 200px)', position: 'relative' }} onClick={hideContextMenu}>
         <ReactFlow
           nodes={nodesWithHandlers}
-          edges={[...edges, ...portConnectionEdges]}
+          edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
@@ -415,12 +358,18 @@ export default function CrossCompFlow() {
           <Panel position="top-right">
             <Space>
               <Switch
-                checkedChildren="Port Links"
-                unCheckedChildren="Port Links"
+                checkedChildren="Connections"
+                unCheckedChildren="Connections"
                 loading={isFetchingPortConnections}
                 checked={showPortConnections}
                 onChange={setShowPortConnections}
-                size="small"
+              />
+              <Switch
+                checkedChildren="Big Picture"
+                unCheckedChildren="Causations Only"
+                loading={loading && isBigPictureMode}
+                checked={isBigPictureMode}
+                onChange={setIsBigPictureMode}
               />
               <Button onClick={loadDataAndLayout} icon={<ReloadOutlined />} size="small">
                 Reload Layout
