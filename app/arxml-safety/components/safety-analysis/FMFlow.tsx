@@ -18,7 +18,7 @@ import ReactFlow, {
     addEdge,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { Button, Card, Typography, Space, Tag, Modal, message } from 'antd';
+import { Button, Collapse, Typography, Space, Tag, Modal, message, theme } from 'antd';
 import { NodeCollapseOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import { SwComponent, Failure, PortFailure, ProviderPort } from './types';
 import { getSafetyGraph } from '@/app/services/neo4j/queries/safety/exportGraph';
@@ -51,17 +51,18 @@ interface NodeData {
 
 // Custom node component for SW Component failures (center)
 function SwFailureNode({ data }: { data: NodeData }) {
+  const { token } = theme.useToken();
   const showBorder = ['A', 'B', 'C', 'D'].includes(data.asil);
   const isQM = data.asil === 'QM';
-  const textColor = isQM ? '#9CA3AF' : '#1F2937'; // Medium gray for QM, dark gray for ASIL
+  const textColor = isQM ? token.colorTextQuaternary : token.colorText;
   
   return (
     <div style={{
       padding: '12px 16px',
       borderRadius: '8px',
-      background: 'rgba(248, 250, 252, 1)', // Light gray/white background
-      border: showBorder ? '3px solid #F59E0B' : 'none', // Orange border for ASIL A-D
-      boxShadow: '0 4px 8px rgba(0, 0, 0, 0.15)',
+      background: token.colorBgElevated,
+      border: showBorder ? `3px solid ${token.colorWarning}` : 'none',
+      boxShadow: token.boxShadow,
       minWidth: '180px',
       color: textColor,
       textAlign: 'center',
@@ -72,7 +73,7 @@ function SwFailureNode({ data }: { data: NodeData }) {
         type="target"
         position={Position.Left}
         id="left"
-        style={{ background: '#6B7280', width: '10px', height: '10px', left: '-5px' }}
+        style={{ background: token.colorTextSecondary, width: '10px', height: '10px', left: '-5px' }}
       />
       
       {/* Output handle for propagating failures */}
@@ -80,17 +81,17 @@ function SwFailureNode({ data }: { data: NodeData }) {
         type="source"
         position={Position.Right}
         id="right"
-        style={{ background: '#6B7280', width: '10px', height: '10px', right: '-5px' }}
+        style={{ background: token.colorTextSecondary, width: '10px', height: '10px', right: '-5px' }}
       />
       
-      <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '4px', color: textColor }}>
+      <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '4px' }}>
         {data.label}
       </div>
       <div style={{ fontSize: '11px', opacity: 0.9 }}>
-        <span style={{ fontWeight: 'bold', color: textColor }}>ASIL:</span> <span style={{ fontWeight: 'bold', color: textColor }}>{data.asil}</span>
+        <span style={{ fontWeight: 'bold' }}>ASIL:</span> <span style={{ fontWeight: 'bold' }}>{data.asil}</span>
       </div>
       {data.description && (
-        <div style={{ fontSize: '10px', opacity: 0.8, marginTop: '2px', color: textColor }}>
+        <div style={{ fontSize: '10px', opacity: 0.8, marginTop: '2px' }}>
           {data.description.length > 30 ? `${data.description.substring(0, 30)}...` : data.description}
         </div>
       )}
@@ -100,18 +101,19 @@ function SwFailureNode({ data }: { data: NodeData }) {
 
 // Custom node component for receiver port failures (left side)
 function ReceiverPortFailureNode({ data }: { data: NodeData }) {
+  const { token } = theme.useToken();
   const showBorder = ['A', 'B', 'C', 'D'].includes(data.asil);
   const isQM = data.asil === 'QM';
-  const labelTextColor = isQM ? '#9CA3AF' : '#374151'; // Medium gray for QM, darker for ASIL
-  const asilTextColor = isQM ? '#9CA3AF' : '#6B7280'; // Medium gray for QM, gray for ASIL
+  const labelTextColor = isQM ? token.colorTextQuaternary : token.colorText;
+  const asilTextColor = isQM ? token.colorTextQuaternary : token.colorTextSecondary;
   
   return (
     <div style={{
       padding: '10px 14px',
       borderRadius: '6px',
-      background: 'rgba(219, 234, 254, 1)', // Light blue background for receivers
-      border: showBorder ? '3px solid #F59E0B' : 'none', // Orange border for ASIL A-D
-      boxShadow: '0 2px 6px rgba(0, 0, 0, 0.1)',
+      background: token.colorPrimaryBg,
+      border: showBorder ? `3px solid ${token.colorWarning}` : 'none',
+      boxShadow: token.boxShadowSecondary,
       minWidth: '160px', // Minimum width, can expand for longer content
       maxWidth: '280px', // Maximum width to prevent excessive expansion
       position: 'relative',
@@ -127,7 +129,7 @@ function ReceiverPortFailureNode({ data }: { data: NodeData }) {
         type="target"
         position={Position.Left}
         id="left"
-        style={{ background: '#3B82F6', width: '8px', height: '8px', left: '-4px' }}
+        style={{ background: token.colorPrimary, width: '8px', height: '8px', left: '-4px' }}
       />
       
       {/* Output handle for propagating to SW component failures */}
@@ -135,10 +137,10 @@ function ReceiverPortFailureNode({ data }: { data: NodeData }) {
         type="source"
         position={Position.Right}
         id="right"
-        style={{ background: '#3B82F6', width: '8px', height: '8px', right: '-4px' }}
+        style={{ background: token.colorPrimary, width: '8px', height: '8px', right: '-4px' }}
       />
       
-      <div style={{ fontSize: '12px', fontWeight: '600', color: '#9CA3AF', marginBottom: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      <div style={{ fontSize: '12px', fontWeight: '600', color: token.colorTextDescription, marginBottom: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {data.portName}
       </div>
       <div style={{ fontSize: '13px', fontWeight: '700', color: labelTextColor, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -153,18 +155,19 @@ function ReceiverPortFailureNode({ data }: { data: NodeData }) {
 
 // Custom node component for provider port failures (right side)
 function ProviderPortFailureNode({ data }: { data: NodeData }) {
+  const { token } = theme.useToken();
   const showBorder = ['A', 'B', 'C', 'D'].includes(data.asil);
   const isQM = data.asil === 'QM';
-  const labelTextColor = isQM ? '#9CA3AF' : '#374151'; // Medium gray for QM, darker for ASIL
-  const asilTextColor = isQM ? '#9CA3AF' : '#6B7280'; // Medium gray for QM, gray for ASIL
+  const labelTextColor = isQM ? token.colorTextQuaternary : token.colorText;
+  const asilTextColor = isQM ? token.colorTextQuaternary : token.colorTextSecondary;
   
   return (
     <div style={{
       padding: '10px 14px',
       borderRadius: '6px',
-      background: 'rgba(254, 240, 138, 1)', // Light yellow background for providers
-      border: showBorder ? '3px solid #F59E0B' : 'none', // Orange border for ASIL A-D
-      boxShadow: '0 2px 6px rgba(0, 0, 0, 0.1)',
+      background: token.colorWarningBg,
+      border: showBorder ? `3px solid ${token.colorWarning}` : 'none',
+      boxShadow: token.boxShadowSecondary,
       minWidth: '160px',
       position: 'relative'
     }}>
@@ -173,7 +176,7 @@ function ProviderPortFailureNode({ data }: { data: NodeData }) {
         type="target"
         position={Position.Left}
         id="left"
-        style={{ background: '#F59E0B', width: '8px', height: '8px', left: '-4px' }}
+        style={{ background: token.colorWarning, width: '8px', height: '8px', left: '-4px' }}
       />
       
       {/* Output handle for propagating to other failure modes */}
@@ -181,10 +184,10 @@ function ProviderPortFailureNode({ data }: { data: NodeData }) {
         type="source"
         position={Position.Right}
         id="right"
-        style={{ background: '#F59E0B', width: '8px', height: '8px', right: '-4px' }}
+        style={{ background: token.colorWarning, width: '8px', height: '8px', right: '-4px' }}
       />
       
-      <div style={{ fontSize: '12px', fontWeight: '600', color: '#9CA3AF', marginBottom: '2px' }}>
+      <div style={{ fontSize: '12px', fontWeight: '600', color: token.colorTextDescription, marginBottom: '2px' }}>
         {data.portName}
       </div>
       <div style={{ fontSize: '13px', fontWeight: '700', color: labelTextColor }}>
@@ -658,24 +661,20 @@ export default function FMFlow({
   };
 
   return (
-    <Card style={{ marginTop: '24px' }}>
-      <div style={{ 
-        display: 'flex', 
-        flexDirection: 'column',
-        gap: '12px',
-        marginBottom: '16px'
-      }}>
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'flex-start',
-          flexWrap: 'wrap',
-          gap: '8px'
-        }}>
-          <Title level={3} style={{ margin: 0, flex: '1 1 auto', minWidth: '200px' }}>
+    <Collapse 
+      bordered={true} 
+      defaultActiveKey={[]}
+      style={{ marginTop: '24px' }}
+    >
+      <Collapse.Panel
+        header={
+          <Title level={4} style={{ margin: 0 }}>
             Failure Mode Propagation Flow - {swComponent.name}
           </Title>
-          <Space style={{ flexShrink: 0 }}>
+        }
+        key="1"
+        extra={
+          <Space onClick={(e) => e.stopPropagation()}>
             <Button
               icon={<ReloadOutlined />}
               onClick={handleRefresh}
@@ -694,117 +693,117 @@ export default function FMFlow({
               Optimize Layout
             </Button>
           </Space>
-        </div>
-      </div>
-
-      {/* Legend */}
-      <div style={{ marginBottom: '12px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-        <Space>
-          <Tag color="blue">Receiver Port Failures (Input)</Tag>
-          <Tag color="default">SW Component Failures (Internal)</Tag>
-          <Tag color="gold">Provider Port Failures (Output)</Tag>
-          <Tag 
-            style={{ 
-              borderColor: '#F59E0B', 
-              color: '#F59E0B',
-              borderStyle: 'dashed'
-            }}
-          >
-            ⚡ Causation Relationships
-          </Tag>
-          <Tag 
-            style={{ 
-              borderColor: '#F59E0B', 
-              color: '#F59E0B',
-              borderWidth: '2px',
-              fontWeight: 'bold'
-            }}
-          >
-            🔶 ASIL A/B/C/D Border
-          </Tag>
-        </Space>
-      </div>
-
-      {/* Interaction help */}
-      <div style={{ 
-        marginBottom: '12px', 
-        padding: '8px'
-      }}>
-        <Text style={{ fontSize: '12px', color: isCreatingCausation ? '#fa8c16' : '#6B7280' }}>
-          {isCreatingCausation 
-            ? '⏳ Creating causation...' 
-            : '💡 Drag from any failure node to another to create a causation relationship'
-          }
-        </Text>
-      </div>
-
-      <div style={{ 
-        height: '700px', 
-        border: '1px solid #d9d9d9', 
-        borderRadius: '4px',
-        position: 'relative',
-        opacity: isCreatingCausation ? 0.7 : 1,
-        pointerEvents: isCreatingCausation ? 'none' : 'auto',
-        overflow: 'hidden'
-      }} onClick={hideContextMenu}>
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onNodeClick={handleNodeClick}
-          onEdgeContextMenu={onEdgeContextMenu}
-          nodeTypes={nodeTypes}
-          connectionLineType={ConnectionLineType.Straight}
-          fitView
-          attributionPosition="bottom-left"
-        >
-          <Background />
-          <Controls />
-        </ReactFlow>
-      </div>
-
-      {/* Context Menu for Edge Deletion */}
-      {contextMenu && (
-        <div
-          style={{
-            position: 'fixed',
-            top: contextMenu.y,
-            left: contextMenu.x,
-            backgroundColor: 'white',
-            border: '1px solid #d9d9d9',
-            borderRadius: '4px',
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-            zIndex: 1000,
-            minWidth: '180px'
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div style={{ padding: '8px 12px', borderBottom: '1px solid #f0f0f0' }}>
-            <Text strong style={{ fontSize: '12px' }}>Delete Causation</Text>
-          </div>
-          <div style={{ padding: '4px 0' }}>
-            <div style={{ padding: '6px 12px', fontSize: '11px', color: '#666' }}>
-              {contextMenu.causationName}
-            </div>
-            <Button
-              type="text"
-              icon={<DeleteOutlined />}
-              onClick={handleDeleteCausation}
+        }
+      >
+        {/* Legend */}
+        <div style={{ marginBottom: '12px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+          <Space>
+            <Tag color="blue">Receiver Port Failures (Input)</Tag>
+            <Tag color="default">SW Component Failures (Internal)</Tag>
+            <Tag color="gold">Provider Port Failures (Output)</Tag>
+            <Tag 
               style={{ 
-                width: '100%', 
-                textAlign: 'left',
-                color: '#ff4d4f',
-                borderRadius: 0
+                borderColor: '#F59E0B', 
+                color: '#F59E0B',
+                borderStyle: 'dashed'
               }}
-              size="small"
             >
-              Delete Causation
-            </Button>
-          </div>
+              ⚡ Causation Relationships
+            </Tag>
+            <Tag 
+              style={{ 
+                borderColor: '#F59E0B', 
+                color: '#F59E0B',
+                borderWidth: '2px',
+                fontWeight: 'bold'
+              }}
+            >
+              🔶 ASIL A/B/C/D Border
+            </Tag>
+          </Space>
         </div>
-      )}
-    </Card>
+
+        {/* Interaction help */}
+        <div style={{ 
+          marginBottom: '12px', 
+          padding: '8px'
+        }}>
+          <Text style={{ fontSize: '12px', color: isCreatingCausation ? '#fa8c16' : '#6B7280' }}>
+            {isCreatingCausation 
+              ? '⏳ Creating causation...' 
+              : '💡 Drag from any failure node to another to create a causation relationship'
+            }
+          </Text>
+        </div>
+
+        <div style={{ 
+          height: '700px', 
+          border: '1px solid #d9d9d9', 
+          borderRadius: '4px',
+          position: 'relative',
+          opacity: isCreatingCausation ? 0.7 : 1,
+          pointerEvents: isCreatingCausation ? 'none' : 'auto',
+          overflow: 'hidden'
+        }} onClick={hideContextMenu}>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onNodeClick={handleNodeClick}
+            onEdgeContextMenu={onEdgeContextMenu}
+            nodeTypes={nodeTypes}
+            connectionLineType={ConnectionLineType.Straight}
+            fitView
+            attributionPosition="bottom-left"
+          >
+            <Background />
+            <Controls />
+          </ReactFlow>
+        </div>
+
+        {/* Context Menu for Edge Deletion */}
+        {contextMenu && (
+          <div
+            style={{
+              position: 'fixed',
+              top: contextMenu.y,
+              left: contextMenu.x,
+              backgroundColor: 'white',
+              border: '1px solid #d9d9d9',
+              borderRadius: '4px',
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+              zIndex: 1000,
+              minWidth: '180px'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: '8px 12px', borderBottom: '1px solid #f0f0f0' }}>
+              <Text strong style={{ fontSize: '12px' }}>Delete Causation</Text>
+            </div>
+            <div style={{ padding: '4px 0' }}>
+              <div style={{ padding: '6px 12px', fontSize: '11px', color: '#666' }}>
+                {contextMenu.causationName}
+              </div>
+              <Button
+                type="text"
+                icon={<DeleteOutlined />}
+                onClick={handleDeleteCausation}
+                style={{ 
+                  width: '100%', 
+                  textAlign: 'left',
+                  color: '#ff4d4f',
+                  borderRadius: 0
+                }}
+                size="small"
+              >
+                Delete Causation
+              </Button>
+            </div>
+          </div>
+        )}
+      </Collapse.Panel>
+    </Collapse>
   );
 }

@@ -72,7 +72,7 @@ export const BaseFailureModeTable: React.FC<BaseFailureModeTableProps> = ({
                 <Card style={{ marginTop: '24px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                     {typeof title === 'string' ? (
-                      <Title level={3} style={{ margin: 0 }}>
+                      <Title level={4} style={{ margin: 0 }}>
                         {title}
                       </Title>
                     ) : (

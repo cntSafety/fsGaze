@@ -1,505 +1,332 @@
 "use client";
 
-import React from "react";
-import Image from "next/image";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { HiHome, HiCloudDownload, HiMenuAlt2, HiChevronDown, HiLightningBolt, HiX, HiChevronLeft, HiChevronRight, HiOutlineDocumentReport, HiOutlineCode, HiFastForward } from "react-icons/hi";
-import { useState, useEffect } from "react";
-import { IconType } from "react-icons";
-import { useLoading } from "./LoadingProvider";
+import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
+import Link from 'next/link';
+import { useRouter, usePathname } from 'next/navigation';
+import { Layout, Menu, Drawer, Button, Switch } from 'antd';
+import type { MenuProps } from 'antd';
+import {
+  HiHome, HiCloudDownload, HiMenuAlt2, HiLightningBolt, HiOutlineDocumentReport,
+  HiOutlineCode, HiFastForward, HiChevronLeft, HiChevronRight
+} from 'react-icons/hi';
+import { SunOutlined, MoonOutlined } from '@ant-design/icons';
+import { IconType } from 'react-icons';
+import { useLoading } from './LoadingProvider';
+import { useTheme } from './ThemeProvider';
 
-// Menu item types
-type MenuItem = SimpleMenuItem | DropdownMenuItem;
+// Original menu item types
+type MenuItemDef = SimpleMenuItemDef | DropdownMenuItemDef;
 
-interface SimpleMenuItem {
-    type: 'link';
+interface SimpleMenuItemDef {
+  type: 'link';
+  label: string;
+  href: string;
+  icon: IconType;
+  isActive?: boolean;
+}
+
+interface DropdownMenuItemDef {
+  type: 'dropdown';
+  label: string;
+  icon: IconType;
+  items: {
     label: string;
     href: string;
-    icon: IconType;
+    isActive?: boolean;
+  }[];
 }
 
-interface DropdownMenuItem {
-    type: 'dropdown';
-    label: string;
-    icon: IconType;
-    items: {
-        label: string;
-        href: string;
-        isActive?: boolean;
-    }[];
+// Ant Design menu item type
+type AntdMenuItem = Required<MenuProps>['items'][number];
+
+// Menu structure definition
+const menuItemsDef: MenuItemDef[] = [
+    {
+        type: 'dropdown',
+        label: 'Overview',
+        icon: HiHome,
+        items: [
+            { label: 'Info Page', href: '/', isActive: true },
+            { label: 'API fsGaze', href: '/api-docs', isActive: true }
+        ]
+    },
+    {
+        type: 'dropdown',
+        label: 'Import',
+        icon: HiCloudDownload,
+        items: [ 
+            { label: 'File Based', href: '/kerml-analyzer', isActive: true },
+            { label: 'API Based', href: '/Import/apibased', isActive: false },
+            { label: 'Sphinx-Needs', href: '/sphinx-needs-import', isActive: true }
+        ]
+    },
+    {
+        type: 'dropdown',
+        label: 'Software',
+        icon: HiOutlineCode,
+        items: [
+            { label: 'ARXML Importer', href: '/arxml-importer', isActive: true },
+            { label: 'SW Table', href: '/arxml-viewer', isActive: true },
+            { label: 'SW Graph', href: '/arxml-graphViewer', isActive: true },
+            { label: 'SW Flow', href: '/arxml-flowViewer', isActive: true },
+            { label: 'SW Safety', href: '/arxml-safety', isActive: true },
+            { label: 'Store / Load', href: '/arxml-safetyDataExchange', isActive: true },
+            { label: 'Failure Chain', href: '/arxml-crossFM', isActive: true }
+        ]
+    },
+    {
+        type: 'dropdown',
+        label: 'Safety Views',
+        icon: HiLightningBolt,
+        items: [
+            { label: 'Causal Chain Graph', href: '/causal-chain', isActive: true },
+            { label: 'Causal Chain Flow', href: '/causal-chain-flow', isActive: true },
+            { label: 'Add your own..', href: '/Analysis/detailed', isActive: false }
+        ]
+    },
+    {
+        type: 'dropdown',
+        label: 'Safety Automation',
+        icon: HiFastForward,
+        items: [
+            { label: 'Find shared signals for CCA', href: '/find-shared-signals', isActive: true },
+            { label: 'Find inputs with too low integrity', href: '/fm/effects', isActive: false },
+            { label: 'Find decomposition issues', href: '/Analysis/detailed', isActive: false },
+            { label: 'Find not assigned Req, missing FM etc.', href: '/Analysis/detailed', isActive: false },
+            { label: 'Find gaps Arch. vs Implementation..', href: '/Analysis/detailed', isActive: false },
+            { label: 'Support for impact analysis', href: '/Analysis/detailed', isActive: false },
+            { label: 'add your own...', href: '/Analysis/detailed', isActive: false },
+        ]
+    },
+    {
+        type: 'dropdown',
+        label: 'Reports',
+        icon: HiOutlineDocumentReport,
+        items: [
+            { label: 'Statistic for TBC', href: '/find-shared-signals', isActive: true }
+        ]
+    },
+];
+
+// Helper to transform our definition to what Ant Design's Menu expects
+function getItem(
+    label: React.ReactNode,
+    key: React.Key,
+    icon?: React.ReactNode,
+    children?: AntdMenuItem[],
+    type?: 'group',
+): AntdMenuItem {
+    return { key, icon, children, label, type } as AntdMenuItem;
 }
 
-export function Navbar() {
-    const [isMenuOpen, setIsMenuOpen] = useState(false);
-    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-    const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+const antdMenuItems: AntdMenuItem[] = menuItemsDef.map(item => {
+    const Icon = item.icon;
+    if (item.type === 'link') {
+        return getItem(
+            <Link href={item.href}>{item.label}</Link>,
+            item.href,
+            <Icon />
+        );
+    }
+    return getItem(
+        item.label,
+        item.label, // Parent key
+        <Icon />,
+        item.items
+            .filter(sub => sub.isActive !== false)
+            .map(subItem => getItem(
+                <Link href={subItem.href}>{subItem.label}</Link>,
+                subItem.href
+            ))
+    );
+});
+
+// The new Navbar component that provides the entire app layout
+export function Navbar({ children }: { children: React.ReactNode }) {
+    const [isCollapsed, setIsCollapsed] = useState(false);
+    const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
     const [mounted, setMounted] = useState(false);
-    const [activeMenuItem, setActiveMenuItem] = useState<string>('/');
+    
     const router = useRouter();
+    const pathname = usePathname();
     const { showLoading, hideLoading } = useLoading();
+    const { themeMode, toggleTheme } = useTheme();
 
-    // Initialize client-side state
     useEffect(() => {
         setMounted(true);
-        // Restore sidebar collapsed state from localStorage
         const savedCollapsedState = localStorage.getItem('fsGaze-sidebar-collapsed');
         if (savedCollapsedState) {
-            setIsSidebarCollapsed(JSON.parse(savedCollapsedState));
+            setIsCollapsed(JSON.parse(savedCollapsedState));
         }
     }, []);
 
-    // Update active menu item based on URL
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            setActiveMenuItem(window.location.pathname);
-        }
-    }, []);
+    const handleNavigation: MenuProps['onClick'] = (e) => {
+        const domEvent = e.domEvent as React.MouseEvent<HTMLElement>;
+        const href = e.key;
 
-    // Centralized menu structure
-    const menuItems: MenuItem[] = [
-        {
-            type: 'dropdown',
-            label: 'Overview',
-            icon: HiHome,
-            items: [
-                { label: 'Info Page', href: '/', isActive: true },
-                { label: 'API fsGaze', href: '/api-docs', isActive: true }
-            ]
-        },
-        {
-            type: 'dropdown',
-            label: 'Import',
-            icon: HiCloudDownload,
-            items: [ 
-                { label: 'File Based', href: '/kerml-analyzer', isActive: true },
-                { label: 'API Based', href: '/Import/apibased', isActive: false },
-                { label: 'Sphinx-Needs', href: '/sphinx-needs-import', isActive: true }
-            ]
-        },
-        {
-            type: 'dropdown',
-            label: 'Software',
-            icon: HiOutlineCode , // You can use a different icon if desired
-            items: [
-                { label: 'ARXML Importer', href: '/arxml-importer', isActive: true },
-                { label: 'SW Table', href: '/arxml-viewer', isActive: true },
-                { label: 'SW Graph', href: '/arxml-graphViewer', isActive: true },
-                { label: 'SW Flow', href: '/arxml-flowViewer', isActive: true },
-                { label: 'SW Safety', href: '/arxml-safety', isActive: true },
-                 { label: 'Store / Load', href: '/arxml-safetyDataExchange', isActive: true },
-                 { label: 'Failure Chain', href: '/arxml-crossFM', isActive: true }
-            ]
-        },
-        {
-            type: 'dropdown',
-            label: 'Safety Views',
-            icon: HiLightningBolt,
-            items: [
-                { label: 'Causal Chain Graph', href: '/causal-chain', isActive: true },
-                { label: 'Causal Chain Flow', href: '/causal-chain-flow', isActive: true },
-                { label: 'Add your own..', href: '/Analysis/detailed', isActive: false }
-            ]
-        },
-        {
-            type: 'dropdown',
-            label: 'Safety Automation',
-            icon: HiFastForward,
-            items: [
-                { label: 'Find shared signals for CCA', href: '/find-shared-signals', isActive: true },
-                { label: 'Find inputs with too low integrity', href: '/fm/effects', isActive: false },
-                { label: 'Find decomposition issues', href: '/Analysis/detailed', isActive: false },
-                { label: 'Find not assigned Req, missing FM etc.', href: '/Analysis/detailed', isActive: false },
-                { label: 'Find gaps Arch. vs Implementation..', href: '/Analysis/detailed', isActive: false },
-                { label: 'Support for impact analysis', href: '/Analysis/detailed', isActive: false },
-                { label: 'add your own...', href: '/Analysis/detailed', isActive: false },
-            ]
-        },
-        {
-            type: 'dropdown',
-            label: 'Reports',
-            icon: HiOutlineDocumentReport ,
-            items: [
-                { label: 'Statistic for TBC', href: '/find-shared-signals', isActive: true }
-            ]
-        },
-    ];
-
-    // Handle navigation with loading state (for regular clicks)
-    const handleNavigation = (href: string, label: string, event?: React.MouseEvent) => {
-        if (href === '#') return; // Skip inactive links
-        
-        // Only handle left clicks and prevent default for programmatic navigation
-        if (event && (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey)) {
-            return; // Let the browser handle right-click, ctrl+click, etc.
+        // For regular left-clicks, let the custom handler manage navigation for a smooth experience
+        if (!domEvent.metaKey && !domEvent.ctrlKey && !domEvent.shiftKey && domEvent.button === 0) {
+            domEvent.preventDefault();
+            
+            const targetMenuItem = menuItemsDef
+                .flatMap(i => i.type === 'dropdown' ? i.items : [i])
+                .find(i => i.href === href);
+            
+            const label = targetMenuItem?.label || 'Page';
+    
+            showLoading(`Loading ${label}...`);
+            router.push(href);
+            if (mobileDrawerOpen) {
+                setMobileDrawerOpen(false);
+            }
+            setTimeout(() => hideLoading(), 500);
         }
-        
-        if (event) {
-            event.preventDefault();
-        }
-        
-        // If sidebar is collapsed, expand it when navigating
-        if (isSidebarCollapsed) {
-            setIsSidebarCollapsed(false);
-            localStorage.setItem('fsGaze-sidebar-collapsed', JSON.stringify(false));
-        }
-        
-        showLoading(`Loading ${label}...`);
-        setActiveMenuItem(href);
-        setIsMenuOpen(false);
-        
-        // Use router.push for navigation
-        router.push(href);
-        
-        // Hide loading after a short delay to account for compilation
-        setTimeout(() => {
-            hideLoading();
-        }, 500);
+        // For special clicks (Cmd/Ctrl + click, middle-click), do nothing.
+        // The <Link> component's default behavior will handle opening in a new tab.
     };
 
-    const toggleGroup = (label: string) => {
-        setExpandedGroups(prev => ({
-            ...prev,
-            [label]: !prev[label]
-        }));
+    const toggleCollapsed = () => {
+        const newCollapsedState = !isCollapsed;
+        setIsCollapsed(newCollapsedState);
+        localStorage.setItem('fsGaze-sidebar-collapsed', JSON.stringify(newCollapsedState));
     };
+    
+    // Find the default open key based on the current path
+    const defaultOpenKey = menuItemsDef
+        .find(item => item.type === 'dropdown' && item.items.some(sub => sub.href === pathname))
+        ?.label;
 
-    // Don't render until mounted to avoid hydration mismatch
     if (!mounted) {
-        return null;
+        // Render a placeholder or skeleton to avoid layout shifts and hydration errors
+        return (
+            <Layout style={{ minHeight: '100vh', visibility: 'hidden' }}>
+                <Layout.Sider width={256} />
+                <Layout>
+                    <Layout.Content />
+                </Layout>
+            </Layout>
+        );
     }
-
-    return (
-        <div className="flex h-screen">
-            {/* Sidebar - Desktop */}
-            <div className={`hidden md:flex md:flex-col transition-all duration-300 ${
-                isSidebarCollapsed ? 'md:w-16' : 'md:w-64'
-            }`}>
-                <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800">
-                    {/* Logo area */}
-                    <div className="h-16 flex items-center justify-center px-4 border-b border-gray-200 dark:border-gray-800">
-                        {isSidebarCollapsed ? (
-                            <div className="w-8 h-8 flex items-center justify-center">
-                                <Image 
-                                    src="/GazeIcon.png"
-                                    alt="fsGaze Logo"
-                                    width={20}
-                                    height={20}
-                                    className="w-full h-auto"
-                                    priority
-                                />
-                            </div>
-                        ) : (
-                            <div className="flex items-center justify-center w-full">
-                                <div className="w-[50%]">
-                                    <Image 
-                                        src="/LogoBlack.svg"
-                                        alt="fsGaze Logo"
-                                        width={150}
-                                        height={40}
-                                        className="w-full h-auto"
-                                        priority
-                                    />
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Menu items */}
-                    <div className="flex-1 overflow-y-auto py-4 px-3">
-                        {menuItems.map((item, index) => {
-                            const isActive = item.type === 'link'
-                                ? activeMenuItem === item.href
-                                : item.items.some(subitem => activeMenuItem === subitem.href);
-
-                            return (
-                                <div key={index} className="mb-2">
-                                    {item.type === 'link' ? (
-                                        <Link
-                                            href={item.href}
-                                            onClick={(e) => handleNavigation(item.href, item.label, e)}
-                                            className={`flex items-center px-4 py-2.5 text-sm rounded-lg transition-colors w-full text-left ${
-                                                isActive
-                                                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
-                                                    : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
-                                            } ${isSidebarCollapsed ? 'justify-center px-2' : ''}`}
-                                            title={isSidebarCollapsed ? item.label : undefined}
-                                        >
-                                            <item.icon 
-                                                className={`${isSidebarCollapsed ? 'size-6 mr-0' : 'size-5 mr-3'}`} 
-                                            />
-                                            {!isSidebarCollapsed && item.label}
-                                        </Link>
-                                    ) : (
-                                        <div className="mb-1">
-                                            {isSidebarCollapsed ? (
-                                                // In collapsed mode, render as a link to the first active item
-                                                (() => {
-                                                    const firstActiveItem = item.items.find(subitem => subitem.isActive !== false);
-                                                    return firstActiveItem ? (
-                                                        <Link
-                                                            href={firstActiveItem.href}
-                                                            onClick={(e) => handleNavigation(firstActiveItem.href, firstActiveItem.label, e)}
-                                                            className={`flex w-full items-center justify-center px-2 py-2.5 text-sm rounded-lg transition-colors ${
-                                                                isActive 
-                                                                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
-                                                                    : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
-                                                            }`}
-                                                            title={item.label}
-                                                        >
-                                                            <item.icon className="size-6 mr-0" />
-                                                        </Link>
-                                                    ) : (
-                                                        <button
-                                                            className="flex w-full items-center justify-center px-2 py-2.5 text-sm rounded-lg transition-colors text-gray-400 cursor-not-allowed"
-                                                            title={item.label}
-                                                            disabled
-                                                        >
-                                                            <item.icon className="size-6 mr-0" />
-                                                        </button>
-                                                    );
-                                                })()
-                                            ) : (
-                                                // In expanded mode, render as dropdown toggle
-                                                <button
-                                                    onClick={() => toggleGroup(item.label)}
-                                                    className={`flex w-full items-center justify-between px-4 py-2.5 text-sm rounded-lg transition-colors ${
-                                                        isActive 
-                                                            ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
-                                                            : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
-                                                    }`}
-                                                >
-                                                    <div className="flex items-center">
-                                                        <item.icon className="size-5 mr-3" />
-                                                        {item.label}
-                                                    </div>
-                                                    <HiChevronDown 
-                                                        className={`size-4 transition-transform ${
-                                                            expandedGroups[item.label] ? 'rotate-180' : ''
-                                                        }`} 
-                                                    />
-                                                </button>
-                                            )}
-                                            
-                                            
-                                            {!isSidebarCollapsed && expandedGroups[item.label] && (
-                                                <div className="mt-1 ml-6 pl-4 border-l border-gray-200 dark:border-gray-700">
-                                                    {item.items.map((subitem, subIndex) => {
-                                                        const isSubitemActive = activeMenuItem === subitem.href;
-                                                        
-                                                        if (subitem.isActive === false) {
-                                                            return (
-                                                                <button
-                                                                    key={subIndex}
-                                                                    disabled={true}
-                                                                    className="flex items-center px-3 py-2 text-sm rounded-lg my-0.5 w-full text-left text-gray-400 cursor-not-allowed"
-                                                                >
-                                                                    {subitem.label}
-                                                                    <span className="ml-2 text-xs text-gray-400">(soon)</span>
-                                                                </button>
-                                                            );
-                                                        }
-                                                        
-                                                        return (
-                                                            <Link
-                                                                key={subIndex}
-                                                                href={subitem.href}
-                                                                onClick={(e) => handleNavigation(subitem.href, subitem.label, e)}
-                                                                className={`flex items-center px-3 py-2 text-sm rounded-lg my-0.5 w-full text-left ${
-                                                                    isSubitemActive
-                                                                        ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
-                                                                        : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'
-                                                                }`}
-                                                            >
-                                                                {subitem.label}
-                                                            </Link>
-                                                        );
-                                                    })}
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-
-                    {/* Collapse/Expand button */}
-                    <div className="border-t border-gray-200 dark:border-gray-800 p-3">
-                        <button
-                            onClick={() => {
-                                const newCollapsedState = !isSidebarCollapsed;
-                                setIsSidebarCollapsed(newCollapsedState);
-                                // Save to localStorage
-                                localStorage.setItem('fsGaze-sidebar-collapsed', JSON.stringify(newCollapsedState));
-                            }}
-                            className={`flex items-center justify-center w-full text-sm rounded-lg transition-colors text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 ${
-                                isSidebarCollapsed ? 'px-2 py-3' : 'px-4 py-2.5'
-                            }`}
-                            title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                        >
-                            {isSidebarCollapsed ? (
-                                <HiChevronRight className="size-10" />
-                            ) : (
-                                <>
-                                    <HiChevronLeft className="mr-3 size-5" />
-                                    Collapse
-                                </>
-                            )}
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            {/* Mobile menu button */}
-            <div className="fixed top-0 left-0 right-0 z-50 flex h-16 md:hidden items-center justify-between bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-4">
-                <div className="flex items-center">
-                    <div className="mr-2">
-                        <Image 
-                            src="/GazeIcon.png"
-                            alt="fsGaze Logo"
-                            width={20}
-                            height={20}
-                            className="size-5"
-                        />
-                    </div>
-                    <span className="text-lg font-medium text-gray-800 dark:text-gray-200">fsGaze</span>
-                </div>
-                <button
-                    className="rounded-md p-2 text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
-                    onClick={() => setIsMenuOpen(!isMenuOpen)}
-                >
-                    {isMenuOpen ? <HiX className="size-6" /> : <HiMenuAlt2 className="size-6" />}
-                </button>
-            </div>
-
-            {/* Mobile sidebar */}
+    
+    const Logo = ({ collapsed }: { collapsed: boolean }) => {
+        const logoSrc = themeMode === 'dark' ? '/fsGaze-logo-dark.svg' : '/fsGaze-logo-light.svg';
+        
+        return (
             <div 
-                className={`fixed inset-y-0 left-0 z-40 w-72 transform bg-gray-50 dark:bg-gray-900 shadow-lg transition-transform duration-300 ease-in-out md:hidden ${
-                    isMenuOpen ? 'translate-x-0' : '-translate-x-full'
-                }`}
+                style={{
+                    height: '64px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0 16px',
+                }}
             >
-                {/* Mobile menu header */}
-                <div className="h-16 flex items-center justify-between px-4 border-b border-gray-200 dark:border-gray-800">
-                    <div className="flex items-center">
-                        <div className="mr-2">
-                            <Image 
-                                src="/GazeIcon.png"
-                                alt="fsGaze Logo"
-                                width={20}
-                                height={20}
-                                className="size-5"
-                            />
-                        </div>
-                        <span className="text-lg font-medium text-gray-800 dark:text-gray-200">fsGaze</span>
+                {collapsed ? (
+                    <div style={{ width: '32px', height: '32px' }}>
+                        <Image src="/GazeIcon.png" alt="fsGaze Icon" width={32} height={32} priority />
                     </div>
-                    <button
-                        className="rounded-md p-2 text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
-                        onClick={() => setIsMenuOpen(false)}
-                    >
-                        <HiX className="size-5" />
-                    </button>
-                </div>
-
-                {/* Mobile menu items */}
-                <div className="overflow-y-auto h-[calc(100%-4rem)] py-4 px-3">
-                    {menuItems.map((item, index) => {
-                        const isActive = item.type === 'link'
-                            ? activeMenuItem === item.href
-                            : item.items.some(subitem => activeMenuItem === subitem.href);
-
-                        return (
-                            <div key={index} className="mb-2">
-                                {item.type === 'link' ? (
-                                    <Link
-                                        href={item.href}
-                                        onClick={(e) => handleNavigation(item.href, item.label, e)}
-                                        className={`flex items-center px-4 py-2.5 text-sm rounded-lg transition-colors w-full text-left ${
-                                            isActive
-                                                ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
-                                                : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
-                                        }`}
-                                    >
-                                        <item.icon className="mr-3 size-5" />
-                                        {item.label}
-                                    </Link>
-                                ) : (
-                                    <div className="mb-1">
-                                        <button
-                                            onClick={() => toggleGroup(item.label)}
-                                            className={`flex w-full items-center justify-between px-4 py-2.5 text-sm rounded-lg transition-colors ${
-                                                isActive 
-                                                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
-                                                    : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
-                                            }`}
-                                        >
-                                            <div className="flex items-center">
-                                                <item.icon className="mr-3 size-5" />
-                                                {item.label}
-                                            </div>
-                                            <HiChevronDown 
-                                                className={`size-4 transition-transform ${
-                                                    expandedGroups[item.label] ? 'rotate-180' : ''
-                                                }`} 
-                                            />
-                                        </button>
-                                        
-                                        {expandedGroups[item.label] && (
-                                            <div className="mt-1 ml-6 pl-4 border-l border-gray-200 dark:border-gray-700">
-                                                {item.items.map((subitem, subIndex) => {
-                                                    const isSubitemActive = activeMenuItem === subitem.href;
-                                                    
-                                                    if (subitem.isActive === false) {
-                                                        return (
-                                                            <button
-                                                                key={subIndex}
-                                                                disabled={true}
-                                                                className="flex items-center px-3 py-2 text-sm rounded-lg my-0.5 w-full text-left text-gray-400 cursor-not-allowed"
-                                                            >
-                                                                {subitem.label}
-                                                                <span className="ml-2 text-xs text-gray-400">(soon)</span>
-                                                            </button>
-                                                        );
-                                                    }
-                                                    
-                                                    return (
-                                                        <Link
-                                                            key={subIndex}
-                                                            href={subitem.href}
-                                                            onClick={(e) => handleNavigation(subitem.href, subitem.label, e)}
-                                                            className={`flex items-center px-3 py-2 text-sm rounded-lg my-0.5 w-full text-left ${
-                                                                isSubitemActive
-                                                                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
-                                                                    : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'
-                                                            }`}
-                                                        >
-                                                            {subitem.label}
-                                                        </Link>
-                                                    );
-                                                })}
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
-
-            {/* Content padding for mobile */}
-            <div className="md:hidden h-16"></div>
-
-            {/* Content area */}
-            <div className="flex-1">
-                {/* Dark overlay when mobile menu is open */}
-                {isMenuOpen && (
-                    <div
-                        className="fixed inset-0 z-30 bg-black bg-opacity-50 md:hidden"
-                        onClick={() => setIsMenuOpen(false)}
-                    ></div>
+                ) : (
+                    <div style={{ width: '150px', height: '40px' }}>
+                        <Image src={logoSrc} alt="fsGaze Logo" width={150} height={40} priority />
+                    </div>
                 )}
             </div>
+        );
+    };
+
+    const AppMenu = () => (
+        <Menu
+            theme={themeMode === 'dark' ? 'dark' : 'light'}
+            mode="inline"
+            selectedKeys={[pathname]}
+            defaultOpenKeys={defaultOpenKey ? [defaultOpenKey] : []}
+            onClick={handleNavigation}
+            items={antdMenuItems}
+            style={{ borderRight: 0 }}
+        />
+    );
+
+    const SiderFooter = () => (
+        <div className="p-4 border-t border-gray-200 dark:border-gray-800">
+            <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
+                {!isCollapsed && (
+                    <Switch
+                        checkedChildren={<SunOutlined />}
+                        unCheckedChildren={<MoonOutlined />}
+                        checked={themeMode === 'light'}
+                        onChange={toggleTheme}
+                    />
+                )}
+                <Button
+                    type="default"
+                    icon={isCollapsed ? <HiChevronRight className="size-6" /> : <HiChevronLeft className="size-6" />}
+                    onClick={toggleCollapsed}
+                    title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
+                />
+            </div>
         </div>
+    );
+
+    const siderWidth = isCollapsed ? 80 : 256;
+
+    return (
+        <Layout style={{ minHeight: '100vh' }}>
+            <Layout.Sider
+                theme={themeMode === 'dark' ? 'dark' : 'light'}
+                width={siderWidth}
+                collapsible
+                collapsed={isCollapsed}
+                onCollapse={setIsCollapsed}
+                trigger={null}
+                className="hidden md:flex flex-col"
+                style={{
+                    overflow: 'auto',
+                    height: '100vh',
+                    position: 'fixed',
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                }}
+            >
+                <div className="flex flex-col h-full">
+                    <Logo collapsed={isCollapsed} />
+                    <div className="flex-1 overflow-y-auto">
+                        <AppMenu />
+                    </div>
+                    <SiderFooter />
+                </div>
+            </Layout.Sider>
+
+            <Layout>
+                {/* Mobile Header and Drawer */}
+                <Layout.Header className="md:hidden flex items-center justify-between p-4 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
+                    <Button icon={<HiMenuAlt2 />} onClick={() => setMobileDrawerOpen(true)} />
+                    <div className="w-8 h-8 flex items-center justify-center">
+                        <Image src="/GazeIcon.png" alt="fsGaze Logo" width={20} height={20} priority />
+                    </div>
+                </Layout.Header>
+
+                {/* Main content */}
+                <Layout.Content style={{ marginLeft: siderWidth, transition: 'margin-left 0.2s' }}>
+                    <main className="p-6">{children}</main>
+                </Layout.Content>
+                
+                {/* Mobile Drawer */}
+                <Drawer
+                    title={<Logo collapsed={false} />}
+                    placement="left"
+                    onClose={() => setMobileDrawerOpen(false)}
+                    open={mobileDrawerOpen}
+                    width={256}
+                    styles={{
+                        header: { padding: 0, borderBottom: 'none' },
+                        body: { padding: 0 }
+                    }}
+                >
+                    <AppMenu />
+                </Drawer>
+            </Layout>
+        </Layout>
     );
 }

@@ -1,13 +1,14 @@
 import React from 'react';
 import { SafetyTableColumn, SafetyTableRow } from '../CoreSafetyTable';
 import { useProviderPortFailures } from './hooks/useProviderPortFailures';
-import { ProviderPort, PortFailure } from './types';
+import { ProviderPort, PortFailure, SwComponent } from './types';
 import { BaseFailureModeTable } from './BaseFailureModeTable';
 import { CascadeDeleteModal } from '../CascadeDeleteModal';
 import type { DeletionPreview } from '../CascadeDeleteModal';
 import { message } from 'antd';
 
 interface ProviderPortsFailureModesTableProps {
+  swComponent: SwComponent;
   providerPorts: ProviderPort[];
   portFailures: {[portUuid: string]: PortFailure[]};
   setPortFailures: (portFailures: {[portUuid: string]: PortFailure[]}) => void;
@@ -23,6 +24,7 @@ interface ProviderPortsFailureModesTableProps {
 }
 
 export default function ProviderPortsFailureModesTable({
+  swComponent,
   providerPorts,
   portFailures,
   setPortFailures,
@@ -159,7 +161,7 @@ export default function ProviderPortsFailureModesTable({
         `
       }} />
       <BaseFailureModeTable
-      title="Provider Ports Failure Modes"
+      title={`Provider Ports Failure Modes for ${swComponent.name}`}
       dataSource={portTableData}
       columns={portColumns}
       loading={false}

@@ -17,7 +17,7 @@ import ReactFlow, {
     Handle
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { Select, Alert, Spin, Card, Divider, Button, Modal, Typography, Switch } from 'antd';
+import { Select, Alert, Spin, Card, Divider, Button, Modal, Typography, Switch, theme } from 'antd';
 import { InfoCircleOutlined, NodeCollapseOutlined } from '@ant-design/icons';
 import ELK from 'elkjs/lib/elk.bundled.js';
 import {
@@ -27,6 +27,7 @@ import {
 } from '@/app/services/ArxmlToNeoService';
 import { Connection, Partner, ScopeElement, PortInfo } from '@/app/services/neo4j/types';
 import PortInterfaceInfo from '../../components/PortInterfaceInfo';
+import { useTheme } from '../../components/ThemeProvider';
 
 const { Option } = Select;
 const { Title, Text } = Typography;
@@ -59,15 +60,17 @@ interface SelectedConnectionData {
 
 // Custom node component for the scope element (center node)
 function ScopeElementNode({ data }: { data: ScopeElementData }) {
+    const { token } = theme.useToken();
+
     return (
         <div style={{
             padding: '20px',
             borderRadius: '12px',
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            border: '3px solid #4C51BF',
-            boxShadow: '0 8px 16px rgba(0, 0, 0, 0.2)',
+            background: token.colorPrimary,
+            border: `3px solid ${token.colorPrimaryBorder}`,
+            boxShadow: token.boxShadow,
             minWidth: '200px',
-            color: 'white',
+            color: token.colorWhite,
             textAlign: 'center',
             position: 'relative'
         }}>
@@ -76,7 +79,7 @@ function ScopeElementNode({ data }: { data: ScopeElementData }) {
                 type="target"
                 position={Position.Left}
                 id="left"
-                style={{ background: '#FFA726', width: '12px', height: '12px', left: '-6px' }}
+                style={{ background: token.colorWarning, width: '12px', height: '12px', left: '-6px' }}
             />
             
             {/* Right handle for partners with R-Ports only (consumers) */}
@@ -84,7 +87,7 @@ function ScopeElementNode({ data }: { data: ScopeElementData }) {
                 type="source"
                 position={Position.Right}
                 id="right"
-                style={{ background: '#FFA726', width: '12px', height: '12px', right: '-6px' }}
+                style={{ background: token.colorWarning, width: '12px', height: '12px', right: '-6px' }}
             />
             
             {/* Bottom handle for mixed partners (both P-Ports and R-Ports) */}
@@ -92,7 +95,7 @@ function ScopeElementNode({ data }: { data: ScopeElementData }) {
                 type="target"
                 position={Position.Bottom}
                 id="bottom"
-                style={{ background: '#FFA726', width: '12px', height: '12px', bottom: '-6px' }}
+                style={{ background: token.colorWarning, width: '12px', height: '12px', bottom: '-6px' }}
             />
 
             {/*             <div style={{ fontWeight: 'bold', fontSize: '16px', marginBottom: '8px' }}>
@@ -111,6 +114,7 @@ function ScopeElementNode({ data }: { data: ScopeElementData }) {
 // Custom node component for partner components
 function PartnerNode({ data }: { data: PartnerNodeData }) {
     const { partnerType } = data;
+    const { token } = theme.useToken();
     
     // Determine which handle to show based on partner type
     const getHandleConfig = () => {
@@ -120,28 +124,28 @@ function PartnerNode({ data }: { data: PartnerNodeData }) {
                     type: "source" as const,
                     position: Position.Right,
                     id: "right",
-                    style: { background: '#22C55E', width: '10px', height: '10px', right: '-5px' }
+                    style: { background: token.colorSuccess, width: '10px', height: '10px', right: '-5px' }
                 };
             case 'consumer': // Partners with R-Ports only
                 return {
                     type: "target" as const,
                     position: Position.Left,
                     id: "left",
-                    style: { background: '#22C55E', width: '10px', height: '10px', left: '-5px' }
+                    style: { background: token.colorSuccess, width: '10px', height: '10px', left: '-5px' }
                 };
             case 'mixed': // Partners with both P-Ports and R-Ports
                 return {
                     type: "source" as const,
                     position: Position.Right,
                     id: "right",
-                    style: { background: '#3B82F6', width: '10px', height: '10px', right: '-5px' }
+                    style: { background: token.colorPrimary, width: '10px', height: '10px', right: '-5px' }
                 };
             default:
                 return {
                     type: "target" as const,
                     position: Position.Left,
                     id: "left",
-                    style: { background: '#22C55E', width: '10px', height: '10px', left: '-5px' }
+                    style: { background: token.colorSuccess, width: '10px', height: '10px', left: '-5px' }
                 };
         }
     };
@@ -152,11 +156,12 @@ function PartnerNode({ data }: { data: PartnerNodeData }) {
         <div style={{
             padding: '15px',
             borderRadius: '8px',
-            background: partnerType === 'mixed' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(34, 197, 94, 0.15)',
-            border: partnerType === 'mixed' ? '2px solid #3B82F6' : '2px solid #22C55E',
-            boxShadow: '0 4px 8px rgba(0, 0, 0, 0.1)',
+            background: partnerType === 'mixed' ? token.colorPrimaryBg : token.colorSuccessBg,
+            border: `2px solid ${partnerType === 'mixed' ? token.colorPrimary : token.colorSuccess}`,
+            boxShadow: token.boxShadowSecondary,
             minWidth: '160px',
-            position: 'relative'
+            position: 'relative',
+            color: token.colorText,
         }}>
             <Handle
                 type={handleConfig.type}
@@ -168,7 +173,7 @@ function PartnerNode({ data }: { data: PartnerNodeData }) {
             {/*             <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#166534', marginBottom: '4px' }}>
                 🔗 PARTNER
             </div> */}
-            <div style={{ fontSize: '13px', fontWeight: '600', color: '#374151' }}>
+            <div style={{ fontSize: '13px', fontWeight: '600' }}>
                 {data.label}
             </div>
             {/*             <div style={{ fontSize: '11px', color: '#6B7280', marginTop: '2px' }}>
@@ -195,6 +200,9 @@ function ArxmlFlowViewer() {
     const [selectedConnection, setSelectedConnection] = useState<SelectedConnectionData | null>(null);
     const [isModalVisible, setIsModalVisible] = useState(false);
     const [showDetails, setShowDetails] = useState(false); // New state for details toggle
+
+    const { themeMode } = useTheme();
+    const { token } = theme.useToken();
 
     // Define custom node types
     const nodeTypes: NodeTypes = useMemo(() => ({
@@ -230,7 +238,7 @@ function ArxmlFlowViewer() {
 
     // ELK layout function
     const applyLayout = useCallback(async (nodes: Node[], edges: Edge[]) => {
-        if (nodes.length === 0) return nodes;
+        if (nodes.length === 0) return { nodes, edges };
 
         try {
             const elkGraph = {
@@ -255,21 +263,18 @@ function ArxmlFlowViewer() {
                 }))
             };
 
-            const layoutedGraph = await elk.layout(elkGraph);
-
-            return nodes.map(node => {
-                const layoutedNode = layoutedGraph.children?.find(n => n.id === node.id);
+            const layout = await elk.layout(elkGraph);
+            const newNodes = nodes.map(node => {
+                const elkNode = layout.children?.find(child => child.id === node.id);
                 return {
                     ...node,
-                    position: {
-                        x: layoutedNode?.x ?? node.position.x,
-                        y: layoutedNode?.y ?? node.position.y
-                    }
+                    position: { x: elkNode?.x ?? 0, y: elkNode?.y ?? 0 },
                 };
             });
+            return { nodes: newNodes, edges };
         } catch (error) {
-            console.error('Layout error:', error);
-            return nodes;
+            console.error('ELK layout failed:', error);
+            return { nodes, edges }; // Return original nodes on error
         }
     }, [elk]);
 
@@ -365,7 +370,7 @@ function ArxmlFlowViewer() {
                 });
             });
 
-            connectedPartners.forEach((partner: Partner) => {
+            connectedPartners.forEach((partner) => {
                 const currentCount = connectionCountByPartner.get(partner.uuid) || 0;
                 connectionCountByPartner.set(partner.uuid, currentCount + 1);
             });
@@ -459,9 +464,9 @@ function ArxmlFlowViewer() {
         // console.log(`📊 Created ${newNodes.length} nodes and ${newEdges.length} edges`);
 
         // Apply layout and set nodes/edges
-        const layoutedNodes = await applyLayout(newNodes, newEdges);
+        const { nodes: layoutedNodes, edges: layoutedEdges } = await applyLayout(newNodes, newEdges);
         setNodes(layoutedNodes);
-        setEdges(newEdges);
+        setEdges(layoutedEdges);
     };
 
     // Handle edge click to show connection details - Enhanced to show ALL connections for the partner
@@ -619,38 +624,40 @@ function ArxmlFlowViewer() {
 
     if (loadingPrototypes) {
         return (
-            <div style={{ textAlign: 'center', padding: '40px' }}>
-                <Spin size="large" />
-                <div style={{ marginTop: '16px' }}>Loading SW Component Prototypes...</div>
-            </div>
-        );
+            <Card title={
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <NodeCollapseOutlined />
+                    <span>SW Component Connection Flow</span>
+                </div>
+            }>
+                <Spin />
+            </Card>
+        )
     }
 
     return (
-        <Card style={{ margin: '20px' }}>
+        <Card
+            title={
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <NodeCollapseOutlined />
+                    <span>SW Component Connection Flow</span>
+                </div>
+            }
+        >
             <div style={{ marginBottom: '20px' }}>
-                <Title level={2}>
-                    <NodeCollapseOutlined style={{ marginRight: '8px' }} />
-                    ARXML Component Flow Viewer
-                </Title>
-                <Text type="secondary">
-                    Visualize scoped component connections and partners using React Flow with ELK.js layout
-                </Text>
-            </div>
-
-            <div style={{ marginBottom: '20px' }}>
-                <Text strong>Select SW Component Prototype:</Text>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
+                    Select SW Component Prototype:
+                </label>
                 <Select
-                    style={{ width: '100%', marginTop: '8px' }}
-                    placeholder="Choose a SW Component Prototype to visualize"
+                    style={{ width: '100%', maxWidth: '500px' }}
+                    placeholder="Choose a SW Component Prototype"
                     value={selectedPrototype}
                     onChange={handlePrototypeSelect}
-                    showSearch
-                    filterOption={(input, option) => {
-                        const proto = prototypes.find(p => p.uuid === option?.value);
-                        return proto ? proto.name.toLowerCase().includes(input.toLowerCase()) : false;
-                    }}
                     loading={loadingPrototypes}
+                    showSearch
+                    filterOption={(input, option) =>
+                        option?.children?.toString().toLowerCase().includes(input.toLowerCase()) ?? false
+                    }
                 >
                     {prototypes.map(prototype => (
                         <Option key={prototype.uuid} value={prototype.uuid}>
@@ -673,82 +680,51 @@ function ArxmlFlowViewer() {
             {loading && (
                 <div style={{ textAlign: 'center', padding: '40px' }}>
                     <Spin size="large" />
-                    <div style={{ marginTop: '16px' }}>Loading component flow data...</div>
+                    <div style={{ marginTop: '16px' }}>Loading connection flow...</div>
                 </div>
             )}
-
+            
             {scopedData && !loading && (
-                <>
-                    <Divider orientation="left">
-                        <InfoCircleOutlined /> Flow for: {selectedPrototypeName}
-                    </Divider>
-
-                    <div style={{ marginBottom: '16px', fontSize: '14px', color: '#666' }}>
-                        <div style={{ display: 'flex', gap: '20px' }}>
-                            <span><strong>Scope Element:</strong> {scopedData.ScopeElement?.name || 'None'}</span>
-                            <span><strong>Partners:</strong> {scopedData.Partners.length}</span>
-                            <span><strong>Connections:</strong> {scopedData.Connections.length}</span>
-                        </div>
-                    </div>
-
-                    <div
-                        style={{
-                            width: '100%',
-                            height: '600px',
-                            border: '1px solid #d9d9d9',
-                            borderRadius: '6px',
-                            backgroundColor: '#fafafa'
-                        }}
-                    >
-                        <ReactFlowProvider>
-                            <ReactFlow
-                                nodes={nodes}
-                                edges={edges}
-                                onNodesChange={onNodesChange}
-                                onEdgesChange={onEdgesChange}
-                                onEdgeClick={handleEdgeClick}
-                                nodeTypes={nodeTypes}
-                                fitView
-                                fitViewOptions={{ padding: 0.2 }}
-                                minZoom={0.1}
-                                maxZoom={2}
-                                connectionLineType={ConnectionLineType.SmoothStep}
-                                elementsSelectable={true}
-                                edgesFocusable={true}
-                            >
-                                <Background />
-                                <Controls />
-                                <Panel position="top-left">
-                                    <div style={{ background: 'rgba(255, 255, 255, 0.9)', padding: '8px', borderRadius: '4px', fontSize: '12px' }}>
-                                        <div><strong>Legend:</strong></div>
-                                        <div>🎯 Scope Element (Center)</div>
-                                        <div>🔗 Partner Components</div>
-                                        <div style={{ color: '#22C55E', fontWeight: 'bold' }}>■ Green: Standard Partners (P-Port OR R-Port)</div>
-                                        <div style={{ color: '#3B82F6', fontWeight: 'bold' }}>■ Blue: Mixed Partners (P-Port AND R-Port)</div>
-                                        <div>📡 Click edges for connection details</div>
-                                    </div>
-                                </Panel>
-                            </ReactFlow>
-                        </ReactFlowProvider>
-                    </div>
-
-                    <div style={{ marginTop: '16px', fontSize: '12px', color: '#666' }}>
-                        <div><strong>Instructions:</strong></div>
-                        <div>• Click on connection lines to view detailed port information</div>
-                        <div>• Drag nodes to reposition them</div>
-                        <div>• Use mouse wheel to zoom in/out</div>
-                        <div>• Drag background to pan the view</div>
-                    </div>
-                </>
+                 <div style={{ height: '70vh', border: `1px solid ${token.colorBorder}`, borderRadius: token.borderRadiusLG, background: token.colorBgContainer }}>
+                    <ReactFlowProvider>
+                        <ReactFlow
+                            nodes={nodes}
+                            edges={edges}
+                            onNodesChange={onNodesChange}
+                            onEdgesChange={onEdgesChange}
+                            onEdgeClick={handleEdgeClick}
+                            nodeTypes={nodeTypes}
+                            fitView
+                            fitViewOptions={{ padding: 0.2 }}
+                            minZoom={0.1}
+                            maxZoom={2}
+                            connectionLineType={ConnectionLineType.SmoothStep}
+                            elementsSelectable={true}
+                            edgesFocusable={true}
+                        >
+                            <Background />
+                            <Controls />
+                            <Panel position="top-left">
+                                <div style={{ background: 'rgba(255, 255, 255, 0.9)', padding: '8px', borderRadius: '4px', fontSize: '12px' }}>
+                                    <div><strong>Legend:</strong></div>
+                                    <div>🎯 Scope Element (Center)</div>
+                                    <div>🔗 Partner Components</div>
+                                    <div style={{ color: '#22C55E', fontWeight: 'bold' }}>■ Green: Standard Partners (P-Port OR R-Port)</div>
+                                    <div style={{ color: '#3B82F6', fontWeight: 'bold' }}>■ Blue: Mixed Partners (P-Port AND R-Port)</div>
+                                    <div>📡 Click edges for connection details</div>
+                                </div>
+                            </Panel>
+                        </ReactFlow>
+                    </ReactFlowProvider>
+                </div>
             )}
-
-            {!selectedPrototype && !loading && (
+            
+            {!selectedPrototype && !loadingPrototypes && (
                 <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
                     <InfoCircleOutlined style={{ fontSize: '24px', marginBottom: '16px' }} />
-                    <div>Please select a SW Component Prototype to view its flow visualization</div>
+                    <div>Please select a SW Component Prototype to view its connection flow</div>
                 </div>
             )}
-
             {renderConnectionModal()}
         </Card>
     );

@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Form, Typography, message, Table, Input, Select, Popconfirm, Button, Space, Tooltip } from 'antd';
+import { Form, Typography, message, Table, Input, Select, Popconfirm, Button, Space, Tooltip, Card } from 'antd';
 import { SearchOutlined, DeleteOutlined, EditOutlined, PlusOutlined, LinkOutlined, DashboardOutlined, CheckSquareOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import type { ColumnType } from 'antd/es/table';
@@ -16,6 +16,7 @@ import { ASIL_OPTIONS, PLACEHOLDER_VALUES, MESSAGES } from './utils/constants';
 import RiskRatingModal from './components/RiskRatingModal';
 import SafetyTaskModal from './components/SafetyTaskModal';
 import { CascadeDeleteModal } from '../components/CascadeDeleteModal';
+import Link from 'next/link';
 
 const { Option } = Select;
 
@@ -503,18 +504,15 @@ export default function ArxmlSafetyAnalysisTable() {
         const isFirstRowForComponent = index === 0 || 
           tableData[index - 1]?.swComponentUuid !== record.swComponentUuid;
         
-        return isFirstRowForComponent ? (
-          <Typography.Link 
-            style={{ fontWeight: 'bold' }}
-            onClick={() => {
-              if (record.swComponentUuid) {
-                router.push(`/arxml-safety/${record.swComponentUuid}`);
-              }
-            }}
-          >
-            {text}
-          </Typography.Link>
-        ) : null;
+        if (!isFirstRowForComponent) return null;
+
+        return (
+          <Link href={`/arxml-safety/${record.swComponentUuid}`} passHref>
+            <Typography.Link style={{ fontWeight: 'bold' }}>
+              {text}
+            </Typography.Link>
+          </Link>
+        );
       },
     },    {
       title: 'Failure Mode Name',
@@ -684,80 +682,82 @@ export default function ArxmlSafetyAnalysisTable() {
   ];
 
   return (
-    <Form form={form} component={false}>
-      <Table
-        components={{
-          body: {
-            cell: EditableCell,
-          },
-        }}
-        bordered
-        dataSource={tableData}
-        columns={columns}
-        rowClassName="editable-row"
-        pagination={{
-          current: currentPage,
-          pageSize: pageSize,
-          showSizeChanger: true,
-          showQuickJumper: true,
-          showTotal: (total: number, range: [number, number]) => `${range[0]}-${range[1]} of ${total} items`,
-          pageSizeOptions: ['10', '20', '50', '100'],
-          onChange: (page, size) => {
-            if (editingKey !== '') {
-              cancel();
+    <Card title="ARXML Safety Analysis" bordered={false}>
+      <Form form={form} component={false}>
+        <Table
+          components={{
+            body: {
+              cell: EditableCell,
+            },
+          }}
+          bordered
+          dataSource={tableData}
+          columns={columns}
+          rowClassName="editable-row"
+          pagination={{
+            current: currentPage,
+            pageSize: pageSize,
+            showSizeChanger: true,
+            showQuickJumper: true,
+            showTotal: (total: number, range: [number, number]) => `${range[0]}-${range[1]} of ${total} items`,
+            pageSizeOptions: ['10', '20', '50', '100'],
+            onChange: (page, size) => {
+              if (editingKey !== '') {
+                cancel();
+              }
+              setCurrentPage(page);
+              if (size !== pageSize) {
+                setPageSize(size);
+              }
+            },
+            position: ['bottomCenter'],
+          }}        loading={loading}
+          scroll={{ x: 'max-content' }}
+          size="small"
+        />
+        
+        {/* Risk Rating Modal */}
+        <RiskRatingModal
+          open={isRiskRatingModalVisible}
+          onCancel={handleRiskRatingCancel}
+          onSave={handleRiskRatingSave}
+          failureName={selectedFailureForRiskRating?.failureName || ''}
+          loading={isAddingFailure}
+        />      {/* Safety Task Modal */}
+        <SafetyTaskModal
+          open={isSafetyTaskModalVisible}
+          onCancel={handleSafetyTaskCancel}
+          onSave={handleSafetyTaskSave}
+          onDelete={handleSafetyTaskDelete}
+          onCreateNew={handleSafetyTaskCreateNew}
+          onTabChange={handleSafetyTaskTabChange}
+          nodeName={selectedFailureForSafetyTask?.failureName || ''}
+          nodeDescription={selectedFailureForSafetyTask?.failureDescription}
+          loading={isAddingFailure}
+          mode={safetyTaskModalMode}
+          activeTask={activeSafetyTask}
+          existingTasks={existingSafetyTasks}
+          activeTabIndex={activeSafetyTaskIndex}
+        />
+        {/* Delete Confirmation Modal */}
+        <CascadeDeleteModal
+          visible={isDeleteModalVisible && !!failureToDelete}
+          onCancel={() => {
+            setIsDeleteModalVisible(false);
+            setFailureToDelete(null);
+          }}
+          onSuccess={async () => {
+            if (failureToDelete?.failureUuid) {
+              setTableData(prev => prev.filter(row => row.failureUuid !== failureToDelete.failureUuid));
             }
-            setCurrentPage(page);
-            if (size !== pageSize) {
-              setPageSize(size);
-            }
-          },
-          position: ['bottomCenter'],
-        }}        loading={loading}
-        scroll={{ x: 'max-content' }}
-        size="small"
-      />
-      
-      {/* Risk Rating Modal */}
-      <RiskRatingModal
-        open={isRiskRatingModalVisible}
-        onCancel={handleRiskRatingCancel}
-        onSave={handleRiskRatingSave}
-        failureName={selectedFailureForRiskRating?.failureName || ''}
-        loading={isAddingFailure}
-      />      {/* Safety Task Modal */}
-      <SafetyTaskModal
-        open={isSafetyTaskModalVisible}
-        onCancel={handleSafetyTaskCancel}
-        onSave={handleSafetyTaskSave}
-        onDelete={handleSafetyTaskDelete}
-        onCreateNew={handleSafetyTaskCreateNew}
-        onTabChange={handleSafetyTaskTabChange}
-        nodeName={selectedFailureForSafetyTask?.failureName || ''}
-        nodeDescription={selectedFailureForSafetyTask?.failureDescription}
-        loading={isAddingFailure}
-        mode={safetyTaskModalMode}
-        activeTask={activeSafetyTask}
-        existingTasks={existingSafetyTasks}
-        activeTabIndex={activeSafetyTaskIndex}
-      />
-      {/* Delete Confirmation Modal */}
-      <CascadeDeleteModal
-        visible={isDeleteModalVisible && !!failureToDelete}
-        onCancel={() => {
-          setIsDeleteModalVisible(false);
-          setFailureToDelete(null);
-        }}
-        onSuccess={async () => {
-          if (failureToDelete?.failureUuid) {
-            setTableData(prev => prev.filter(row => row.failureUuid !== failureToDelete.failureUuid));
-          }
-          setIsDeleteModalVisible(false);
-          setFailureToDelete(null);
-        }}
-        nodeUuid={failureToDelete?.failureUuid || ''}
-        nodeType="FAILUREMODE"
-        nodeName={failureToDelete?.failureName || ''}
-      />
-    </Form>
+            setIsDeleteModalVisible(false);
+            setFailureToDelete(null);
+          }}
+          nodeUuid={failureToDelete?.failureUuid || ''}
+          nodeType="FAILUREMODE"
+          nodeName={failureToDelete?.failureName || ''}
+        />
+      </Form>
+    </Card>
   );
 }

@@ -1,9 +1,33 @@
 'use client';
 
 import React, { useState } from 'react';
+import {
+  Button,
+  Upload,
+  Card,
+  Typography,
+  Table,
+  Space,
+  Alert,
+  Progress,
+  Tag,
+  Tooltip,
+} from 'antd';
+import {
+  UploadOutlined,
+  SyncOutlined,
+  CloudUploadOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  WarningOutlined,
+  FileTextOutlined,
+  ExportOutlined,
+} from '@ant-design/icons';
 import { getComponentByName } from '../../../services/neo4j/queries/components';
 import { createFailureModeNode } from '../../../services/neo4j/queries/safety/failureModes';
 import { createSafetyNote, getSafetyNotesForNode } from '../../../services/neo4j/queries/safety/safetyNotes';
+
+const { Title, Text, Paragraph } = Typography;
 
 interface ComponentData {
   functions: Array<{
@@ -66,23 +90,20 @@ export default function ImportJsonSafetyAnalysis() {
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string>('');
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
+  const handleFileUpload = (file: File) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const content = e.target?.result as string;
         const parsedData: JsonFileStructure = JSON.parse(content);
         
-        // Validate the structure
         if (!parsedData.metadata || !parsedData.components) {
           throw new Error('Invalid JSON structure. Expected metadata and components properties.');
         }
         
         setJsonData(parsedData);
         setCheckResults([]);
+        setUploadResults([]);
         setError('');
       } catch (err) {
         setError(`Error parsing JSON file: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -90,6 +111,7 @@ export default function ImportJsonSafetyAnalysis() {
       }
     };
     reader.readAsText(file);
+    return false; // Prevent antd's default upload action
   };
 
   const checkComponents = async () => {
@@ -181,7 +203,7 @@ export default function ImportJsonSafetyAnalysis() {
         setUploadProgress({
           current: i + 1,
           total: totalComponents,
-          message: `Processing component: ${component.jsonName}`
+          message: `Processing: ${component.jsonName}`
         });
 
         let safetyNotesCreated = 0;
@@ -190,15 +212,12 @@ export default function ImportJsonSafetyAnalysis() {
         const errors: string[] = [];
 
         try {
-          // Process each function in the component
           if (componentData.functions && componentData.functions.length > 0) {
             for (const func of componentData.functions) {
-              // Create safety note for component function description
               if (func.description && func.description.trim()) {
                 const isDuplicate = await checkForDuplicateSafetyNote(componentUuid, func.description);
                 if (isDuplicate) {
                   duplicatesSkipped++;
-                  console.log(`Duplicate safety note skipped for component ${component.jsonName}: ${func.description}`);
                 } else {
                   const safetyNoteResult = await createSafetyNote(componentUuid, func.description);
                   if (safetyNoteResult.success) {
@@ -209,11 +228,9 @@ export default function ImportJsonSafetyAnalysis() {
                 }
               }
 
-              // Process failure modes
               if (func.failureModes && func.failureModes.length > 0) {
                 for (const failureMode of func.failureModes) {
                   if (failureMode.mode && failureMode.effect) {
-                    // Create failure mode node
                     const failureModeResult = await createFailureModeNode(
                       componentUuid,
                       failureMode.mode,
@@ -223,13 +240,10 @@ export default function ImportJsonSafetyAnalysis() {
 
                     if (failureModeResult.success && failureModeResult.failureUuid) {
                       failureModesCreated++;
-
-                      // Create safety note for failure mode if notes exist
                       if (failureMode.notes && failureMode.notes.trim()) {
                         const isDuplicate = await checkForDuplicateSafetyNote(failureModeResult.failureUuid, failureMode.notes);
                         if (isDuplicate) {
                           duplicatesSkipped++;
-                          console.log(`Duplicate failure mode safety note skipped for ${failureMode.mode}: ${failureMode.notes}`);
                         } else {
                           const failureNotesResult = await createSafetyNote(failureModeResult.failureUuid, failureMode.notes);
                           if (failureNotesResult.success) {
@@ -247,103 +261,44 @@ export default function ImportJsonSafetyAnalysis() {
               }
             }
           }
-
+          
           results.push({
             componentName: component.jsonName,
             status: errors.length > 0 ? 'error' : 'success',
-            message: errors.length > 0 
-              ? `Completed with ${errors.length} error(s)`
-              : 'Successfully processed',
+            message: errors.length > 0 ? errors.join('; ') : 'Upload successful',
             details: {
               safetyNotesCreated,
               failureModesCreated,
-              duplicatesSkipped
-            }
+              duplicatesSkipped,
+            },
           });
 
-          if (errors.length > 0) {
-            console.error(`Errors processing ${component.jsonName}:`, errors);
-          }
-
         } catch (error) {
-          console.error(`Error processing component ${component.jsonName}:`, error);
           results.push({
             componentName: component.jsonName,
             status: 'error',
-            message: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            message: `An unexpected error occurred: ${error instanceof Error ? error.message : 'Unknown error'}`,
             details: {
-              safetyNotesCreated,
-              failureModesCreated,
-              duplicatesSkipped
-            }
+              safetyNotesCreated: 0,
+              failureModesCreated: 0,
+              duplicatesSkipped: 0,
+            },
           });
         }
       }
 
       setUploadResults(results);
-      setUploadProgress(null);
-
     } catch (error) {
-      setError(`Error during upload: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      setUploadProgress(null);
+      setError(`Error during safety data upload: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsUploading(false);
+      setUploadProgress(null);
     }
   };
 
-  const exportResults = async () => {
-    try {
-      const csvContent = [
-        ['JSON Component Name', 'Database Found', 'Database Name', 'Database UUID', 'Component Type', 'ARXML Path'],
-        ...checkResults.map(result => [
-          result.jsonName,
-          result.databaseResult.found ? 'Yes' : 'No',
-          result.databaseResult.name || '',
-          result.databaseResult.uuid || '',
-          result.databaseResult.componentType || '',
-          result.databaseResult.arxmlPath || '',
-        ])
-      ].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
-
-      // Check if File System Access API is supported
-      if ('showSaveFilePicker' in window) {
-        try {
-          const fileHandle = await (window as any).showSaveFilePicker({
-            suggestedName: 'component-check-results.csv',
-            types: [
-              {
-                description: 'CSV files',
-                accept: {
-                  'text/csv': ['.csv'],
-                },
-              },
-            ],
-          });
-
-          const writable = await fileHandle.createWritable();
-          await writable.write(csvContent);
-          await writable.close();
-          
-          console.log('File saved successfully');
-        } catch (err: any) {
-          if (err.name !== 'AbortError') {
-            console.error('Error saving file:', err);
-            // Fallback to traditional download
-            fallbackDownload(csvContent, 'component-check-results.csv', 'text/csv');
-          }
-        }
-      } else {
-        // Fallback for browsers that don't support File System Access API
-        fallbackDownload(csvContent, 'component-check-results.csv', 'text/csv');
-      }
-    } catch (error) {
-      console.error('Error exporting results:', error);
-      setError('Failed to export results. Please try again.');
-    }
-  };
-
-  const fallbackDownload = (content: string, filename: string, mimeType: string) => {
-    const blob = new Blob([content], { type: mimeType });
+  const exportResults = async (data: any[], filename: string) => {
+    const jsonString = JSON.stringify(data, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -354,284 +309,184 @@ export default function ImportJsonSafetyAnalysis() {
     URL.revokeObjectURL(url);
   };
 
-  const exportUploadResults = async () => {
-    try {
-      const csvContent = [
-        ['Component Name', 'Status', 'Safety Notes Created', 'Failure Modes Created', 'Duplicates Skipped', 'Message'],
-        ...uploadResults.map(result => [
-          result.componentName,
-          result.status,
-          result.details.safetyNotesCreated.toString(),
-          result.details.failureModesCreated.toString(),
-          result.details.duplicatesSkipped.toString(),
-          result.message,
-        ])
-      ].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+  const checkColumns = [
+    {
+      title: 'Component Name in JSON',
+      dataIndex: 'jsonName',
+      key: 'jsonName',
+      sorter: (a: ComponentCheckResult, b: ComponentCheckResult) => a.jsonName.localeCompare(b.jsonName),
+    },
+    {
+      title: 'Database Status',
+      dataIndex: ['databaseResult', 'found'],
+      key: 'found',
+      render: (found: boolean) => 
+        found ? <Tag icon={<CheckCircleOutlined />} color="success">Found</Tag> 
+              : <Tag icon={<CloseCircleOutlined />} color="error">Not Found</Tag>,
+    },
+    {
+      title: 'Database Name',
+      dataIndex: ['databaseResult', 'name'],
+      key: 'dbName',
+    },
+    {
+      title: 'Database UUID',
+      dataIndex: ['databaseResult', 'uuid'],
+      key: 'uuid',
+      render: (uuid?: string) => uuid ? <Text code>{uuid}</Text> : 'N/A',
+    },
+    {
+      title: 'ARXML Path',
+      dataIndex: ['databaseResult', 'arxmlPath'],
+      key: 'arxmlPath',
+      ellipsis: true,
+      render: (path?: string) => path ? <Tooltip title={path}><Text>{path}</Text></Tooltip> : 'N/A',
+    },
+  ];
 
-      // Check if File System Access API is supported
-      if ('showSaveFilePicker' in window) {
-        try {
-          const fileHandle = await (window as any).showSaveFilePicker({
-            suggestedName: 'upload-results.csv',
-            types: [
-              {
-                description: 'CSV files',
-                accept: {
-                  'text/csv': ['.csv'],
-                },
-              },
-            ],
-          });
-
-          const writable = await fileHandle.createWritable();
-          await writable.write(csvContent);
-          await writable.close();
-          
-          console.log('Upload results file saved successfully');
-        } catch (err: any) {
-          if (err.name !== 'AbortError') {
-            console.error('Error saving upload results file:', err);
-            // Fallback to traditional download
-            fallbackDownload(csvContent, 'upload-results.csv', 'text/csv');
-          }
+  const uploadColumns = [
+    {
+      title: 'Component Name',
+      dataIndex: 'componentName',
+      key: 'componentName',
+      sorter: (a: UploadResult, b: UploadResult) => a.componentName.localeCompare(b.componentName),
+    },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      key: 'status',
+      render: (status: 'success' | 'error' | 'skipped') => {
+        switch (status) {
+          case 'success':
+            return <Tag icon={<CheckCircleOutlined />} color="success">Success</Tag>;
+          case 'error':
+            return <Tag icon={<CloseCircleOutlined />} color="error">Error</Tag>;
+          case 'skipped':
+            return <Tag icon={<WarningOutlined />} color="warning">Skipped</Tag>;
+          default:
+            return <Tag>{status}</Tag>;
         }
-      } else {
-        // Fallback for browsers that don't support File System Access API
-        fallbackDownload(csvContent, 'upload-results.csv', 'text/csv');
-      }
-    } catch (error) {
-      console.error('Error exporting upload results:', error);
-      setError('Failed to export upload results. Please try again.');
-    }
-  };
-
+      },
+    },
+    {
+      title: 'Details',
+      key: 'details',
+      render: (_: any, record: UploadResult) => (
+        <Space direction="vertical" size="small">
+          <Text>Safety Notes: {record.details.safetyNotesCreated}</Text>
+          <Text>Failure Modes: {record.details.failureModesCreated}</Text>
+          <Text>Duplicates Skipped: {record.details.duplicatesSkipped}</Text>
+          {record.status === 'error' && <Text type="danger" ellipsis={{ tooltip: record.message }}>{record.message}</Text>}
+        </Space>
+      ),
+    },
+  ];
+  
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      <h1 className="text-3xl font-bold mb-6">Name-Based Exchange Checker</h1>
-      
-      <div className="bg-white shadow-md rounded-lg p-6 mb-6">
-        <h2 className="text-xl font-semibold mb-4">Upload JSON File</h2>
-        <div className="mb-4">
-          <input
-            type="file"
+    <Space direction="vertical" style={{ width: '100%' }} size="large">
+      <Card>
+        <Title level={4}>Import Safety Analysis from JSON</Title>
+        <Paragraph>
+          This tool allows you to import safety analysis data (such as failure modes and safety notes) from a structured JSON file and link it to existing components in the database by name.
+        </Paragraph>
+        <Space>
+          <Upload
             accept=".json"
-            onChange={handleFileUpload}
-            className="block w-full text-sm text-gray-500
-                       file:mr-4 file:py-2 file:px-4
-                       file:rounded-full file:border-0
-                       file:text-sm file:font-semibold
-                       file:bg-blue-50 file:text-blue-700
-                       hover:file:bg-blue-100"
+            beforeUpload={handleFileUpload}
+            showUploadList={false}
+          >
+            <Button icon={<UploadOutlined />} disabled={isChecking || isUploading}>
+              Select JSON File
+            </Button>
+          </Upload>
+          <Button
+            icon={<SyncOutlined />}
+            onClick={checkComponents}
+            disabled={!jsonData || isChecking || isUploading}
+            loading={isChecking}
+          >
+            Check Components
+          </Button>
+          <Button
+            type="primary"
+            icon={<CloudUploadOutlined />}
+            onClick={uploadSafetyData}
+            disabled={!jsonData || isUploading || isChecking || checkResults.length === 0}
+            loading={isUploading}
+          >
+            Upload Safety Data
+          </Button>
+        </Space>
+        {jsonData && (
+          <Alert
+            message={`File loaded: Contains data for ${Object.keys(jsonData.components).length} components.`}
+            type="info"
+            showIcon
+            style={{ marginTop: 16 }}
+            icon={<FileTextOutlined />}
           />
-        </div>
-
-        {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-            {error}
-          </div>
         )}
+        {error && <Alert message={error} type="error" showIcon style={{ marginTop: 16 }} />}
+      </Card>
 
-        {jsonData && (
-          <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
-            <p><strong>File loaded successfully!</strong></p>
-            <p>Components found: {Object.keys(jsonData.components).length}</p>
-            <p>Export date: {jsonData.metadata.exportDate}</p>
-            <p>Version: {jsonData.metadata.version}</p>
-          </div>
-        )}
-
-        {jsonData && (
-          <div className="flex space-x-4">
-            <button
-              onClick={checkComponents}
-              disabled={isChecking || isUploading}
-              className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50"
-            >
-              {isChecking ? 'Checking Components...' : 'Check Components in Database'}
-            </button>
-
-            {checkResults.length > 0 && checkResults.some(r => r.databaseResult.found) && (
-              <button
-                onClick={uploadSafetyData}
-                disabled={isUploading || isChecking}
-                className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50"
-              >
-                {isUploading ? 'Uploading...' : 'Upload Safety Data to Database'}
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {uploadProgress && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-          <h2 className="text-lg font-semibold mb-2">Upload Progress</h2>
-          <div className="w-full bg-gray-200 rounded-full h-2.5 mb-2">
-            <div 
-              className="bg-blue-600 h-2.5 rounded-full transition-all duration-300" 
-              style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
-            ></div>
-          </div>
-          <p className="text-sm text-gray-600">
-            {uploadProgress.current} of {uploadProgress.total} components - {uploadProgress.message}
-          </p>
-        </div>
-      )}
-
-      {uploadResults.length > 0 && (
-        <div className="bg-white shadow-md rounded-lg p-6 mb-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold">Upload Results</h2>
-            <button
-              onClick={exportUploadResults}
-              className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
-            >
-              Export Upload Results
-            </button>
-          </div>
-          
-          <div className="mb-4 grid grid-cols-4 gap-4">
-            <div className="bg-blue-100 p-3 rounded">
-              <p className="font-semibold">Total Processed</p>
-              <p className="text-2xl">{uploadResults.length}</p>
-            </div>
-            <div className="bg-green-100 p-3 rounded">
-              <p className="font-semibold">Successful</p>
-              <p className="text-2xl">{uploadResults.filter(r => r.status === 'success').length}</p>
-            </div>
-            <div className="bg-red-100 p-3 rounded">
-              <p className="font-semibold">Errors</p>
-              <p className="text-2xl">{uploadResults.filter(r => r.status === 'error').length}</p>
-            </div>
-            <div className="bg-yellow-100 p-3 rounded">
-              <p className="font-semibold">Total Duplicates Skipped</p>
-              <p className="text-2xl">{uploadResults.reduce((sum, r) => sum + r.details.duplicatesSkipped, 0)}</p>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="min-w-full table-auto border-collapse border border-gray-300">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="border border-gray-300 px-4 py-2 text-left">Component</th>
-                  <th className="border border-gray-300 px-4 py-2 text-left">Status</th>
-                  <th className="border border-gray-300 px-4 py-2 text-left">Safety Notes</th>
-                  <th className="border border-gray-300 px-4 py-2 text-left">Failure Modes</th>
-                  <th className="border border-gray-300 px-4 py-2 text-left">Duplicates Skipped</th>
-                  <th className="border border-gray-300 px-4 py-2 text-left">Message</th>
-                </tr>
-              </thead>
-              <tbody>
-                {uploadResults.map((result, index) => (
-                  <tr key={index} className={
-                    result.status === 'success' ? 'bg-green-50' : 
-                    result.status === 'error' ? 'bg-red-50' : 'bg-gray-50'
-                  }>
-                    <td className="border border-gray-300 px-4 py-2 font-medium">
-                      {result.componentName}
-                    </td>
-                    <td className="border border-gray-300 px-4 py-2">
-                      <span className={`px-2 py-1 rounded text-sm ${
-                        result.status === 'success' ? 'bg-green-200 text-green-800' :
-                        result.status === 'error' ? 'bg-red-200 text-red-800' :
-                        'bg-gray-200 text-gray-800'
-                      }`}>
-                        {result.status.charAt(0).toUpperCase() + result.status.slice(1)}
-                      </span>
-                    </td>
-                    <td className="border border-gray-300 px-4 py-2 text-center">
-                      {result.details.safetyNotesCreated}
-                    </td>
-                    <td className="border border-gray-300 px-4 py-2 text-center">
-                      {result.details.failureModesCreated}
-                    </td>
-                    <td className="border border-gray-300 px-4 py-2 text-center">
-                      {result.details.duplicatesSkipped}
-                    </td>
-                    <td className="border border-gray-300 px-4 py-2 text-sm">
-                      {result.message}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+      {isUploading && uploadProgress && (
+        <Card>
+          <Title level={5}>Upload in Progress</Title>
+          <Progress
+            percent={Math.round((uploadProgress.current / uploadProgress.total) * 100)}
+            status="active"
+          />
+          <Text style={{ marginTop: 8, display: 'block' }}>
+            {uploadProgress.message} ({uploadProgress.current} / {uploadProgress.total})
+          </Text>
+        </Card>
       )}
 
       {checkResults.length > 0 && (
-        <div className="bg-white shadow-md rounded-lg p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold">Check Results</h2>
-            <button
-              onClick={exportResults}
-              className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
+        <Card
+          title="Component Check Results"
+          extra={
+            <Button
+              icon={<ExportOutlined />}
+              onClick={() => exportResults(checkResults, 'component-check-results.json')}
             >
-              Export Check Results
-            </button>
-          </div>
-
-          <div className="mb-4 grid grid-cols-3 gap-4">
-            <div className="bg-blue-100 p-3 rounded">
-              <p className="font-semibold">Total Components</p>
-              <p className="text-2xl">{checkResults.length}</p>
-            </div>
-            <div className="bg-green-100 p-3 rounded">
-              <p className="font-semibold">Found in Database</p>
-              <p className="text-2xl">{checkResults.filter(r => r.databaseResult.found).length}</p>
-            </div>
-            <div className="bg-red-100 p-3 rounded">
-              <p className="font-semibold">Not Found</p>
-              <p className="text-2xl">{checkResults.filter(r => !r.databaseResult.found).length}</p>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="min-w-full table-auto border-collapse border border-gray-300">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="border border-gray-300 px-4 py-2 text-left">JSON Component Name</th>
-                  <th className="border border-gray-300 px-4 py-2 text-left">Status</th>
-                  <th className="border border-gray-300 px-4 py-2 text-left">Database Name</th>
-                  <th className="border border-gray-300 px-4 py-2 text-left">Database UUID</th>
-                  <th className="border border-gray-300 px-4 py-2 text-left">Component Type</th>
-                  <th className="border border-gray-300 px-4 py-2 text-left">ARXML Path</th>
-                </tr>
-              </thead>
-              <tbody>
-                {checkResults.map((result, index) => (
-                  <tr key={index} className={result.databaseResult.found ? 'bg-green-50' : 'bg-red-50'}>
-                    <td className="border border-gray-300 px-4 py-2 font-medium">
-                      {result.jsonName}
-                    </td>
-                    <td className="border border-gray-300 px-4 py-2">
-                      <span className={`px-2 py-1 rounded text-sm ${
-                        result.databaseResult.found 
-                          ? 'bg-green-200 text-green-800' 
-                          : 'bg-red-200 text-red-800'
-                      }`}>
-                        {result.databaseResult.found ? 'Found' : 'Not Found'}
-                      </span>
-                    </td>
-                    <td className="border border-gray-300 px-4 py-2">
-                      {result.databaseResult.name || '-'}
-                    </td>
-                    <td className="border border-gray-300 px-4 py-2 font-mono text-sm">
-                      {result.databaseResult.uuid || '-'}
-                    </td>
-                    <td className="border border-gray-300 px-4 py-2">
-                      {result.databaseResult.componentType || '-'}
-                    </td>
-                    <td className="border border-gray-300 px-4 py-2 text-sm">
-                      {result.databaseResult.arxmlPath || '-'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+              Export Results
+            </Button>
+          }
+        >
+          <Table
+            columns={checkColumns}
+            dataSource={checkResults}
+            rowKey="jsonName"
+            pagination={{ pageSize: 10 }}
+            loading={isChecking}
+            scroll={{ x: true }}
+          />
+        </Card>
       )}
-    </div>
+      
+      {uploadResults.length > 0 && (
+        <Card
+          title="Upload Results"
+          extra={
+            <Button
+              icon={<ExportOutlined />}
+              onClick={() => exportResults(uploadResults, 'upload-results.json')}
+            >
+              Export Results
+            </Button>
+          }
+        >
+          <Table
+            columns={uploadColumns}
+            dataSource={uploadResults}
+            rowKey="componentName"
+            pagination={{ pageSize: 10 }}
+            loading={isUploading}
+            scroll={{ x: true }}
+          />
+        </Card>
+      )}
+    </Space>
   );
 }

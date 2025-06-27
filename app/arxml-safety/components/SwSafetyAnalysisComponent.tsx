@@ -168,19 +168,23 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
           isCauseSelected={isCauseSelected}
         />
 
-        <ProviderPortsFailureModesTable 
-          providerPorts={providerPorts}
-          portFailures={portFailures}
-          setPortFailures={setPortFailures}
-          onFailureSelect={handleFailureSelectionWrapper}
-          selectedFailures={selectedFailures}
-          refreshData={refreshData}
-          getFailureSelectionState={getFailureSelectionState}
-          handleFailureSelection={handleFailureSelection}
-          isCauseSelected={isCauseSelected}
-        />
+        {swComponent && (
+          <ProviderPortsFailureModesTable 
+            swComponent={swComponent}
+            providerPorts={providerPorts}
+            portFailures={portFailures}
+            setPortFailures={setPortFailures}
+            onFailureSelect={handleFailureSelectionWrapper}
+            selectedFailures={selectedFailures}
+            refreshData={refreshData}
+            getFailureSelectionState={getFailureSelectionState}
+            handleFailureSelection={handleFailureSelection}
+            isCauseSelected={isCauseSelected}
+          />
+        )}
         
         <ReceiverPortsFailureModesTable 
+          swComponent={swComponent}
           receiverPorts={receiverPorts}
           portFailures={receiverPortFailures}
           setPortFailures={setReceiverPortFailures}

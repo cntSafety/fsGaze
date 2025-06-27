@@ -1,11 +1,10 @@
 // Moved from app/arxml-importer/ArxmlImporter.tsx
 import React, { useState } from 'react';
-import { Button, Card, Typography, Space, message, Table, Checkbox, Input, Progress } from 'antd';
+import { Button, Card, Typography, Space, message, Table, Checkbox, Input, Progress, theme } from 'antd';
 import { FolderOpenOutlined, SearchOutlined, CheckSquareOutlined, BorderOutlined } from '@ant-design/icons';
-import '../ArxmlImporter.css';
 import { uploadArxmlToNeo4j } from '../../services/ArxmlToNeoService';
 
-const { Text } = Typography;
+const { Title, Text } = Typography;
 const { Search } = Input;
 
 interface ArxmlFile {
@@ -23,6 +22,7 @@ interface ArxmlImporterProps {
 }
 
 const ArxmlImporter: React.FC<ArxmlImporterProps> = () => {
+  const { token } = theme.useToken();
   const [files, setFiles] = useState<ArxmlFile[]>([]);
   const [filteredFiles, setFilteredFiles] = useState<ArxmlFile[]>([]);
   const [dirHandle, setDirHandle] = useState<FileSystemDirectoryHandle | null>(null);
@@ -38,6 +38,17 @@ const ArxmlImporter: React.FC<ArxmlImporterProps> = () => {
     nodeCount?: number;
     relationshipCount?: number;
   } | null>(null);
+  const [pagination, setPagination] = useState({
+    current: 1,
+    pageSize: 50,
+  });
+
+  const handleTableChange = (newPagination: any) => {
+    setPagination({
+      current: newPagination.current,
+      pageSize: newPagination.pageSize,
+    });
+  };
 
   // Helper: Recursively scan directory for .arxml files
   const scanDirectory = async (dirHandle: FileSystemDirectoryHandle, basePath = ''): Promise<ArxmlFile[]> => {
@@ -330,11 +341,10 @@ const ArxmlImporter: React.FC<ArxmlImporterProps> = () => {
       dataIndex: 'selected',
       key: 'selected',
       width: 80,
-      render: (_: unknown, record: ArxmlFile) => (
+      render: (_: any, record: ArxmlFile) => (
         <Checkbox
           checked={record.selected}
-          onChange={e => handleFileSelect(record.id, e.target.checked)}
-          disabled={isExtracting}
+          onChange={(e) => handleFileSelect(record.id, e.target.checked)}
         />
       ),
     },
@@ -342,145 +352,109 @@ const ArxmlImporter: React.FC<ArxmlImporterProps> = () => {
       title: 'File Name',
       dataIndex: 'name',
       key: 'name',
-      render: (text: string) => (
-        <div style={{
-          maxHeight: '50px',
-          overflowY: 'auto',
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-word'
-        }}>
-          {text}
-        </div>
-      ),
+      sorter: (a: ArxmlFile, b: ArxmlFile) => a.name.localeCompare(b.name),
+      ellipsis: true,
     },
     {
       title: 'Path',
       dataIndex: 'path',
       key: 'path',
-      render: (text: string) => (
-        <div style={{
-          maxHeight: '50px',
-          overflowY: 'auto',
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-word'
-        }}>
-          {text}
-        </div>
-      ),
-    }
+      sorter: (a: ArxmlFile, b: ArxmlFile) => a.path.localeCompare(b.path),
+      ellipsis: true,
+    },
   ];
 
+  const allSelected = filteredFiles.length > 0 && filteredFiles.every(file => file.selected);
+  const someSelected = filteredFiles.some(file => file.selected);
+
+  const headerCheckbox = (
+    <Checkbox
+      checked={allSelected}
+      indeterminate={someSelected && !allSelected}
+      onChange={(e) => handleSelectAll(e.target.checked)}
+    >
+      Select All on This Page
+    </Checkbox>
+  );
+
   return (
-    <div className="arxml-importer-container">
+    <>
       {contextHolder}
-      <Card size="small" style={{ width: '100%', margin: 0 }}>
-        {files.length === 0 && (
-          <div style={{ textAlign: 'center', margin: '32px 0 16px 0' }}>
-            <FolderOpenOutlined style={{ fontSize: 64, color: '#1890ff', marginBottom: 16 }} />
-          </div>
-        )}
-        <Space direction="vertical" style={{ width: '100%' }} size="small">
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: files.length === 0 ? 32 : 0 }}>
-            <Button
-              type="primary"
-              icon={<FolderOpenOutlined />}
-              onClick={handleFolderSelect}
-              size="middle"
-              style={{ fontSize: 16, padding: '6px 20px', height: 40 }}
+      <Card
+        title={<Title level={4}>ARXML File Importer</Title>}
+        extra={
+          <Button type="primary" icon={<FolderOpenOutlined />} onClick={handleFolderSelect} disabled={isExtracting}>
+            Change Folder
+          </Button>
+        }
+      >
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Search
+            placeholder="Search by filename or path (use commas to separate multiple terms)"
+            onSearch={handleSearch}
+            enterButton={<SearchOutlined />}
+            disabled={isExtracting}
+          />
+          <Space>
+            <Checkbox
+              checked={allSelected}
+              indeterminate={someSelected && !allSelected}
+              onChange={(e) => handleSelectAll(e.target.checked)}
               disabled={isExtracting}
             >
-              {dirHandle ? 'Change Folder' : 'Select Folder'}
+              Select All
+            </Checkbox>
+            <Button
+              type="link"
+              onClick={() => handleSelectAll(false)}
+              disabled={isExtracting || !someSelected}
+              icon={<BorderOutlined />}
+            >
+              Deselect All
             </Button>
-          </div>
-          {files.length > 0 && (
-            <>
-              <Space>
-                <Button
-                  icon={<CheckSquareOutlined />}
-                  onClick={() => handleSelectAll(true)}
-                  size="small"
-                  disabled={isExtracting}
-                >
-                  Select All
-                </Button>
-                <Button
-                  icon={<BorderOutlined />}
-                  onClick={() => handleSelectAll(false)}
-                  size="small"
-                  disabled={isExtracting}
-                >
-                  Deselect All
-                </Button>
-                
-              </Space>
-              <Search
-                placeholder="Search by filename or path... (use commas to separate multiple terms)"
-                allowClear
-                enterButton={<SearchOutlined />}
-                value={searchText}
-                onChange={e => handleSearch(e.target.value)}
-                style={{ marginBottom: 8 }}
-                disabled={isExtracting}
-              />
-
-              {/* Progress bar moved here, above the table */}
-              {isExtracting && (
-                <div style={{ margin: '16px 0' }}>
-                  <div style={{ marginBottom: '8px', fontSize: '14px', color: '#666' }}>
-                    {progressPhase || 'Processing...'}
-                  </div>
-                  <Progress 
-                    percent={extractionProgress} 
-                    status={extractionProgress === 100 ? "success" : "active"}
-                    showInfo={true}
-                    strokeColor={extractionProgress === 100 ? '#52c41a' : '#1890ff'}
-                  />
-                </div>
-              )}
-
-              <Table
-                dataSource={filteredFiles}
-                columns={columns}
-                rowKey="id"
-                pagination={false}
-                className="arxml-files-table"
-                size="small"
-                scroll={{ y: 'calc(100vh - 300px)' }}
-                bordered
-                style={{ width: '100%' }}
-              />
-              {/* Button section remains after the table, Progress bar was removed from here */}
-              <Space>
-                <Button
-                  type="primary"
-                  onClick={handleImportSelected}
-                  disabled={!files.some(file => file.selected) || isExtracting}
-                  size="small"
-                  loading={isExtracting}
-                >
-                  Import Selected to Neo4j
-                </Button>
-                {lastImportSummary && (
-                  <Button
-                    type="default"
-                    onClick={async () => await generateImportSummary(
-                      lastImportSummary.files,
-                      lastImportSummary.startTime,
-                      lastImportSummary.nodeCount,
-                      lastImportSummary.relationshipCount
-                    )}
-                    size="small"
-                    disabled={isExtracting}
-                  >
-                    Download Last Import Summary
-                  </Button>
-                )}
-              </Space>
-            </>
-          )}
+          </Space>
         </Space>
       </Card>
-    </div>
+      
+      {isExtracting && (
+        <Card style={{ marginTop: 16 }}>
+          <Text strong>{progressPhase}</Text>
+          <Progress percent={extractionProgress} status="active" />
+        </Card>
+      )}
+
+      {files.length > 0 && (
+        <Card style={{ marginTop: 16 }}>
+          <Table
+            columns={columns}
+            dataSource={filteredFiles}
+            rowKey="id"
+            pagination={{
+              ...pagination,
+              showSizeChanger: true,
+              pageSizeOptions: ['10', '50', '100', '200'],
+            }}
+            onChange={handleTableChange}
+            scroll={{ y: 'calc(100vh - 400px)' }}
+            loading={isExtracting}
+            className={token.colorBgContainer === '#141414' ? 'dark-mode-table' : ''}
+          />
+        </Card>
+      )}
+
+      <div style={{ marginTop: '24px', textAlign: 'center' }}>
+        <Button
+          type="primary"
+          size="large"
+          onClick={handleImportSelected}
+          loading={isExtracting}
+          disabled={!files.some(f => f.selected)}
+          icon={<CheckSquareOutlined />}
+        >
+          Import Selected Files
+        </Button>
+      </div>
+    </>
   );
 };
 

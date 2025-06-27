@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button } from 'antd';
+import { Button, Typography } from 'antd';
 import { PlusOutlined, CodeOutlined } from '@ant-design/icons';
 import { SafetyTableColumn, SafetyTableRow } from '../CoreSafetyTable';
 import { useSwFailureModes } from './hooks/useSwFailureModes';
@@ -8,6 +8,8 @@ import { BaseFailureModeTable } from './BaseFailureModeTable';
 import { CascadeDeleteModal } from '../CascadeDeleteModal';
 import type { DeletionPreview } from '../CascadeDeleteModal';
 import { message } from 'antd';
+
+const { Title } = Typography;
 
 interface SwFailureModesTableProps {
   swComponentUuid: string;
@@ -164,7 +166,9 @@ export default function SwFailureModesTable({
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <CodeOutlined style={{ fontSize: '23px', color: '#1890ff' }} />
-              <span style={{ fontSize: '21px', fontWeight: 'bold', color: '#262626' }}>SW Component Failure Modes</span>
+              <Title level={4} style={{ margin: 0 }}>
+                Functional Failure Modes for {swComponent.name}
+              </Title>
             </div>
             <Button 
               type="primary" 

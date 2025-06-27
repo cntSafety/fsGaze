@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, Typography, Descriptions } from 'antd';
+import { Typography, Descriptions, Collapse } from 'antd';
 import { SwComponent, Failure, ProviderPort, PortFailure } from './types';
 import SafetyNoteManager from './SafetyNoteManager';
 
@@ -10,7 +10,7 @@ interface SwComponentInfoProps {
   failures: Failure[];
   providerPorts: ProviderPort[];
   receiverPorts?: ProviderPort[];
-  portFailures?: {[portUuid: string]: PortFailure[]};
+  portFailures?: {[portUuid:string]: PortFailure[]};
   receiverPortFailures?: {[portUuid: string]: PortFailure[]};
 }
 
@@ -28,12 +28,19 @@ export default function SwComponentInfo({
   const totalPortFailures = totalProviderPortFailures + totalReceiverPortFailures;
   
   return (
-    <div>
-      <Card style={{ marginBottom: '16px' }} styles={{ body: { padding: '16px' } }}>
-        <Title level={3} style={{ marginBottom: '12px', marginTop: '0' }}>
-          SW Component Safety Analysis
-        </Title>
-        
+    <Collapse 
+      bordered={true} 
+      defaultActiveKey={[]}
+      style={{ marginBottom: '16px' }}
+    >
+      <Collapse.Panel 
+        header={
+          <Title level={4} style={{ margin: 0 }}>
+            SW Component: {swComponent.name}
+          </Title>
+        } 
+        key="1"
+      >
         <Descriptions 
           bordered 
           column={1} 
@@ -47,9 +54,6 @@ export default function SwComponentInfo({
             } 
           }}
         >
-          <Descriptions.Item label="Component Name">
-            <Text strong style={{ fontSize: '16px' }}>{swComponent.name}</Text>
-          </Descriptions.Item>
           <Descriptions.Item label="UUID">
             <Text code>{swComponent.uuid}</Text>
           </Descriptions.Item>
@@ -92,7 +96,7 @@ export default function SwComponentInfo({
             />
           </Descriptions.Item>
         </Descriptions>
-      </Card>
-    </div>
+      </Collapse.Panel>
+    </Collapse>
   );
 }
