@@ -119,7 +119,7 @@ interface SafetyTaskFormData {
 }
 
 const SafetyTaskModal: React.FC<SafetyTaskModalProps> = ({
-  open: visible,
+  open,
   onCancel,
   onSave,
   onOk,
@@ -248,23 +248,17 @@ const SafetyTaskModal: React.FC<SafetyTaskModalProps> = ({
             style={{ width: '100%' }}
           >
             <Option value="runtime measures">
-              <span style={{ color: getTaskTypeColor('runtime measures'), fontWeight: 'bold' }}>
-                Runtime Measures
-              </span>
+              Runtime Measures
             </Option>
             <Option value="dev-time measures">
-              <span style={{ color: getTaskTypeColor('dev-time measures'), fontWeight: 'bold' }}>
-                Dev-time Measures
-              </span>
+              Dev-Time Measures
             </Option>
             <Option value="other">
-              <span style={{ color: getTaskTypeColor('other'), fontWeight: 'bold' }}>
-                Other
-              </span>
+              Other
             </Option>
           </Select>
         </Form.Item>
-
+        
         <Form.Item
           name="status"
           label={<span style={{ fontWeight: 'bold' }}>Status</span>}
@@ -274,123 +268,123 @@ const SafetyTaskModal: React.FC<SafetyTaskModalProps> = ({
             placeholder="Select status"
             style={{ width: '100%' }}
           >
-            <Option value="open">
-              <Tag color={getStatusColor('open')}>Open</Tag>
-            </Option>
-            <Option value="started">
-              <Tag color={getStatusColor('started')}>Started</Tag>
-            </Option>
-            <Option value="in-review">
-              <Tag color={getStatusColor('in-review')}>In Review</Tag>
-            </Option>
-            <Option value="finished">
-              <Tag color={getStatusColor('finished')}>Finished</Tag>
-            </Option>
+            <Option value="open">Open</Option>
+            <Option value="started">Started</Option>
+            <Option value="in-review">In Review</Option>
+            <Option value="finished">Finished</Option>
           </Select>
         </Form.Item>
-
-        {/* Status Progress Display */}
-        {formValues.status && (
-          <Form.Item label={<span style={{ fontWeight: 'bold' }}>Progress Visualization</span>}>
-            <div style={{ 
-              padding: '16px', 
-              backgroundColor: '#fafafa', 
-              borderRadius: '8px',
-              border: '1px solid #d9d9d9'
-            }}>
-              <StatusProgress status={formValues.status} />
-            </div>
-          </Form.Item>
-        )}
-
+        
+        {formValues.status && <StatusProgress status={formValues.status} />}
+        
         <Divider />
-
+        
         <Form.Item
           name="responsible"
-          label={<span style={{ fontWeight: 'bold' }}>Responsible Person</span>}
-          rules={[
-            { required: true, message: 'Please enter the responsible person' },
-            { max: 100, message: 'Responsible person cannot exceed 100 characters' }
-          ]}
+          label="Responsible"
+          rules={[{ required: true, message: 'Please enter responsible person/team' }]}
         >
-          <Input
-            placeholder="Enter responsible person name..."
-            prefix={<UserOutlined style={{ color: '#8c8c8c' }} />}
-            showCount
-            maxLength={100}
-          />
+          <Input placeholder="e.g., John Doe, Safety Team" />
         </Form.Item>
-
+        
         <Form.Item
           name="reference"
-          label={<span style={{ fontWeight: 'bold' }}>Reference</span>}
-          rules={[
-            { required: true, message: 'Please enter a reference' },
-            { max: 200, message: 'Reference cannot exceed 200 characters' }
-          ]}
+          label="Reference"
         >
-          <Input
-            placeholder="Enter reference (document, ID, URL, etc.)..."
-            prefix={<LinkOutlined style={{ color: '#8c8c8c' }} />}
-            showCount
-            maxLength={200}
-          />
+          <Input placeholder="e.g., JIRA-123, Requirement-456" />
         </Form.Item>
       </Form>
     );
   };
 
+  const renderNodeInfo = () => (
+    <div style={{ marginBottom: 16, padding: '12px', backgroundColor: '#fafafa', borderRadius: '4px' }}>
+      <Typography.Title level={5} style={{ margin: 0 }}>
+        Associated with: <Tag color="blue">{nodeName}</Tag>
+      </Typography.Title>
+      {nodeDescription && (
+        <Text type="secondary" style={{ marginTop: 4, display: 'block' }}>
+          {nodeDescription}
+        </Text>
+      )}
+    </div>
+  );
+
   const renderModalContent = () => {
-    if (mode === 'tabs' && existingTasks.length > 1) {
+    if (mode === 'tabs' && existingTasks.length > 0) {
       const tabItems = existingTasks.map((task, index) => ({
-        key: index.toString(),
+        key: task.uuid,
         label: (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>            <Tag color={getStatusColor(task.status)}>
-              {task.status}
-            </Tag>
-            <span>{task.name}</span>
-          </div>
+          <span style={{ color: index === activeTabIndex ? '#1890ff' : undefined }}>
+            <CheckSquareOutlined style={{ marginRight: 8 }} />
+            {`Task ${index + 1}`}
+          </span>
         ),
-        children: renderFormContent()
+        children: (
+          <>
+            {renderNodeInfo()}
+            {renderFormContent()}
+          </>
+        )
       }));
 
       return (
         <Tabs
-          activeKey={activeTabIndex.toString()}
-          onChange={(key) => onTabChange && onTabChange(parseInt(key))}
+          activeKey={existingTasks[activeTabIndex]?.uuid}
+          onChange={(key) => {
+            const index = existingTasks.findIndex(t => t.uuid === key);
+            if (onTabChange) onTabChange(index);
+          }}
+          tabBarExtraContent={
+            <Button
+              icon={<PlusOutlined />}
+              onClick={onCreateNew}
+              size="small"
+              type="primary"
+              ghost
+            >
+              Add New
+            </Button>
+          }
           items={tabItems}
         />
       );
     }
     
-    return renderFormContent();
+    return (
+      <>
+        {renderNodeInfo()}
+        {renderFormContent()}
+      </>
+    );
   };
 
   const getModalFooter = () => {
-    const buttons = [
-      <Button key="cancel" onClick={handleCancel} disabled={loading} size="small">
+    const isFormValid =
+      formValues.name &&
+      formValues.description &&
+      formValues.status &&
+      formValues.taskType;
+
+    const footerButtons = [
+      <Button key="cancel" onClick={handleCancel}>
         Cancel
       </Button>
     ];
 
-    // Add "Delete" button for edit and tabs modes (when editing existing tasks)
-    if ((mode === 'edit' || mode === 'tabs') && activeTask && onDelete) {
-      buttons.push(
+    if (mode !== 'create') {
+      footerButtons.unshift(
         <Popconfirm
           key="delete"
-          title="Delete Safety Task"
-          description={`Are you sure you want to delete "${activeTask.name}"? This action cannot be undone.`}
+          title="Are you sure you want to delete this task?"
           onConfirm={onDelete}
-          okText="Delete"
-          cancelText="Cancel"
-          okType="danger"
-          disabled={loading}
+          okText="Yes"
+          cancelText="No"
         >
           <Button
             danger
-            disabled={loading}
             icon={<DeleteOutlined />}
-            size="small"
+            loading={loading}
           >
             Delete
           </Button>
@@ -398,130 +392,42 @@ const SafetyTaskModal: React.FC<SafetyTaskModalProps> = ({
       );
     }
 
-    // Add "Create New" button for edit and tabs modes
-    if ((mode === 'edit' || mode === 'tabs') && onCreateNew) {
-      buttons.push(
-        <Button
-          key="createNew"
-          onClick={onCreateNew}
-          disabled={loading}
-          icon={<PlusOutlined />}
-          size="small"
-        >
-          New Task
-        </Button>
-      );
-    }
-
-    // Add Save/Update button
-    buttons.push(
+    footerButtons.push(
       <Button
-        key="save"
+        key="submit"
         type="primary"
-        onClick={handleOk}
         loading={loading}
-        size="small"
+        onClick={handleOk}
+        disabled={!isFormValid}
       >
-        {mode === 'create' ? 'Create Task' : 'Update Task'}
+        {mode === 'create' ? 'Create Task' : 'Save Changes'}
       </Button>
     );
 
-    return buttons;
+    return (
+      <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+        <div>
+          {mode !== 'create' && activeTask?.lastModified && (
+            <Text type="secondary" style={{ fontSize: '12px' }}>
+              <ClockCircleOutlined style={{ marginRight: 4 }} />
+              Last updated: {new Date(activeTask.lastModified).toLocaleString()}
+            </Text>
+          )}
+        </div>
+        <Space>{footerButtons.reverse()}</Space>
+      </Space>
+    );
   };
 
   return (
     <Modal
       title={getModalTitle()}
-      open={visible}
+      open={open}
       onCancel={handleCancel}
-      footer={
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '16px' }}>
-          {getModalFooter()}
-        </div>
-      }
-      width={700}
-      destroyOnClose
+      width={800}
+      destroyOnHidden
+      footer={getModalFooter()}
     >
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <CheckSquareOutlined style={{ color: '#1890ff', fontSize: '18px' }} />
-          <Text style={{ fontSize: '16px', fontWeight: 'bold' }}>
-            {nodeName}
-          </Text>
-        </div>
-        
-        {mode === 'edit' && activeTask && (
-          <div style={{ marginBottom: 8 }}>
-            <Text type="secondary" style={{ fontSize: '12px' }}>
-              Editing: {activeTask.name}
-            </Text>
-            <div style={{ marginTop: 4 }}>              <Tag color={getTaskTypeColor(activeTask.taskType)}>
-                {activeTask.taskType}
-              </Tag>
-              <Tag color={getStatusColor(activeTask.status)}>
-                {activeTask.status}
-              </Tag>
-            </div>
-          </div>
-        )}
-        
-        {mode === 'tabs' && activeTask && nodeDescription && (
-          <Text style={{ fontSize: '12px', color: '#595959' }}>
-            {nodeDescription}
-          </Text>
-        )}
-        
-        {mode === 'create' && existingTasks.length > 0 && (
-          <Text type="secondary" style={{ fontSize: '12px' }}>
-            Creating additional safety task ({existingTasks.length} existing)
-          </Text>
-        )}
-      </div>
-
-      {/* Timestamp Information for Edit and Tabs modes */}
-      {(mode === 'edit' || mode === 'tabs') && activeTask && (
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <ClockCircleOutlined style={{ color: '#8c8c8c', fontSize: '14px' }} />
-              <Text type="secondary" style={{ fontSize: '12px' }}>
-                Created: {activeTask.created ? new Date(activeTask.created).toLocaleString() : 'N/A'}
-              </Text>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <EditOutlined style={{ color: '#8c8c8c', fontSize: '14px' }} />
-              <Text type="secondary" style={{ fontSize: '12px' }}>
-                Modified: {activeTask.lastModified ? new Date(activeTask.lastModified).toLocaleString() : 'N/A'}
-              </Text>
-            </div>
-          </div>
-          
-          {/* Task Details Summary */}
-          <div style={{ 
-            marginTop: 12, 
-            padding: '12px', 
-            backgroundColor: '#f6f8fa', 
-            borderRadius: '6px',
-            border: '1px solid #e1e4e8'
-          }}>
-            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <UserOutlined style={{ color: '#8c8c8c', fontSize: '14px' }} />
-                <Text type="secondary" style={{ fontSize: '12px' }}>
-                  Responsible: {activeTask.responsible}
-                </Text>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <LinkOutlined style={{ color: '#8c8c8c', fontSize: '14px' }} />
-                <Text type="secondary" style={{ fontSize: '12px' }}>
-                  Reference: {activeTask.reference}
-                </Text>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {renderModalContent()}
     </Modal>
   );

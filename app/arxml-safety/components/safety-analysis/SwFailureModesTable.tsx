@@ -160,7 +160,7 @@ export default function SwFailureModesTable({
   ];
 
   return (
-    <div>
+    <div className="sw-failure-modes-table-container">
       <BaseFailureModeTable
         title={
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
@@ -192,6 +192,7 @@ export default function SwFailureModesTable({
         isSaving={isSaving}
         showComponentActions={true}
         form={form}
+        scroll={{ x: 'max-content' }}
         onFailureSelect={onFailureSelect}
         selectedFailures={selectedFailures}
         pagination={{

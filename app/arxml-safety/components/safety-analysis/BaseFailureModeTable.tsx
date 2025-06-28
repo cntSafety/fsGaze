@@ -29,6 +29,7 @@ interface BaseFailureModeTableProps {
     second: { uuid: string; name: string } | null;
   };
   pagination?: false | TableProps<SafetyTableRow>['pagination'];
+  scroll?: TableProps<SafetyTableRow>['scroll'];
   emptyStateConfig: {
     primaryMessage: string;
     secondaryMessage?: string;
@@ -57,6 +58,7 @@ export const BaseFailureModeTable: React.FC<BaseFailureModeTableProps> = ({
   onFailureSelect,
   selectedFailures,
   pagination,
+  scroll,
   emptyStateConfig,
   onSafetyTaskClick,
   getFailureSelectionState,
@@ -69,7 +71,7 @@ export const BaseFailureModeTable: React.FC<BaseFailureModeTableProps> = ({
           {({ handleSafetyTaskClick }) => (
             <SafetyReqManager>
               {({ handleSafetyReqClick }) => (
-                <Card style={{ marginTop: '24px' }}>
+                <Card style={{ marginTop: '24px' }} className="base-failure-mode-table-card">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                     {typeof title === 'string' ? (
                       <Title level={4} style={{ margin: 0 }}>
@@ -99,6 +101,7 @@ export const BaseFailureModeTable: React.FC<BaseFailureModeTableProps> = ({
                   onFailureSelect={onFailureSelect}
                   selectedFailures={selectedFailures}
                   pagination={pagination}
+                  scroll={scroll}
                   getFailureSelectionState={getFailureSelectionState}
                   handleFailureSelection={handleFailureSelection}
                   isCauseSelected={isCauseSelected}

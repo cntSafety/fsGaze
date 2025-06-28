@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { Select, Alert, Spin, Card, Divider, Checkbox } from 'antd';
+import { Select, Alert, Spin, Card, Divider, Checkbox, theme, message } from 'antd';
 import { NodeCollapseOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import * as d3 from 'd3';
 import { getAllSwComponentPrototypes, getComponentDependencyGraph, ComponentVisualizationResult } from '@/app/services/ArxmlToNeoService';
@@ -76,12 +76,10 @@ const SWCProtoGraph: React.FC = () => {
   
   // Failure mode state
   const [failureModeData, setFailureModeData] = useState<FailureModeData[]>([]);
-  const [loadingFailureModes, setLoadingFailureModes] = useState(false);
   const [showFailureModes, setShowFailureModes] = useState(true);
   
   // Causation state
   const [causationData, setCausationData] = useState<CausationData[]>([]);
-  const [loadingCausations, setLoadingCausations] = useState(false);
   const [showCausations, setShowCausations] = useState(true);
   
   // Visibility state for node types
@@ -115,11 +113,13 @@ const SWCProtoGraph: React.FC = () => {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const { token } = theme.useToken();
+
   // Utility function to copy text to clipboard
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      // console.log(`📋 Copied ${label} to clipboard:`, text);
+      message.success(`Copied "${text}" to clipboard`);
     } catch (err) {
       console.error('Failed to copy to clipboard:', err);
       // Fallback for older browsers
@@ -129,7 +129,7 @@ const SWCProtoGraph: React.FC = () => {
       textArea.select();
       document.execCommand('copy');
       document.body.removeChild(textArea);
-      // console.log(`📋 Copied ${label} to clipboard (fallback):`, text);
+      message.success(`Copied "${text}" to clipboard`);
     }
   };
 
@@ -170,7 +170,7 @@ const SWCProtoGraph: React.FC = () => {
       }
     }
     
-    tooltip += '\n\n🖱️ Drag to move and pin\n⏸️ Double-click to unpin\n🖱️ Right-click to copy complete data';
+    tooltip += '\n\n🖱️ Drag to move and pin\n⏸️ Double-click to unpin\n🖱️ Right-click to copy name';
     
     return tooltip;
   };
@@ -199,141 +199,88 @@ const SWCProtoGraph: React.FC = () => {
     fetchPrototypes();
   }, []);
 
-  // Load dependency graph when prototype is selected
+  // Load all graph data (dependencies, failures, causations) when prototype or toggles change
   useEffect(() => {
     if (!selectedPrototype) {
       setGraphData(null);
       return;
     }
 
-    const fetchDependencyGraph = async () => {
+    const fetchAllGraphData = async () => {
+      setLoading(true);
+      setError(null);
+      
+      // Clear previous data
+      setGraphData(null);
+      setFailureModeData([]);
+      setCausationData([]);
+
       try {
-        setLoading(true);
-        setError(null);
-        // console.log('🎯 Fetching dependency graph for:', selectedPrototype);
-        
-        const result = await getComponentDependencyGraph(selectedPrototype);
-        
-        if (result.success && result.data) {
-          setGraphData(result.data);
-          // console.log('✅ Dependency graph loaded:', result.data);
-        } else {
-          setError(result.message || 'Failed to load dependency graph');
+        // 1. Fetch base dependency graph
+        const graphResult = await getComponentDependencyGraph(selectedPrototype);
+        if (!graphResult.success || !graphResult.data) {
+          setError(graphResult.message || 'Failed to load dependency graph');
+          setLoading(false);
+          return;
         }
+        const baseGraphData = graphResult.data;
+
+        // 2. Fetch failure modes if enabled
+        let failures: FailureModeData[] = [];
+        if (showFailureModes) {
+          const portNodes = baseGraphData.nodes.filter(node => 
+            node.type === 'P_PORT_PROTOTYPE' || node.type === 'R_PORT_PROTOTYPE'
+          );
+          if (portNodes.length > 0) {
+            const failurePromises = portNodes.map(async (portNode) => {
+              try {
+                const result = await getFailuresForPorts(portNode.id);
+                if (result.success && result.data) {
+                  return result.data.map(failure => ({ ...failure, connectedPortId: portNode.id }));
+                }
+                return [];
+              } catch (error) {
+                console.error(`Error fetching failures for port ${portNode.id}:`, error);
+                return [];
+              }
+            });
+            failures = (await Promise.all(failurePromises)).flat();
+          }
+        }
+        
+        // 3. Fetch causations if enabled
+        let causations: CausationData[] = [];
+        if (showCausations && failures.length > 0) {
+          const causationPromises = failures.map(async (failureMode) => {
+            try {
+              const result = await getEffectFailureModes(failureMode.failureUuid);
+              if (result.success && result.data) {
+                return result.data.map(causation => ({ ...causation, sourceFailureModeUuid: failureMode.failureUuid }));
+              }
+              return [];
+            } catch (error) {
+              console.error(`Error fetching causations for failure mode ${failureMode.failureUuid}:`, error);
+              return [];
+            }
+          });
+          causations = (await Promise.all(causationPromises)).flat();
+        }
+
+        // 4. Set all state at once to trigger a single re-render
+        setFailureModeData(failures);
+        setCausationData(causations);
+        setGraphData(baseGraphData); // Set this last to ensure other data is ready
+
       } catch (err) {
-        console.error('❌ Error loading dependency graph:', err);
-        setError('Error loading dependency graph');
+        console.error('Error loading full dependency graph:', err);
+        setError('Error loading dependency graph data');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchDependencyGraph();
-  }, [selectedPrototype]);
-
-  // Fetch failure modes for ports when graph data changes
-  useEffect(() => {
-    if (!graphData || !showFailureModes) {
-      setFailureModeData([]);
-      return;
-    }
-
-    const fetchFailureModesForPorts = async () => {
-      try {
-        setLoadingFailureModes(true);
-        
-        // Extract port nodes from the graph data
-        const portNodes = graphData.nodes.filter(node => 
-          node.type === 'P_PORT_PROTOTYPE' || node.type === 'R_PORT_PROTOTYPE'
-        );
-
-        if (portNodes.length === 0) {
-          setFailureModeData([]);
-          return;
-        }
-
-        // console.log('🔍 Fetching failure modes for ports:', portNodes.length);
-        
-        // Make parallel calls to get failures for each port
-        const failurePromises = portNodes.map(async (portNode) => {
-          try {
-            const result = await getFailuresForPorts(portNode.id);
-            if (result.success && result.data) {
-              return result.data.map(failure => ({
-                ...failure,
-                connectedPortId: portNode.id
-              }));
-            }
-            return [];
-          } catch (error) {
-            console.error(`❌ Error fetching failures for port ${portNode.id}:`, error);
-            return [];
-          }
-        });
-
-        const failureResults = await Promise.all(failurePromises);
-        const allFailures = failureResults.flat();
-        
-        // console.log('✅ Loaded failure modes:', allFailures.length);
-        setFailureModeData(allFailures);
-        
-      } catch (error) {
-        console.error('❌ Error fetching failure modes:', error);
-        setFailureModeData([]);
-      } finally {
-        setLoadingFailureModes(false);
-      }
-    };
-
-    fetchFailureModesForPorts();
-  }, [graphData, showFailureModes]);
-
-  // Fetch causation relationships when failure modes are loaded
-  useEffect(() => {
-    if (!failureModeData.length || !showCausations) {
-      setCausationData([]);
-      return;
-    }
-
-    const fetchCausationRelationships = async () => {
-      try {
-        setLoadingCausations(true);
-        
-        // console.log('🔗 Fetching causation relationships for failure modes:', failureModeData.length);
-        
-        // Make parallel calls to get causation effects for each failure mode
-        const causationPromises = failureModeData.map(async (failureMode) => {
-          try {
-            const result = await getEffectFailureModes(failureMode.failureUuid);
-            if (result.success && result.data) {
-              return result.data.map(causation => ({
-                ...causation,
-                sourceFailureModeUuid: failureMode.failureUuid
-              }));
-            }
-            return [];
-          } catch (error) {
-            console.error(`❌ Error fetching causations for failure mode ${failureMode.failureUuid}:`, error);
-            return [];
-          }
-        });
-
-        const causationResults = await Promise.all(causationPromises);
-        const allCausations = causationResults.flat();
-        
-        // console.log('✅ Loaded causation relationships:', allCausations.length);
-        setCausationData(allCausations);
-        
-      } catch (error) {
-        console.error('❌ Error fetching causation relationships:', error);
-        setCausationData([]);
-      } finally {
-        setLoadingCausations(false);
-      }
-    };
-
-    fetchCausationRelationships();
-  }, [failureModeData, showCausations]);
+    fetchAllGraphData();
+  }, [selectedPrototype, showFailureModes, showCausations]);
 
   // Helper functions for managing visibility
   const toggleNodeTypeVisibility = (nodeType: string) => {
@@ -400,7 +347,7 @@ const SWCProtoGraph: React.FC = () => {
 
     // console.log('🎨 Creating D3 visualization with data:', graphData);
     createD3Visualization(graphData, failureModeData, causationData);
-  }, [graphData, failureModeData, causationData, visibleNodeTypes, visibleRelationshipTypes, showFailureModes, showCausations]);
+  }, [graphData, failureModeData, causationData, visibleNodeTypes, visibleRelationshipTypes, showFailureModes, showCausations, token]);
 
   const createD3Visualization = useCallback((data: ComponentVisualizationResult, failureData: FailureModeData[] = [], causationData: CausationData[] = []) => {
     if (!svgRef.current || !containerRef.current) return;
@@ -597,53 +544,53 @@ const SWCProtoGraph: React.FC = () => {
       // Determine link type and styling based on relationship type
       let linkType: 'connection' | 'contains' = 'connection';
       let strokeWidth = 2;
-      let strokeColor = '#666';
+      let strokeColor = token.colorTextSecondary;
       let strokeDasharray = null;
       
       switch (relationship.type) {
         case 'TYPE-TREF':
           strokeWidth = 1;
-          strokeColor = '#45b7d1'; // Blue
+          strokeColor = token.colorInfo; // Blue
           strokeDasharray = '3,3'; // Dotted
           break;
         case 'CONTEXT-COMPONENT-REF':
           strokeWidth = 2;
-          strokeColor = '#8B4513'; // Brown
+          strokeColor = token.colorTextSecondary; // Brown
           break;
         case 'TARGET-P-PORT-REF':
           strokeWidth = 2;
-          strokeColor = '#4CAF50'; // Green
+          strokeColor = token.colorSuccess; // Green
           break;
         case 'TARGET-R-PORT-REF':
           strokeWidth = 2;
-          strokeColor = '#2196F3'; // Blue
+          strokeColor = token.colorPrimary; // Blue
           break;
         case 'PROVIDED-INTERFACE-TREF':
           strokeWidth = 1;
-          strokeColor = '#FF9800'; // Orange
+          strokeColor = token.colorWarning; // Orange
           break;
         case 'CONTAINS':
           linkType = 'contains';
           strokeWidth = 1;
-          strokeColor = '#ccc'; // Gray
+          strokeColor = token.colorBorder; // Gray
           strokeDasharray = '3,3'; // Dotted
           break;
         case 'REQUIRED-INTERFACE-TREF':
           strokeWidth = 1;
-          strokeColor = '#9C27B0'; // Purple
+          strokeColor = token.colorInfoTextActive; // Purple
           break;
         case 'OCCURRENCE':
           strokeWidth = 2;
-          strokeColor = '#f44336'; // Red
+          strokeColor = token.colorError; // Red
           break;
         case 'CAUSATION':
           strokeWidth = 3;
-          strokeColor = '#9c27b0'; // Purple
+          strokeColor = token.colorInfoTextActive; // Purple
           strokeDasharray = '5,5'; // Dashed
           break;
         default:
           strokeWidth = 1;
-          strokeColor = '#666';
+          strokeColor = token.colorTextSecondary;
       }
 
       links.push({
@@ -671,7 +618,7 @@ const SWCProtoGraph: React.FC = () => {
             type: 'failure',
             connectionType: 'OCCURRENCE',
             strokeWidth: 2,
-            strokeColor: '#f44336', // Red color for failure relationships
+            strokeColor: token.colorError, // Red color for failure relationships
             strokeDasharray: null
           });
         }
@@ -694,7 +641,7 @@ const SWCProtoGraph: React.FC = () => {
               type: 'causation',
               connectionType: 'CAUSATION',
               strokeWidth: 3,
-              strokeColor: '#9c27b0', // Purple color for causation relationships
+              strokeColor: token.colorInfoTextActive, // Purple color for causation relationships
               strokeDasharray: '5,5' // Dashed line to distinguish from other relationships
             });
           }
@@ -741,58 +688,58 @@ const SWCProtoGraph: React.FC = () => {
     const getNodeColor = (node: D3Node) => {
       switch (node.nodeLabel || node.prototype) {
         case 'SW_COMPONENT_PROTOTYPE':
-          return '#1976D2'; // Medium Blue
+          return token.colorPrimary; // Medium Blue
         case 'APPLICATION_SW_COMPONENT_TYPE':
-          return '#BBDEFB'; // Light Blue
+          return token.colorPrimaryBg; // Light Blue
         case 'ASSEMBLY_SW_CONNECTOR':
-          return '#5D4037'; // Dark brown
+          return token.colorTextSecondary; // Dark brown
         case 'MODE_SWITCH_INTERFACE':
-          return '#D7CCC8'; // Light brown
+          return token.colorTextQuaternary; // Light brown
         case 'SENDER_RECEIVER_INTERFACE':
-          return '#FFE0B2'; // Light orange
+          return token.colorWarningBg; // Light orange
         case 'CLIENT_SERVER_INTERFACE':
-          return '#B2DFDB'; // Light turquoise
+          return token.colorInfoBg; // Light turquoise
         case 'P_PORT_PROTOTYPE':
-          return '#4CAF50'; // Green
+          return token.colorSuccess; // Green
         case 'R_PORT_PROTOTYPE':
-          return '#2196F3'; // Blue
+          return token.colorPrimary; // Blue
         case 'VirtualArxmlRefTarget':
-          return '#E0E0E0'; // Light Gray
+          return token.colorBorder; // Light Gray
         case 'COMPOSITION_SW_COMPONENT_TYPE':
-          return '#C8E6C9'; // Light Green
+          return token.colorSuccessBg; // Light Green
         case 'FAILUREMODE':
-          return '#ffcdd2'; // Light red for failure modes
+          return token.colorErrorBg; // Light red for failure modes
         default:
-          return '#9E9E9E'; // Default gray
+          return token.colorTextSecondary; // Default gray
       }
     };
 
     const getNodeStroke = (node: D3Node) => {
       switch (node.nodeLabel || node.prototype) {
         case 'SW_COMPONENT_PROTOTYPE':
-          return '#1976D2'; // Medium Blue border
+          return token.colorPrimaryBorder; // Medium Blue border
         case 'APPLICATION_SW_COMPONENT_TYPE':
           return 'none'; // No border
         case 'ASSEMBLY_SW_CONNECTOR':
-          return '#3E2723'; // Dark brown border
+          return token.colorText; // Dark brown border
         case 'MODE_SWITCH_INTERFACE':
-          return '#8D6E63'; // Medium brown border
+          return token.colorTextSecondary; // Medium brown border
         case 'SENDER_RECEIVER_INTERFACE':
-          return '#F57C00'; // Dark orange border
+          return token.colorWarning; // Dark orange border
         case 'CLIENT_SERVER_INTERFACE':
-          return '#00695C'; // Dark teal border
+          return token.colorInfo; // Dark teal border
         case 'P_PORT_PROTOTYPE':
-          return '#2E7D32'; // Dark green border
+          return token.colorSuccessBorder; // Dark green border
         case 'R_PORT_PROTOTYPE':
-          return '#1565C0'; // Dark blue border
+          return token.colorPrimaryBorder; // Dark blue border
         case 'VirtualArxmlRefTarget':
-          return '#757575'; // Medium gray border
+          return token.colorTextSecondary; // Medium gray border
         case 'COMPOSITION_SW_COMPONENT_TYPE':
-          return '#4CAF50'; // Green border
+          return token.colorSuccess; // Green border
         case 'FAILUREMODE':
-          return '#d32f2f'; // Dark red border for failure modes
+          return token.colorError; // Dark red border for failure modes
         default:
-          return '#666';
+          return token.colorTextSecondary;
       }
     };
 
@@ -848,7 +795,7 @@ const SWCProtoGraph: React.FC = () => {
       .attr('orient', 'auto')
       .append('path')
       .attr('d', 'M0,-5L10,0L0,5')
-      .attr('fill', '#666');
+      .attr('fill', token.colorTextSecondary);
 
     // Create links with validated data (add to zoom container)
     const link = container.append('g')
@@ -856,7 +803,7 @@ const SWCProtoGraph: React.FC = () => {
       .selectAll('line')
       .data(validLinks)
       .enter().append('line')
-      .attr('stroke', d => d.strokeColor || '#666')
+      .attr('stroke', d => d.strokeColor || token.colorTextSecondary)
       .attr('stroke-width', d => d.strokeWidth || 1)
       .attr('stroke-dasharray', d => d.strokeDasharray || null)
       .attr('marker-end', d => d.type === 'connection' ? 'url(#arrow-connection)' : null);
@@ -952,7 +899,7 @@ const SWCProtoGraph: React.FC = () => {
       .attr('font-weight', 'bold')
       .attr('text-anchor', 'middle')
       .attr('dy', '0.3em')
-      .attr('fill', '#8D6E63')
+      .attr('fill', token.colorTextSecondary)
       .style('pointer-events', 'none');
 
     // Add text labels for SENDER_RECEIVER_INTERFACE nodes (S)
@@ -965,7 +912,7 @@ const SWCProtoGraph: React.FC = () => {
       .attr('font-weight', 'bold')
       .attr('text-anchor', 'middle')
       .attr('dy', '0.3em')
-      .attr('fill', '#F57C00')
+      .attr('fill', token.colorWarningText)
       .style('pointer-events', 'none');
 
     // Add text labels for CLIENT_SERVER_INTERFACE nodes (CS)
@@ -978,7 +925,7 @@ const SWCProtoGraph: React.FC = () => {
       .attr('font-weight', 'bold')
       .attr('text-anchor', 'middle')
       .attr('dy', '0.3em')
-      .attr('fill', '#00695C')
+      .attr('fill', token.colorInfoText)
       .style('pointer-events', 'none');
 
     // Add text labels for FAILUREMODE nodes (F)
@@ -991,7 +938,7 @@ const SWCProtoGraph: React.FC = () => {
       .attr('font-weight', 'bold')
       .attr('text-anchor', 'middle')
       .attr('dy', '0.3em')
-      .attr('fill', '#d32f2f')
+      .attr('fill', token.colorErrorText)
       .style('pointer-events', 'none');
 
     // Combine all interactive nodes for unified behavior
@@ -1008,62 +955,17 @@ const SWCProtoGraph: React.FC = () => {
       .attr('font-weight', d => d.RenderingInfoType === 'center' ? 'bold' : 'normal')
       .attr('text-anchor', 'middle')
       .attr('dy', d => d.size + 15)
-      .attr('fill', '#333');
+      .attr('fill', token.colorText);
 
     // Add enhanced tooltips with detailed information
     allNodes.append('title')
       .text((d: any) => createTooltipText(d as D3Node));
 
-    // Add right-click context menu to copy complete component data
+    // Add right-click context menu to copy node name
     allNodes.on('contextmenu', function(event: any, d: any) {
       event.preventDefault();
       const node = d as D3Node;
-      
-      // Create comprehensive data object with all available information
-      const componentData = {
-        // Core identification
-        id: node.id,
-        name: node.name,
-        RenderingInfoType: node.RenderingInfoType,
-        nodeLabel: node.nodeLabel,
-        prototype: node.prototype,
-        
-        // Categorization
-        subtype: node.subtype,
-        group: node.group,
-        
-        // Visual properties
-        shape: node.shape,
-        size: node.size,
-        
-        // Relationships
-        parentId: node.parentId,
-        
-        // Additional metadata
-        interfaceGroup: node.interfaceGroup,
-        interfaceName: node.interfaceName,
-        arxmlPath: node.arxmlPath,
-        
-        // Position data (if available)
-        position: {
-          x: node.x,
-          y: node.y,
-          fx: node.fx, // Fixed position if pinned
-          fy: node.fy
-        },
-        
-        // Styling information
-        styling: {
-          color: getNodeColor(node),
-          stroke: getNodeStroke(node),
-          strokeWidth: getNodeStrokeWidth(node),
-          strokeDasharray: getNodeStrokeDasharray(node)
-        }
-      };
-      
-      // Convert to formatted JSON string
-      const dataString = JSON.stringify(componentData, null, 2);
-      copyToClipboard(dataString);
+      copyToClipboard(node.name);
     });
 
     // Update positions on simulation tick
@@ -1135,7 +1037,7 @@ const SWCProtoGraph: React.FC = () => {
       
       // Visual feedback: change the stroke to indicate pinned state
       d3.select(event.sourceEvent.target)
-        .attr('stroke', '#ff6b6b')
+        .attr('stroke', token.colorError)
         .attr('stroke-width', 3);
         
       // console.log('📌 Pinned node:', node.name, 'at position:', { x: node.fx, y: node.fy });
@@ -1162,7 +1064,7 @@ const SWCProtoGraph: React.FC = () => {
       
       // console.log('📍 Unpinned node:', node.name);
     });
-  }, [visibleNodeTypes, visibleRelationshipTypes, showFailureModes, showCausations]);
+  }, [visibleNodeTypes, visibleRelationshipTypes, showFailureModes, showCausations, token]);
 
   const selectedPrototypeName = prototypes.find(p => p.uuid === selectedPrototype)?.name || '';
 
@@ -1216,20 +1118,6 @@ const SWCProtoGraph: React.FC = () => {
         </div>
       )}
 
-      {loadingFailureModes && (
-        <div style={{ textAlign: 'center', padding: '20px' }}>
-          <Spin size="small" />
-          <span style={{ marginLeft: '10px' }}>Loading failure modes...</span>
-        </div>
-      )}
-
-      {loadingCausations && (
-        <div style={{ textAlign: 'center', padding: '20px' }}>
-          <Spin size="small" />
-          <span style={{ marginLeft: '10px' }}>Loading causation relationships...</span>
-        </div>
-      )}
-
       {graphData && !loading && (
         <>
           <Divider orientation="left">
@@ -1269,15 +1157,15 @@ const SWCProtoGraph: React.FC = () => {
             style={{ 
               width: '100%', 
               height: '600px', 
-              border: '1px solid #d9d9d9',
+              border: `1px solid ${token.colorBorder}`,
               borderRadius: '6px',
-              backgroundColor: '#fafafa'
+              backgroundColor: token.colorBgLayout
             }}
           >
             <svg ref={svgRef} style={{ width: '100%', height: '100%' }} />
           </div>
 
-          <div style={{ marginTop: '16px', fontSize: '12px', color: '#666' }}>
+          <div style={{ marginTop: '16px', fontSize: '12px', color: token.colorTextSecondary }}>
             <div style={{ marginBottom: '12px' }}>
               <strong>Node Types Filter:</strong>
               <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
@@ -1285,67 +1173,89 @@ const SWCProtoGraph: React.FC = () => {
                   checked={visibleNodeTypes.has('SW_COMPONENT_PROTOTYPE')}
                   onChange={() => toggleNodeTypeVisibility('SW_COMPONENT_PROTOTYPE')}
                 >
-                  <span style={{ color: '#1976D2' }}>● SW_COMPONENT_PROTOTYPE</span>
+                  <span style={{ backgroundColor: token.colorFillSecondary, padding: '2px 8px', borderRadius: '4px' }}>
+                    <span style={{ color: token.colorPrimary }}>●</span> SW_COMPONENT_PROTOTYPE
+                  </span>
                 </Checkbox>
                 <Checkbox
                   checked={visibleNodeTypes.has('APPLICATION_SW_COMPONENT_TYPE')}
                   onChange={() => toggleNodeTypeVisibility('APPLICATION_SW_COMPONENT_TYPE')}
                 >
-                  <span style={{ color: '#BBDEFB' }}>● APPLICATION_SW_COMPONENT_TYPE</span>
+                  <span style={{ backgroundColor: token.colorFillSecondary, padding: '2px 8px', borderRadius: '4px' }}>
+                    <span style={{ color: token.colorPrimaryBg }}>●</span> APPLICATION_SW_COMPONENT_TYPE
+                  </span>
                 </Checkbox>
                 <Checkbox
                   checked={visibleNodeTypes.has('ASSEMBLY_SW_CONNECTOR')}
                   onChange={() => toggleNodeTypeVisibility('ASSEMBLY_SW_CONNECTOR')}
                 >
-                  <span style={{ color: '#5D4037' }}>■ ASSEMBLY_SW_CONNECTOR</span>
+                  <span style={{ backgroundColor: token.colorFillSecondary, padding: '2px 8px', borderRadius: '4px' }}>
+                    <span style={{ color: token.colorTextSecondary }}>■</span> ASSEMBLY_SW_CONNECTOR
+                  </span>
                 </Checkbox>
                 <Checkbox
                   checked={visibleNodeTypes.has('MODE_SWITCH_INTERFACE')}
                   onChange={() => toggleNodeTypeVisibility('MODE_SWITCH_INTERFACE')}
                 >
-                  <span style={{ color: '#D7CCC8' }}>◗ MODE_SWITCH_INTERFACE</span>
+                  <span style={{ backgroundColor: token.colorFillSecondary, padding: '2px 8px', borderRadius: '4px' }}>
+                    <span style={{ color: token.colorTextQuaternary }}>◗</span> MODE_SWITCH_INTERFACE
+                  </span>
                 </Checkbox>
                 <Checkbox
                   checked={visibleNodeTypes.has('SENDER_RECEIVER_INTERFACE')}
                   onChange={() => toggleNodeTypeVisibility('SENDER_RECEIVER_INTERFACE')}
                 >
-                  <span style={{ color: '#FFE0B2' }}>▲ SENDER_RECEIVER_INTERFACE</span>
+                  <span style={{ backgroundColor: token.colorFillSecondary, padding: '2px 8px', borderRadius: '4px' }}>
+                    <span style={{ color: token.colorWarningBg }}>▲</span> SENDER_RECEIVER_INTERFACE
+                  </span>
                 </Checkbox>
                 <Checkbox
                   checked={visibleNodeTypes.has('CLIENT_SERVER_INTERFACE')}
                   onChange={() => toggleNodeTypeVisibility('CLIENT_SERVER_INTERFACE')}
                 >
-                  <span style={{ color: '#B2DFDB' }}>▲ CLIENT_SERVER_INTERFACE</span>
+                  <span style={{ backgroundColor: token.colorFillSecondary, padding: '2px 8px', borderRadius: '4px' }}>
+                    <span style={{ color: token.colorInfoBg }}>▲</span> CLIENT_SERVER_INTERFACE
+                  </span>
                 </Checkbox>
                 <Checkbox
                   checked={visibleNodeTypes.has('P_PORT_PROTOTYPE')}
                   onChange={() => toggleNodeTypeVisibility('P_PORT_PROTOTYPE')}
                 >
-                  <span style={{ color: '#4CAF50' }}>■ P_PORT_PROTOTYPE</span>
+                  <span style={{ backgroundColor: token.colorFillSecondary, padding: '2px 8px', borderRadius: '4px' }}>
+                    <span style={{ color: token.colorSuccess }}>■</span> P_PORT_PROTOTYPE
+                  </span>
                 </Checkbox>
                 <Checkbox
                   checked={visibleNodeTypes.has('R_PORT_PROTOTYPE')}
                   onChange={() => toggleNodeTypeVisibility('R_PORT_PROTOTYPE')}
                 >
-                  <span style={{ color: '#2196F3' }}>■ R_PORT_PROTOTYPE</span>
+                  <span style={{ backgroundColor: token.colorFillSecondary, padding: '2px 8px', borderRadius: '4px' }}>
+                    <span style={{ color: token.colorPrimary }}>■</span> R_PORT_PROTOTYPE
+                  </span>
                 </Checkbox>
                 <Checkbox
                   checked={visibleNodeTypes.has('VirtualArxmlRefTarget')}
                   onChange={() => toggleNodeTypeVisibility('VirtualArxmlRefTarget')}
                 >
-                  <span style={{ color: '#E0E0E0' }}>● VirtualArxmlRefTarget</span>
+                  <span style={{ backgroundColor: token.colorFillSecondary, padding: '2px 8px', borderRadius: '4px' }}>
+                    <span style={{ color: token.colorBorder }}>●</span> VirtualArxmlRefTarget
+                  </span>
                 </Checkbox>
                 <Checkbox
                   checked={visibleNodeTypes.has('COMPOSITION_SW_COMPONENT_TYPE')}
                   onChange={() => toggleNodeTypeVisibility('COMPOSITION_SW_COMPONENT_TYPE')}
                 >
-                  <span style={{ color: '#C8E6C9' }}>⚬ COMPOSITION_SW_COMPONENT_TYPE</span>
+                  <span style={{ backgroundColor: token.colorFillSecondary, padding: '2px 8px', borderRadius: '4px' }}>
+                    <span style={{ color: token.colorSuccessBg }}>⚬</span> COMPOSITION_SW_COMPONENT_TYPE
+                  </span>
                 </Checkbox>
                 <Checkbox
                   checked={visibleNodeTypes.has('FAILUREMODE')}
                   onChange={() => toggleNodeTypeVisibility('FAILUREMODE')}
                 >
-                  <span style={{ color: '#ffcdd2' }}>● FAILUREMODE</span>
+                  <span style={{ backgroundColor: token.colorFillSecondary, padding: '2px 8px', borderRadius: '4px' }}>
+                    <span style={{ color: token.colorErrorBg }}>●</span> FAILUREMODE
+                  </span>
                 </Checkbox>
               </div>
             </div>
@@ -1357,61 +1267,81 @@ const SWCProtoGraph: React.FC = () => {
                   checked={visibleRelationshipTypes.has('TYPE-TREF')}
                   onChange={() => toggleRelationshipTypeVisibility('TYPE-TREF')}
                 >
-                  <span style={{ color: '#45b7d1' }}>⋯ TYPE-TREF</span>
+                  <span style={{ backgroundColor: token.colorFillSecondary, padding: '2px 8px', borderRadius: '4px' }}>
+                    <span style={{ color: token.colorInfo }}>⋯</span> TYPE-TREF
+                  </span>
                 </Checkbox>
                 <Checkbox
                   checked={visibleRelationshipTypes.has('CONTEXT-COMPONENT-REF')}
                   onChange={() => toggleRelationshipTypeVisibility('CONTEXT-COMPONENT-REF')}
                 >
-                  <span style={{ color: '#8B4513' }}>— CONTEXT-COMPONENT-REF</span>
+                  <span style={{ backgroundColor: token.colorFillSecondary, padding: '2px 8px', borderRadius: '4px' }}>
+                    <span style={{ color: token.colorTextSecondary }}>—</span> CONTEXT-COMPONENT-REF
+                  </span>
                 </Checkbox>
                 <Checkbox
                   checked={visibleRelationshipTypes.has('TARGET-P-PORT-REF')}
                   onChange={() => toggleRelationshipTypeVisibility('TARGET-P-PORT-REF')}
                 >
-                  <span style={{ color: '#4CAF50' }}>— TARGET-P-PORT-REF</span>
+                  <span style={{ backgroundColor: token.colorFillSecondary, padding: '2px 8px', borderRadius: '4px' }}>
+                    <span style={{ color: token.colorSuccess }}>—</span> TARGET-P-PORT-REF
+                  </span>
                 </Checkbox>
                 <Checkbox
                   checked={visibleRelationshipTypes.has('TARGET-R-PORT-REF')}
                   onChange={() => toggleRelationshipTypeVisibility('TARGET-R-PORT-REF')}
                 >
-                  <span style={{ color: '#2196F3' }}>— TARGET-R-PORT-REF</span>
+                  <span style={{ backgroundColor: token.colorFillSecondary, padding: '2px 8px', borderRadius: '4px' }}>
+                    <span style={{ color: token.colorPrimary }}>—</span> TARGET-R-PORT-REF
+                  </span>
                 </Checkbox>
                 <Checkbox
                   checked={visibleRelationshipTypes.has('PROVIDED-INTERFACE-TREF')}
                   onChange={() => toggleRelationshipTypeVisibility('PROVIDED-INTERFACE-TREF')}
                 >
-                  <span style={{ color: '#FF9800' }}>— PROVIDED-INTERFACE-TREF</span>
+                  <span style={{ backgroundColor: token.colorFillSecondary, padding: '2px 8px', borderRadius: '4px' }}>
+                    <span style={{ color: token.colorWarning }}>—</span> PROVIDED-INTERFACE-TREF
+                  </span>
                 </Checkbox>
                 <Checkbox
                   checked={visibleRelationshipTypes.has('CONTAINS')}
                   onChange={() => toggleRelationshipTypeVisibility('CONTAINS')}
                 >
-                  <span style={{ color: '#ccc' }}>⋯ CONTAINS</span>
+                  <span style={{ backgroundColor: token.colorFillSecondary, padding: '2px 8px', borderRadius: '4px' }}>
+                    <span style={{ color: token.colorBorder }}>⋯</span> CONTAINS
+                  </span>
                 </Checkbox>
                 <Checkbox
                   checked={visibleRelationshipTypes.has('REQUIRED-INTERFACE-TREF')}
                   onChange={() => toggleRelationshipTypeVisibility('REQUIRED-INTERFACE-TREF')}
                 >
-                  <span style={{ color: '#9C27B0' }}>— REQUIRED-INTERFACE-TREF</span>
+                  <span style={{ backgroundColor: token.colorFillSecondary, padding: '2px 8px', borderRadius: '4px' }}>
+                    <span style={{ color: token.colorInfoTextActive }}>—</span> REQUIRED-INTERFACE-TREF
+                  </span>
                 </Checkbox>
                 <Checkbox
                   checked={visibleRelationshipTypes.has('OCCURRENCE')}
                   onChange={() => toggleRelationshipTypeVisibility('OCCURRENCE')}
                 >
-                  <span style={{ color: '#f44336' }}>— OCCURRENCE</span>
+                  <span style={{ backgroundColor: token.colorFillSecondary, padding: '2px 8px', borderRadius: '4px' }}>
+                    <span style={{ color: token.colorError }}>—</span> OCCURRENCE
+                  </span>
                 </Checkbox>
                 <Checkbox
                   checked={visibleRelationshipTypes.has('FIRST')}
                   onChange={() => toggleRelationshipTypeVisibility('FIRST')}
                 >
-                  <span style={{ color: '#9c27b0' }}>⋯ FIRST (Causation)</span>
+                  <span style={{ backgroundColor: token.colorFillSecondary, padding: '2px 8px', borderRadius: '4px' }}>
+                    <span style={{ color: token.colorInfoTextActive }}>⋯</span> FIRST (Causation)
+                  </span>
                 </Checkbox>
                 <Checkbox
                   checked={visibleRelationshipTypes.has('THEN')}
                   onChange={() => toggleRelationshipTypeVisibility('THEN')}
                 >
-                  <span style={{ color: '#9c27b0' }}>⋯ THEN (Causation)</span>
+                  <span style={{ backgroundColor: token.colorFillSecondary, padding: '2px 8px', borderRadius: '4px' }}>
+                    <span style={{ color: token.colorInfoTextActive }}>⋯</span> THEN (Causation)
+                  </span>
                 </Checkbox>
               </div>
             </div>
@@ -1419,12 +1349,12 @@ const SWCProtoGraph: React.FC = () => {
               <strong>Controls:</strong>
               <span style={{ marginLeft: '10px' }}>🖱️ Drag nodes to reposition and pin</span>
               <span style={{ marginLeft: '10px' }}>⏸️ Double-click node to unpin</span>
-              <span style={{ marginLeft: '10px' }}>🖱️ Right-click node to copy complete data</span>
+              <span style={{ marginLeft: '10px' }}>🖱️ Right-click node to copy name</span>
               <span style={{ marginLeft: '10px' }}>🔍 Scroll to zoom in/out</span>
               <span style={{ marginLeft: '10px' }}>🖱️ Drag background to pan</span>
               <span style={{ marginLeft: '10px' }}>⏸️ Double-click background to reset zoom</span>
             </div>
-            <div style={{ marginTop: '8px', fontSize: '12px', color: '#666' }}>
+            <div style={{ marginTop: '8px', fontSize: '12px', color: token.colorTextSecondary }}>
               <strong>Legend:</strong>
               <span style={{ marginLeft: '10px' }}>F = Failure Mode (light red circles with ASIL ratings)</span>
               <span style={{ marginLeft: '10px' }}>Red lines = OCCURRENCE relationships to ports</span>
@@ -1435,7 +1365,7 @@ const SWCProtoGraph: React.FC = () => {
       )}
 
       {!selectedPrototype && !loadingPrototypes && (
-        <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
+        <div style={{ textAlign: 'center', padding: '40px', color: token.colorTextSecondary }}>
           <InfoCircleOutlined style={{ fontSize: '24px', marginBottom: '16px' }} />
           <div>Please select a SW Component Prototype to view its dependency graph</div>
         </div>

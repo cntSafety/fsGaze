@@ -500,21 +500,31 @@ export default function ArxmlSafetyAnalysisTable() {
       ),
       onFilter: (value: any, record: SafetyTableRow) =>
         record.swComponentName?.toLowerCase().includes(value.toLowerCase()) ?? false,
-      render: (text: string, record: SafetyTableRow, index: number) => {
-        const isFirstRowForComponent = index === 0 || 
-          tableData[index - 1]?.swComponentUuid !== record.swComponentUuid;
-        
-        if (!isFirstRowForComponent) return null;
+      onCell: (record: SafetyTableRow, index?: number) => {
+        const isFirstRowForComponent = index === 0 || tableData[index! - 1]?.swComponentUuid !== record.swComponentUuid;
+        if (!isFirstRowForComponent) {
+          return { rowSpan: 0 };
+        }
 
-        return (
-          <Link href={`/arxml-safety/${record.swComponentUuid}`} passHref>
-            <Typography.Link style={{ fontWeight: 'bold' }}>
-              {text}
-            </Typography.Link>
-          </Link>
-        );
+        let rowSpan = 1;
+        for (let i = index! + 1; i < tableData.length; i++) {
+          if (tableData[i].swComponentUuid === record.swComponentUuid) {
+            rowSpan++;
+          } else {
+            break;
+          }
+        }
+        return { rowSpan };
       },
-    },    {
+      render: (text: string, record: SafetyTableRow) => (
+        <Link href={`/arxml-safety/${record.swComponentUuid}`} passHref>
+          <span style={{ fontWeight: 'bold', cursor: 'pointer' }} className="ant-typography ant-typography-link">
+            {text}
+          </span>
+        </Link>
+      ),
+    },
+    {
       title: 'Failure Mode Name',
       dataIndex: 'failureName',
       key: 'failureName',
@@ -527,19 +537,25 @@ export default function ArxmlSafetyAnalysisTable() {
       ),
       onFilter: (value: any, record: SafetyTableRow) =>
         record.failureName?.toLowerCase().includes(value.toLowerCase()) ?? false,
-      onCell: (record: SafetyTableRow) => ({
-        record,
-        inputType: 'text',
-        dataIndex: 'failureName',
-        title: 'Failure Mode Name',
-        editing: isEditing(record),
-      }),
+      onCell: (record: SafetyTableRow) => {
+        if (record.failureName === PLACEHOLDER_VALUES.NO_FAILURES) {
+          return { colSpan: 4 };
+        }
+        return {
+          record,
+          inputType: 'text',
+          dataIndex: 'failureName',
+          title: 'Failure Mode Name',
+          editing: isEditing(record),
+        };
+      },
       render: (text: string) => (
         <span style={{ color: text === PLACEHOLDER_VALUES.NO_FAILURES ? '#999' : 'inherit' }}>
           {text}
         </span>
       ),
-    },    {
+    },
+    {
       title: 'Failure Description',
       dataIndex: 'failureDescription',
       key: 'failureDescription',
@@ -552,37 +568,54 @@ export default function ArxmlSafetyAnalysisTable() {
       ),
       onFilter: (value: any, record: SafetyTableRow) =>
         record.failureDescription?.toLowerCase().includes(value.toLowerCase()) ?? false,
-      onCell: (record: SafetyTableRow) => ({
-        record,
-        inputType: 'text',
-        dataIndex: 'failureDescription',
-        title: 'Failure Description',
-        editing: isEditing(record),
-      }),
+      onCell: (record: SafetyTableRow) => {
+        if (record.failureName === PLACEHOLDER_VALUES.NO_FAILURES) {
+          return { colSpan: 0 };
+        }
+        return {
+          record,
+          inputType: 'text',
+          dataIndex: 'failureDescription',
+          title: 'Failure Description',
+          editing: isEditing(record),
+        };
+      },
       render: (text: string) => (
         <span style={{ color: text === PLACEHOLDER_VALUES.NO_DESCRIPTION ? '#999' : 'inherit' }}>
           {text}
         </span>
       ),
-    },    {
+    },
+    {
       title: 'ASIL',
       dataIndex: 'asil',
       key: 'asil',
       width: 80,
-      onCell: (record: SafetyTableRow) => ({
-        record,
-        inputType: 'select',
-        dataIndex: 'asil',
-        title: 'ASIL',
-        editing: isEditing(record),
-        selectOptions: ASIL_OPTIONS,
-      }),
+      onCell: (record: SafetyTableRow) => {
+        if (record.failureName === PLACEHOLDER_VALUES.NO_FAILURES) {
+          return { colSpan: 0 };
+        }
+        return {
+          record,
+          inputType: 'select',
+          dataIndex: 'asil',
+          title: 'ASIL',
+          editing: isEditing(record),
+          selectOptions: ASIL_OPTIONS,
+        };
+      },
     },
     {
       title: 'Actions',
       key: 'actions',
       fixed: 'right',
       width: 220,
+      onCell: (record: SafetyTableRow) => {
+        if (record.failureName === PLACEHOLDER_VALUES.NO_FAILURES) {
+          return { colSpan: 0 };
+        }
+        return {};
+      },
       render: (_: unknown, record: SafetyTableRow) => {
         const editable = isEditing(record);
         
@@ -682,7 +715,7 @@ export default function ArxmlSafetyAnalysisTable() {
   ];
 
   return (
-    <Card title="ARXML Safety Analysis" bordered={false}>
+    <Card title="ARXML Safety Analysis" variant="borderless">
       <Form form={form} component={false}>
         <Table
           components={{
@@ -741,7 +774,7 @@ export default function ArxmlSafetyAnalysisTable() {
         />
         {/* Delete Confirmation Modal */}
         <CascadeDeleteModal
-          visible={isDeleteModalVisible && !!failureToDelete}
+          open={isDeleteModalVisible && !!failureToDelete}
           onCancel={() => {
             setIsDeleteModalVisible(false);
             setFailureToDelete(null);

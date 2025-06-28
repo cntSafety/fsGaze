@@ -216,10 +216,9 @@ const ArxmlImporter: React.FC<ArxmlImporterProps> = () => {
           relationshipCount: neoResult.relationshipCount
         };
         setLastImportSummary(summaryData);
-        await generateImportSummary(importedFileNames, startTime, neoResult.nodeCount, neoResult.relationshipCount);
         
         messageApi.success({
-          content: `Successfully imported ${filesToUpload.length} file(s). ${neoResult.nodeCount} nodes, ${neoResult.relationshipCount} relationships created. Import summary downloaded.`,
+          content: `Successfully imported ${filesToUpload.length} file(s). ${neoResult.nodeCount} nodes, ${neoResult.relationshipCount} relationships created. You can now download the import summary.`,
           key: messageKey, // This will replace the loading message
           duration: 5,
         });
@@ -249,6 +248,17 @@ const ArxmlImporter: React.FC<ArxmlImporterProps> = () => {
       }
       // If import was successful, the success message is shown.
       // If a new import starts, the message will be replaced by the initial "Initializing import..."
+    }
+  };
+
+  const handleDownloadSummary = async () => {
+    if (lastImportSummary) {
+      await generateImportSummary(
+        lastImportSummary.files,
+        lastImportSummary.startTime,
+        lastImportSummary.nodeCount,
+        lastImportSummary.relationshipCount
+      );
     }
   };
 
@@ -453,6 +463,15 @@ const ArxmlImporter: React.FC<ArxmlImporterProps> = () => {
         >
           Import Selected Files
         </Button>
+        {lastImportSummary && !isExtracting && (
+          <Button
+            style={{ marginLeft: '8px' }}
+            size="large"
+            onClick={handleDownloadSummary}
+          >
+            Download Import Summary
+          </Button>
+        )}
       </div>
     </>
   );

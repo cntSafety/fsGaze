@@ -803,17 +803,21 @@ const SafetyDataExchange: React.FC = () => {
               </Upload>
               {isProcessingFile && <div style={{ textAlign: 'center', marginTop: 20 }}><Spin /></div>}
               {importError && <Alert message={importError} type="error" showIcon style={{ marginTop: 16 }} />}
-              {importedData && renderDataAsJson(importedData, "Preview of Data to Import")}
               {importedData && (
                 <Button
                   type="primary"
                   onClick={handleUploadToNeo4j}
                   loading={isUploading}
-                  style={{ marginTop: 16 }}
+                  style={{ marginTop: 16, marginBottom: 16 }}
                   disabled={isProcessingFile}
                 >
                   Upload to Neo4j
                 </Button>
+              )}
+              {importedData && (
+                <pre>
+                  {JSON.stringify(importedData, null, 2)}
+                </pre>
               )}
             </Space>
             {isUploading && (
@@ -830,7 +834,6 @@ const SafetyDataExchange: React.FC = () => {
                   rows={10}
                   readOnly
                   value={uploadLogs.join('\n')}
-                  style={{ backgroundColor: '#f0f0f0', fontFamily: 'monospace' }}
                 />
               </Card>
             )}
@@ -941,7 +944,6 @@ const SafetyDataExchange: React.FC = () => {
               rows={12}
               readOnly
               value={fullGraphExportLogs.join('\n')}
-              style={{ fontFamily: 'monospace', fontSize: '12px' }}
             />
           </Card>
         )}
@@ -983,7 +985,6 @@ const SafetyDataExchange: React.FC = () => {
               rows={12}
               readOnly
               value={fullGraphImportLogs.join('\n')}
-              style={{ fontFamily: 'monospace', fontSize: '12px' }}
             />
           </Card>
         )}

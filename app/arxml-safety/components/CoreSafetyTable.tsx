@@ -142,7 +142,7 @@ const EditableCell: React.FC<React.PropsWithChildren<EditableCellProps>> = ({
 
 interface CoreSafetyTableProps {
   dataSource: SafetyTableRow[];
-  columns: SafetyTableColumn[];
+  columns: (SafetyTableColumn & ColumnType<SafetyTableRow>)[];
   loading?: boolean;
   editingKey: string;
   onEdit?: (record: SafetyTableRow) => void;
@@ -162,6 +162,7 @@ interface CoreSafetyTableProps {
     first: { uuid: string; name: string } | null;
     second: { uuid: string; name: string } | null;
   };
+  scroll?: TableProps<SafetyTableRow>['scroll'];
   // New prop for element click callback
   onElementClick?: (element: ElementDetails) => void;
   // Causation linking for modal
@@ -229,6 +230,7 @@ export default function CoreSafetyTable({
   onFailureSelect,
   selectedFailures,
   onElementClick,
+  scroll,
   getFailureSelectionState,
   handleFailureSelection,
   isCauseSelected,
@@ -423,19 +425,21 @@ export default function CoreSafetyTable({
   };
 
   // Build table columns from configuration
-  const tableColumns: ColumnType<SafetyTableRow>[] = columns.map((col, index) => {
+  const tableColumns: (ColumnType<SafetyTableRow> & { editable?: boolean; dataIndex?: string; title?: string })[] = columns.map((col, index) => {
+    const columnKey = col.key || (typeof col.dataIndex === 'string' ? col.dataIndex : index.toString());
     const baseColumn: ColumnType<SafetyTableRow> = {
       title: col.title,
       dataIndex: col.dataIndex,
-      key: col.key,
-      width: columnWidths[col.key] || col.width,
+      key: columnKey,
+      width: columnWidths[columnKey] || col.width,
       minWidth: col.minWidth,
       ellipsis: col.ellipsis || (col.dataIndex === 'failureDescription'), // Default ellipsis for description columns
       render: col.render,
-      onHeaderCell: () => ({
-        width: columnWidths[col.key] || col.width,
-        onResize: handleResize(index, col.key),
+      onHeaderCell: (column: any) => ({
+        width: column.width,
+        onResize: handleResize(index, columnKey),
       } as any),
+      ...(col.searchable && getColumnSearchProps(col.dataIndex as string)),
     };
 
     // Add tooltip for ellipsis columns
@@ -443,11 +447,6 @@ export default function CoreSafetyTable({
       baseColumn.ellipsis = {
         showTitle: true,
       };
-    }
-
-    // Add search functionality if enabled
-    if (col.searchable) {
-      Object.assign(baseColumn, getColumnSearchProps(col.dataIndex));
     }
 
     // Special rendering for ASIL column
@@ -512,7 +511,7 @@ export default function CoreSafetyTable({
         }
         
         // Check if this is a port column by looking at the column key
-        const isPortColumn = col.key === 'portName';
+        const isPortColumn = columnKey === 'portName';
         
         if (isPortColumn) {
           // Handle port column grouping - only show port name on first row for each port
@@ -586,7 +585,7 @@ export default function CoreSafetyTable({
     // Special rendering for component names with actions
     if (col.dataIndex === 'swComponentName' && showComponentActions && !col.render) {
       baseColumn.render = (text: string, record: SafetyTableRow, index: number) => {
-        const isPortColumn = col.key === 'portName';
+        const isPortColumn = columnKey === 'portName';
         
         if (isPortColumn) {
           // Handle port column grouping - only show port name on first row for each port
@@ -661,18 +660,7 @@ export default function CoreSafetyTable({
       };
     }
 
-    // Handle editable columns
-    if (col.editable) {
-      baseColumn.onCell = (record: SafetyTableRow) => ({
-        record,
-        inputType: col.inputType || 'text',
-        dataIndex: col.dataIndex,
-        title: col.title,
-        editing: isEditing(record),
-        selectOptions: col.selectOptions,
-        multiLine: col.multiLine || false,
-      });
-    }    return baseColumn;
+    return { ...baseColumn, ...col };
   });
 
   // Add actions column if handlers are provided
@@ -837,38 +825,85 @@ export default function CoreSafetyTable({
     });
   }
 
-  const mergedColumns = tableColumns.map((col) => {
-    if (!col.onCell) {
+  const mergedColumns = tableColumns.map(col => {
+    const typedCol = col as SafetyTableColumn;
+    if (!typedCol.editable) {
       return col;
     }
     return {
       ...col,
-      onCell: col.onCell,
+      onCell: (record: SafetyTableRow) => ({
+        record,
+        inputType: typedCol.inputType || 'text',
+        dataIndex: col.dataIndex,
+        title: col.title,
+        editing: isEditing(record),
+        selectOptions: typedCol.selectOptions,
+        multiLine: typedCol.multiLine,
+      }),
     };
   });
 
+  const components = {
+    header: {
+      cell: ResizableTitle,
+    },
+    body: {
+      cell: EditableCell,
+    },
+  };
+
+  const rowClassName = (record: SafetyTableRow) => {
+    const isSelected = isFailureSelected(record.failureUuid || '');
+    const selectionState = getFailureSelectionState ? getFailureSelectionState(record.failureUuid || '') : null;
+    let classes = 'editable-row';
+    if (isSelected) {
+      classes += ' selected-row';
+    }
+    if (selectionState === 'first') {
+      classes += ' cause-selected-row';
+    } else if (selectionState === 'second') {
+      classes += ' effect-selected-row';
+    }
+    return classes;
+  };
+
   return (
     <Form form={form} component={false}>
-      <Table<SafetyTableRow>
-        components={{
-          header: {
-            cell: ResizableTitle,
-          },
-          body: {
-            cell: EditableCell,
-          },
-        }}
+      <Table
+        components={components}
         bordered
         dataSource={dataSource}
         columns={mergedColumns}
-        rowClassName={(record) => {
-          // Add visual feedback for selected rows
-          const isSelected = record.failureUuid && isFailureSelected(record.failureUuid);
-          return `editable-row ${isSelected ? 'selected-failure-row' : ''}`;
-        }}
+        rowClassName={rowClassName}
         pagination={pagination}
         loading={loading}
         size="small"
+        scroll={scroll}
+        rowKey="key"
+        onRow={(record) => {
+          return {
+            onClick: (event) => {
+              // Prevent row click handler from firing when clicking on an action button
+              const target = event.target as HTMLElement;
+              if (target.closest('button') || target.closest('a')) {
+                return;
+              }
+              if (onElementClick) {
+                onElementClick({
+                  type: 'failure',
+                  uuid: record.failureUuid ?? '',
+                  name: record.failureName,
+                  additionalInfo: {
+                    description: record.failureDescription,
+                    asil: record.asil,
+                    component: record.swComponentName,
+                  },
+                });
+              }
+            },
+          };
+        }}
       />
       
       {/* Add CSS for selected row styling and multi-line editing */}

@@ -24,7 +24,7 @@ interface DeletionPreview {
 }
 
 interface CascadeDeleteModalProps {
-  visible: boolean;
+  open: boolean;
   onCancel: () => void;
   onSuccess: () => void;
   nodeUuid: string;
@@ -33,7 +33,7 @@ interface CascadeDeleteModalProps {
 }
 
 export const CascadeDeleteModal: React.FC<CascadeDeleteModalProps> = ({
-  visible,
+  open,
   onCancel,
   onSuccess,
   nodeUuid,
@@ -47,16 +47,16 @@ export const CascadeDeleteModal: React.FC<CascadeDeleteModalProps> = ({
 
   // Load preview when modal opens
   React.useEffect(() => {
-    if (visible && nodeUuid && !preview) {
+    if (open && nodeUuid && !preview) {
       loadPreview();
     }
     // If the modal is closed or nodeUuid is cleared, reset preview state
-    if (!visible || !nodeUuid) {
+    if (!open || !nodeUuid) {
       setPreview(null);
       setError(null);
       setStep('preview');
     }
-  }, [visible, nodeUuid]);
+  }, [open, nodeUuid]);
 
   const loadPreview = async () => {
     setLoading(true);
@@ -313,11 +313,11 @@ export const CascadeDeleteModal: React.FC<CascadeDeleteModalProps> = ({
   return (
     <Modal
       title={getModalTitle()}
-      open={visible}
+      open={open}
       onCancel={handleCancel}
       footer={getModalActions()}
-      width={600}
-      destroyOnClose
+      width={700}
+      destroyOnHidden
     >
       {error && (
         <Alert

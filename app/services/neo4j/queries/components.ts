@@ -158,6 +158,12 @@ export const getComponentDependencyGraph = async (swcProtoUuid: string): Promise
        // Finally get the partner for these RPorts
        OPTIONAL MATCH (RPortsWOswConReqInterGroup)<-[rel_contains_partner_for_rport:\`CONTAINS\`]-(PartnerForRPortsWOswCon)
 
+      // Find all P-Ports of the swcAppInScope component (these are the ones that are not connected)
+      OPTIONAL MATCH (swcAppInScope)-[rel_contains_pport:\`CONTAINS\`]->(PPortsInScope:P_PORT_PROTOTYPE)
+      WHERE NOT EXISTS {
+          MATCH (swConnector)-[:\`TARGET-P-PORT-REF\`]->(PPortsInScope)
+      }
+
        RETURN DISTINCT
          swcProtoInScope,
          swcAppInScope,
@@ -171,6 +177,7 @@ export const getComponentDependencyGraph = async (swcProtoUuid: string): Promise
          RPortsWithoutSWConnectorReqiredInterface,
          RPortsWOswConReqInterGroup,
          PartnerForRPortsWOswCon,
+         PPortsInScope,
          // Now the relationships
          rel_type_tref1,
          rel_context_comp_ref1,
@@ -184,7 +191,8 @@ export const getComponentDependencyGraph = async (swcProtoUuid: string): Promise
          rel_contains_interface_group,
          rel_contains_partner_for_rport,
          rel_TargetPPortContainedBy,
-         rel_TargetRPortContainedBy`,
+         rel_TargetRPortContainedBy,
+         rel_contains_pport`,
       { swcProtoUuid }
     );
 
@@ -217,7 +225,8 @@ export const getComponentDependencyGraph = async (swcProtoUuid: string): Promise
         'RPortsWithoutSWConnector',
         'RPortsWithoutSWConnectorReqiredInterface',
         'RPortsWOswConReqInterGroup',
-        'PartnerForRPortsWOswCon'
+        'PartnerForRPortsWOswCon',
+        'PPortsInScope'
       ];
 
       nodeFields.forEach(field => {
@@ -249,7 +258,7 @@ export const getComponentDependencyGraph = async (swcProtoUuid: string): Promise
       });
 
       // Extract relationships
-      const relationshipFields = [
+      const relFields = [
         'rel_type_tref1',
         'rel_context_comp_ref1',
         'rel_context_comp_ref2',
@@ -262,10 +271,11 @@ export const getComponentDependencyGraph = async (swcProtoUuid: string): Promise
         'rel_contains_interface_group',
         'rel_contains_partner_for_rport',
         'rel_TargetPPortContainedBy',
-        'rel_TargetRPortContainedBy'
+        'rel_TargetRPortContainedBy',
+        'rel_contains_pport'
       ];
 
-      relationshipFields.forEach(field => {
+      relFields.forEach(field => {
         const relationship = record.get(field);
         if (relationship && relationship.start && relationship.end) {
           const startNeo4jId = relationship.start.low?.toString() || relationship.start.toString();

@@ -26,21 +26,16 @@ export default function SwComponentInfo({
   const totalProviderPortFailures = Object.values(portFailures).reduce((sum, failures) => sum + failures.length, 0);
   const totalReceiverPortFailures = Object.values(receiverPortFailures).reduce((sum, failures) => sum + failures.length, 0);
   const totalPortFailures = totalProviderPortFailures + totalReceiverPortFailures;
-  
-  return (
-    <Collapse 
-      bordered={true} 
-      defaultActiveKey={[]}
-      style={{ marginBottom: '16px' }}
-    >
-      <Collapse.Panel 
-        header={
-          <Title level={4} style={{ margin: 0 }}>
-            SW Component: {swComponent.name}
-          </Title>
-        } 
-        key="1"
-      >
+
+  const items = [
+    {
+      key: '1',
+      label: (
+        <Title level={4} style={{ margin: 0 }}>
+          SW Component: {swComponent.name}
+        </Title>
+      ),
+      children: (
         <Descriptions 
           bordered 
           column={1} 
@@ -96,7 +91,16 @@ export default function SwComponentInfo({
             />
           </Descriptions.Item>
         </Descriptions>
-      </Collapse.Panel>
-    </Collapse>
+      )
+    }
+  ];
+  
+  return (
+    <Collapse 
+      bordered={true} 
+      defaultActiveKey={[]}
+      style={{ marginBottom: '16px' }}
+      items={items}
+    />
   );
 }

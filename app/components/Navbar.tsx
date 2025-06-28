@@ -104,7 +104,7 @@ const menuItemsDef: MenuItemDef[] = [
         label: 'Reports',
         icon: HiOutlineDocumentReport,
         items: [
-            { label: 'Statistic for TBC', href: '/find-shared-signals', isActive: true }
+            { label: 'Statistic for TBC', href: '/reports/statistics', isActive: true }
         ]
     },
 ];

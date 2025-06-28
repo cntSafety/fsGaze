@@ -41,3 +41,36 @@ body {
   background-color: #1890ff;
   opacity: 0.3;
 }
+
+/* Custom Scrollbar Styles */
+/* For Webkit-based browsers (Chrome, Safari, Edge) */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--foreground) 30%, transparent);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--foreground) 50%, transparent);
+}
+
+/* For Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--foreground) 30%, transparent) transparent;
+}
+
+/* Responsive table scroll for failure mode tables */
+@media (max-width: 1100px) {
+  .base-failure-mode-table-card .ant-table-wrapper {
+    overflow-x: auto;
+  }
+}
