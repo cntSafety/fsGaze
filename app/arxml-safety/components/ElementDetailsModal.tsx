@@ -216,7 +216,7 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
         {elementDetails.type === 'port' && (
           <div style={{ marginTop: '24px' }}>
             <Title level={5} style={{ marginBottom: '16px' }}>
-              <LinkOutlined /> Assembly Context & Connections
+              <LinkOutlined /> 
             </Title>
             
             {isLoadingContext ? (
@@ -261,6 +261,11 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
                             {context.providerPortName && (
                               <Descriptions.Item label="Provider Port">
                                 <Text code>{context.providerPortName}</Text>
+                              </Descriptions.Item>
+                            )}
+                            {context.receiverPortName && (
+                              <Descriptions.Item label="Receiver Port">
+                                <Text code>{context.receiverPortName}</Text>
                               </Descriptions.Item>
                             )}
                             {context.failureModeName && (
