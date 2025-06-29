@@ -41,6 +41,10 @@ export interface SafetyTableRow {
   asil: string;
   isNewRow?: boolean;
   failureUuid?: string;
+  riskRatingCount?: number;
+  safetyTaskCount?: number;
+  safetyReqCount?: number;
+  safetyNoteCount?: number;
 }
 
 export interface SafetyTableColumn {

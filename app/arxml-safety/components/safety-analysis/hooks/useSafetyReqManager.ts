@@ -9,7 +9,7 @@ import {
   CreateSafetyReqInput 
 } from '@/app/services/neo4j/queries/safety/safetyReq';
 
-export const useSafetyReqManager = () => {
+export const useSafetyReqManager = (onSaveSuccess?: () => void) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit' | 'tabs'>('create');
@@ -119,6 +119,9 @@ export const useSafetyReqManager = () => {
             }
           }
         }
+        if (onSaveSuccess) {
+          onSaveSuccess();
+        }
       } else {
         message.error(result?.error || 'Failed to save safety requirement');
       }
@@ -164,6 +167,9 @@ export const useSafetyReqManager = () => {
               setActiveTabIndex(0);
             }
           }
+        }
+        if (onSaveSuccess) {
+          onSaveSuccess();
         }
       } else {
         message.error(result.error || 'Failed to delete safety requirement');

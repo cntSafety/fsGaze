@@ -2,23 +2,29 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Form, Typography, message, Table, Input, Select, Popconfirm, Button, Space, Tooltip, Card } from 'antd';
-import { SearchOutlined, DeleteOutlined, EditOutlined, PlusOutlined, LinkOutlined, DashboardOutlined, CheckSquareOutlined } from '@ant-design/icons';
+import { Form, Typography, message, Table, Input, Select, Popconfirm, Button, Space, Tooltip, Card, Badge, Modal } from 'antd';
+import { SearchOutlined, DeleteOutlined, EditOutlined, PlusOutlined, LinkOutlined, DashboardOutlined, CheckSquareOutlined, FileTextOutlined, SnippetsOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import type { ColumnType } from 'antd/es/table';
 import type { FilterDropdownProps } from 'antd/es/table/interface';
 import { getApplicationSwComponents } from '../services/neo4j/queries/components';
 import { getFailuresForSwComponents, createFailureModeNode, deleteFailureModeNode } from '../services/neo4j/queries/safety/failureModes';
-import { createRiskRatingNode } from '../services/neo4j/queries/safety/riskRating';
+import { createRiskRatingNode, getRiskRatingNodes } from '../services/neo4j/queries/safety/riskRating';
 import { createSafetyTask, getSafetyTasksForNode, updateSafetyTask, deleteSafetyTask, SafetyTaskStatus, SafetyTaskType } from '../services/neo4j/queries/safety/safetyTasks';
+import { getSafetyReqsForNode } from '../services/neo4j/queries/safety/safetyReq';
+import { getSafetyNotesForNode } from '../services/neo4j/queries/safety/safetyNotes';
 import { SafetyTableRow } from './types';
 import { ASIL_OPTIONS, PLACEHOLDER_VALUES, MESSAGES } from './utils/constants';
 import RiskRatingModal from './components/RiskRatingModal';
 import SafetyTaskModal from './components/SafetyTaskModal';
+import SafetyReqModal from './components/SafetyReqModal';
+import { useSafetyReqManager } from './components/safety-analysis/hooks/useSafetyReqManager';
 import { CascadeDeleteModal } from '../components/CascadeDeleteModal';
 import Link from 'next/link';
+import SafetyNoteManager from './components/safety-analysis/SafetyNoteManager';
 
 const { Option } = Select;
+const { Text } = Typography;
 
 // Simple editable cell component
 interface EditableCellProps extends React.HTMLAttributes<HTMLElement> {
@@ -126,10 +132,6 @@ export default function ArxmlSafetyAnalysisTable() {
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [failureToDelete, setFailureToDelete] = useState<SafetyTableRow | null>(null);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
   const loadData = async () => {
     try {
       setLoading(true);
@@ -142,17 +144,32 @@ export default function ArxmlSafetyAnalysisTable() {
           const failuresResult = await getFailuresForSwComponents(component.uuid);
           
           if (failuresResult.success && failuresResult.data && failuresResult.data.length > 0) {
-            failuresResult.data.forEach((failure: any) => {
-              tableRows.push({
+            const failurePromises = failuresResult.data.map(async (failure: any) => {
+              const [riskRatingsResult, tasksResult, reqsResult, notesResult] = await Promise.all([
+                getRiskRatingNodes(failure.failureUuid),
+                getSafetyTasksForNode(failure.failureUuid),
+                getSafetyReqsForNode(failure.failureUuid),
+                getSafetyNotesForNode(failure.failureUuid),
+              ]);
+
+              return {
                 key: `${component.uuid}-${failure.failureUuid}`,
                 swComponentUuid: component.uuid,
                 swComponentName: component.name,
                 failureName: failure.failureName || '',
                 failureDescription: failure.failureDescription || '',
                 asil: failure.asil || PLACEHOLDER_VALUES.DEFAULT_ASIL,
-                failureUuid: failure.failureUuid
-              });
+                failureUuid: failure.failureUuid,
+                riskRatingCount: riskRatingsResult.data?.length || 0,
+                safetyTaskCount: tasksResult.data?.length || 0,
+                safetyReqCount: reqsResult.data?.length || 0,
+                safetyNoteCount: notesResult.data?.length || 0,
+              };
             });
+
+            const componentRows = await Promise.all(failurePromises);
+            tableRows.push(...componentRows);
+
           } else {
             tableRows.push({
               key: `${component.uuid}-empty`,
@@ -183,6 +200,27 @@ export default function ArxmlSafetyAnalysisTable() {
       setLoading(false);
     }
   };
+
+  // Safety requirement manager
+  const { handleSafetyReqClick, safetyReqModalProps } = useSafetyReqManager(loadData);
+
+  // Safety notes modal state
+  const [isSafetyNotesModalVisible, setIsSafetyNotesModalVisible] = useState(false);
+  const [selectedFailureForNotes, setSelectedFailureForNotes] = useState<SafetyTableRow | null>(null);
+
+  const handleSafetyNotesClick = (record: SafetyTableRow) => {
+    setSelectedFailureForNotes(record);
+    setIsSafetyNotesModalVisible(true);
+  };
+
+  const handleSafetyNotesClose = () => {
+    setIsSafetyNotesModalVisible(false);
+    setSelectedFailureForNotes(null);
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
 
   const isEditing = (record: SafetyTableRow) => record.key === editingKey;
 
@@ -293,6 +331,7 @@ export default function ArxmlSafetyAnalysisTable() {
       
       if (result.success) {
         message.success('Risk rating saved successfully!');
+        loadData();
       } else {
         message.error(`Error saving risk rating: ${result.message}`);
       }
@@ -319,6 +358,7 @@ export default function ArxmlSafetyAnalysisTable() {
     await handleRiskRating(selectedFailureForRiskRating.failureUuid, severity, occurrence, detection, ratingComment);
     setIsRiskRatingModalVisible(false);
     setSelectedFailureForRiskRating(null);
+    loadData();
   };
   // Safety task handlers
   const handleSafetyTaskClick = async (record: SafetyTableRow) => {
@@ -408,6 +448,7 @@ export default function ArxmlSafetyAnalysisTable() {
       if (result?.success) {
         message.success(safetyTaskModalMode === 'create' ? 'Safety task created successfully' : 'Safety task updated successfully');
         handleSafetyTaskCancel();
+        loadData();
       } else {
         message.error(result?.message || `Failed to ${safetyTaskModalMode === 'create' ? 'create' : 'update'} safety task`);
       }
@@ -429,6 +470,7 @@ export default function ArxmlSafetyAnalysisTable() {
       if (result.success) {
         message.success('Safety task deleted successfully');
         handleSafetyTaskCancel();
+        loadData();
       } else {
         message.error(result.message || 'Failed to delete safety task');
       }
@@ -642,46 +684,6 @@ export default function ArxmlSafetyAnalysisTable() {
 
         return (
           <Space>
-            <Tooltip title="Link for causation analysis">
-              <Button
-                icon={<LinkOutlined />}
-                size="small"
-                type="text"
-              />
-            </Tooltip>
-              {canEdit && (
-              <Tooltip title="Edit failure mode">
-                <Button
-                  icon={<EditOutlined />}
-                  size="small"
-                  type="text"
-                  onClick={() => edit(record)}
-                />
-              </Tooltip>
-            )}            {/* Risk Rating Icon */}
-            {record.failureUuid && record.failureName !== PLACEHOLDER_VALUES.NO_FAILURES && (
-              <Tooltip title="Set Risk Rating">
-                <Button 
-                  type="text"
-                  size="small"
-                  onClick={() => handleRiskRatingClick(record)}
-                  icon={<DashboardOutlined />}
-                  style={{ color: '#52c41a' }}
-                />
-              </Tooltip>
-            )}            {/* Safety Task Icon */}
-            {record.failureUuid && record.failureName !== PLACEHOLDER_VALUES.NO_FAILURES && (
-              <Tooltip title="Manage Safety Tasks">
-                <Button 
-                  type="text"
-                  size="small"
-                  onClick={() => handleSafetyTaskClick(record)}
-                  icon={<CheckSquareOutlined />}
-                  style={{ color: '#1890ff' }}
-                />
-              </Tooltip>
-            )}
-
             <Tooltip title="Add new failure mode">
               <Button
                 icon={<PlusOutlined />}
@@ -690,6 +692,85 @@ export default function ArxmlSafetyAnalysisTable() {
                 onClick={() => addNewFailure(record.swComponentUuid!, record.swComponentName!)}
               />
             </Tooltip>
+
+            {canEdit && (
+              <Tooltip title="Edit failure mode">
+                <Button
+                  icon={<EditOutlined />}
+                  size="small"
+                  type="text"
+                  onClick={() => edit(record)}
+                />
+              </Tooltip>
+            )}
+            
+            <Tooltip title="Link for causation analysis">
+              <Button
+                icon={<LinkOutlined />}
+                size="small"
+                type="text"
+              />
+            </Tooltip>
+
+            {/* Safety Note Icon */}
+            {record.failureUuid && record.failureName !== PLACEHOLDER_VALUES.NO_FAILURES && (
+              <Tooltip title="Safety Notes">
+                <Badge count={record.safetyNoteCount} size="small" offset={[0, 8]}>
+                  <Button 
+                    type="text"
+                    size="small"
+                    onClick={() => handleSafetyNotesClick(record)}
+                    icon={<SnippetsOutlined />}
+                    style={{ color: '#1890ff' }}
+                  />
+                </Badge>
+              </Tooltip>
+            )}
+
+            {/* Safety Requirement Icon */}
+            {record.failureUuid && record.failureName !== PLACEHOLDER_VALUES.NO_FAILURES && (
+              <Tooltip title="Manage Safety Requirements">
+                <Badge count={record.safetyReqCount} size="small" offset={[0, 8]}>
+                  <Button 
+                    type="text"
+                    size="small"
+                    onClick={() => handleSafetyReqClick(record.failureUuid!, record.failureName, record.failureDescription)}
+                    icon={<FileTextOutlined />}
+                    style={{ color: '#722ed1' }}
+                  />
+                </Badge>
+              </Tooltip>
+            )}
+
+            {/* Risk Rating Icon */}
+            {record.failureUuid && record.failureName !== PLACEHOLDER_VALUES.NO_FAILURES && (
+              <Tooltip title="Set Risk Rating">
+                <Badge count={record.riskRatingCount} size="small" offset={[0, 8]}>
+                  <Button 
+                    type="text"
+                    size="small"
+                    onClick={() => handleRiskRatingClick(record)}
+                    icon={<DashboardOutlined />}
+                    style={{ color: '#52c41a' }}
+                  />
+                </Badge>
+              </Tooltip>
+            )}
+            
+            {/* Safety Task Icon */}
+            {record.failureUuid && record.failureName !== PLACEHOLDER_VALUES.NO_FAILURES && (
+              <Tooltip title="Manage Safety Tasks">
+                <Badge count={record.safetyTaskCount} size="small" offset={[0, 8]}>
+                  <Button 
+                    type="text"
+                    size="small"
+                    onClick={() => handleSafetyTaskClick(record)}
+                    icon={<CheckSquareOutlined />}
+                    style={{ color: '#1890ff' }}
+                  />
+                </Badge>
+              </Tooltip>
+            )}
 
             {canDelete && (
               <Popconfirm
@@ -772,6 +853,8 @@ export default function ArxmlSafetyAnalysisTable() {
           existingTasks={existingSafetyTasks}
           activeTabIndex={activeSafetyTaskIndex}
         />
+        {/* Safety Requirement Modal */}
+        <SafetyReqModal {...safetyReqModalProps} />
         {/* Delete Confirmation Modal */}
         <CascadeDeleteModal
           open={isDeleteModalVisible && !!failureToDelete}
@@ -785,11 +868,32 @@ export default function ArxmlSafetyAnalysisTable() {
             }
             setIsDeleteModalVisible(false);
             setFailureToDelete(null);
+            loadData();
           }}
           nodeUuid={failureToDelete?.failureUuid || ''}
           nodeType="FAILUREMODE"
           nodeName={failureToDelete?.failureName || ''}
         />
+        <Modal
+          title={`Safety Notes - ${selectedFailureForNotes?.failureName}`}
+          open={isSafetyNotesModalVisible}
+          onCancel={handleSafetyNotesClose}
+          footer={null}
+          width={800}
+          centered
+        >
+          {selectedFailureForNotes && selectedFailureForNotes.failureUuid ? (
+            <SafetyNoteManager
+              nodeUuid={selectedFailureForNotes.failureUuid}
+              nodeType="Failure Mode"
+              nodeName={selectedFailureForNotes.failureName}
+              showInline={false}
+              onNotesUpdate={loadData}
+            />
+          ) : (
+            <div>Error: No failure UUID available for safety notes</div>
+          )}
+        </Modal>
       </Form>
     </Card>
   );

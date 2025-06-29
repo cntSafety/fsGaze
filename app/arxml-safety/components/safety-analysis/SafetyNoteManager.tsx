@@ -19,13 +19,15 @@ interface SafetyNoteManagerProps {
   nodeType: string;
   nodeName: string;
   showInline?: boolean;
+  onNotesUpdate?: () => void;
 }
 
 export default function SafetyNoteManager({ 
   nodeUuid, 
   nodeType, 
   nodeName,
-  showInline = false 
+  showInline = false,
+  onNotesUpdate,
 }: SafetyNoteManagerProps) {
   const [safetyNotes, setSafetyNotes] = useState<SafetyNote[]>([]);
   const [loading, setLoading] = useState(false);
@@ -79,6 +81,7 @@ export default function SafetyNoteManager({
           if (result.success) {
             message.success('Safety note deleted successfully');
             await loadSafetyNotes();
+            if (onNotesUpdate) onNotesUpdate();
           } else {
             message.error(result.message || 'Failed to delete safety note');
           }
@@ -115,6 +118,7 @@ export default function SafetyNoteManager({
         setNoteText('');
         setEditingNote(null);
         await loadSafetyNotes();
+        if (onNotesUpdate) onNotesUpdate();
       } else {
         message.error(result.message || 'Failed to save safety note');
       }
