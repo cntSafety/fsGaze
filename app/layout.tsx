@@ -5,6 +5,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import 'antd/dist/reset.css';
 import '@ant-design/v5-patch-for-react-19';
+import { App } from 'antd';
 import { ThemeProvider } from "./components/ThemeProvider";
 
 const geistSans = Geist({
@@ -47,11 +48,13 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <ThemeProvider>
-          <LoadingProvider>
-            <Navbar>
-              {children}
-            </Navbar>
-          </LoadingProvider>
+          <App>
+            <LoadingProvider>
+              <Navbar>
+                {children}
+              </Navbar>
+            </LoadingProvider>
+          </App>
         </ThemeProvider>
       </body>
     </html>

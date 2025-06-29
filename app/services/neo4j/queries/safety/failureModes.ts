@@ -407,3 +407,167 @@ export const getFailuresForSwComponents = async (swComponentUuid: string): Promi
     await session.close();
   }
 };
+
+export const getFailuresAndCountsForComponents = async (
+  componentUuids: string[]
+): Promise<{ success: boolean; data?: any[]; message?: string }> => {
+  const session = driver.session();
+  try {
+    const query = `
+      MATCH (swc:APPLICATION_SW_COMPONENT_TYPE)
+      WHERE swc.uuid IN $componentUuids
+      OPTIONAL MATCH (swc)<-[:OCCURRENCE]-(fm:FAILUREMODE)
+      WITH swc, fm
+      WHERE fm IS NOT NULL
+      OPTIONAL MATCH (fm)-[:RATED]->(rr:RISKRATING)
+      OPTIONAL MATCH (fm)-[:TASKREF]->(t:SAFETYTASKS)
+      OPTIONAL MATCH (fm)-[:HAS_SAFETY_REQUIREMENT]->(req:SAFETYREQ)
+      OPTIONAL MATCH (fm)-[:NOTEREF]->(n:SAFETYNOTE)
+      RETURN
+        swc.uuid AS swComponentUuid,
+        swc.name AS swComponentName,
+        fm.uuid AS failureUuid,
+        fm.name AS failureName,
+        fm.description AS failureDescription,
+        fm.asil AS asil,
+        fm.Created AS Created,
+        count(DISTINCT rr) AS riskRatingCount,
+        count(DISTINCT t) AS safetyTaskCount,
+        count(DISTINCT req) AS safetyReqCount,
+        count(DISTINCT n) AS safetyNoteCount
+      ORDER BY swc.name, fm.Created ASC
+    `;
+
+    const result = await session.run(query, { componentUuids });
+    const data = result.records.map(record => ({
+      swComponentUuid: record.get('swComponentUuid'),
+      swComponentName: record.get('swComponentName'),
+      failureUuid: record.get('failureUuid'),
+      failureName: record.get('failureName'),
+      failureDescription: record.get('failureDescription'),
+      asil: record.get('asil'),
+      Created: record.get('Created'),
+      riskRatingCount: record.get('riskRatingCount').low,
+      safetyTaskCount: record.get('safetyTaskCount').low,
+      safetyReqCount: record.get('safetyReqCount').low,
+      safetyNoteCount: record.get('safetyNoteCount').low,
+    }));
+    
+    return { success: true, data };
+  } catch (error) {
+    console.error('Error fetching failures with counts:', error);
+    return { success: false, message: 'Failed to fetch failures with counts' };
+  } finally {
+    await session.close();
+  }
+};
+
+export const getFailuresAndCountsForComponent = async (
+  componentUuid: string
+): Promise<{ success: boolean; data?: any[]; message?: string }> => {
+  const session = driver.session();
+  try {
+    const query = `
+      MATCH (swc:APPLICATION_SW_COMPONENT_TYPE {uuid: $componentUuid})<-[:OCCURRENCE]-(fm:FAILUREMODE)
+      WITH fm
+      OPTIONAL MATCH (fm)-[:RATED]->(rr:RISKRATING)
+      OPTIONAL MATCH (fm)-[:TASKREF]->(t:SAFETYTASKS)
+      OPTIONAL MATCH (fm)-[:HAS_SAFETY_REQUIREMENT]->(req:SAFETYREQ)
+      OPTIONAL MATCH (fm)-[:NOTEREF]->(n:SAFETYNOTE)
+      RETURN
+        fm.uuid AS failureUuid,
+        fm.name AS failureName,
+        fm.description AS failureDescription,
+        fm.asil AS asil,
+        fm.Created AS Created,
+        count(DISTINCT rr) AS riskRatingCount,
+        count(DISTINCT t) AS safetyTaskCount,
+        count(DISTINCT req) AS safetyReqCount,
+        count(DISTINCT n) AS safetyNoteCount
+      ORDER BY fm.Created ASC
+    `;
+
+    const result = await session.run(query, { componentUuid });
+    const data = result.records.map(record => ({
+      failureUuid: record.get('failureUuid'),
+      failureName: record.get('failureName'),
+      failureDescription: record.get('failureDescription'),
+      asil: record.get('asil'),
+      relationshipType: 'HAS_FAILURE', // Assuming this relationship type
+      riskRatingCount: record.get('riskRatingCount').low,
+      safetyTaskCount: record.get('safetyTaskCount').low,
+      safetyReqCount: record.get('safetyReqCount').low,
+      safetyNoteCount: record.get('safetyNoteCount').low,
+    }));
+    
+    return { success: true, data };
+  } catch (error) {
+    console.error('Error fetching failures with counts for component:', error);
+    return { success: false, message: 'Failed to fetch component failures with counts' };
+  } finally {
+    await session.close();
+  }
+};
+
+export const getFailuresAndCountsForPorts = async (
+  portUuids: string[]
+): Promise<{ success: boolean; data?: any; message?: string }> => {
+  if (portUuids.length === 0) {
+    return { success: true, data: {} };
+  }
+  const session = driver.session();
+  try {
+    const query = `
+      MATCH (p)<-[:OCCURRENCE]-(fm:FAILUREMODE)
+      WHERE p.uuid IN $portUuids
+      AND (p:P_PORT_PROTOTYPE OR p:R_PORT_PROTOTYPE)
+      WITH p, fm
+      OPTIONAL MATCH (fm)-[:RATED]->(rr:RISKRATING)
+      OPTIONAL MATCH (fm)-[:TASKREF]->(t:SAFETYTASKS)
+      OPTIONAL MATCH (fm)-[:HAS_SAFETY_REQUIREMENT]->(req:SAFETYREQ)
+      OPTIONAL MATCH (fm)-[:NOTEREF]->(n:SAFETYNOTE)
+      RETURN
+        p.uuid as portUuid,
+        fm.uuid AS failureUuid,
+        fm.name AS failureName,
+        fm.description AS failureDescription,
+        fm.asil AS asil,
+        count(DISTINCT rr) AS riskRatingCount,
+        count(DISTINCT t) AS safetyTaskCount,
+        count(DISTINCT req) AS safetyReqCount,
+        count(DISTINCT n) AS safetyNoteCount,
+        p.name as portName,
+        fm.Created as Created
+      ORDER BY portName, Created ASC
+    `;
+
+    const result = await session.run(query, { portUuids });
+    
+    const dataByPort: { [key: string]: any[] } = {};
+    result.records.forEach(record => {
+      const portUuid = record.get('portUuid');
+      if (!dataByPort[portUuid]) {
+        dataByPort[portUuid] = [];
+      }
+      dataByPort[portUuid].push({
+        failureUuid: record.get('failureUuid'),
+        failureName: record.get('failureName'),
+        failureDescription: record.get('failureDescription'),
+        asil: record.get('asil'),
+        failureType: 'FAILURE', // Assuming failure type
+        relationshipType: 'HAS_FAILURE',
+        riskRatingCount: record.get('riskRatingCount').low,
+        safetyTaskCount: record.get('safetyTaskCount').low,
+        safetyReqCount: record.get('safetyReqCount').low,
+        safetyNoteCount: record.get('safetyNoteCount').low,
+      });
+    });
+
+    return { success: true, data: dataByPort };
+  } catch (error) {
+    console.error('Error fetching failures with counts for ports:', error);
+    return { success: false, message: 'Failed to fetch port failures with counts' };
+  } finally {
+    await session.close();
+  }
+};

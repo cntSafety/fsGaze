@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { message } from 'antd';
 import { getInfoForAppSWComp } from '@/app/services/neo4j/queries/components';
-import { getFailuresForSwComponents, getFailuresForPorts } from '@/app/services/neo4j/queries/safety/failureModes';
+import { getFailuresAndCountsForComponent, getFailuresAndCountsForPorts } from '@/app/services/neo4j/queries/safety/failureModes';
 import { getProviderPortsForSWComponent, getReceiverPortsForSWComponent } from '../../../../services/neo4j/queries/ports';
 import { SwComponent, Failure, PortFailure, ProviderPort } from '../types';
 import { getRiskRatingNodes } from '@/app/services/neo4j/queries/safety/riskRating';
@@ -21,120 +21,55 @@ export const useSwSafetyData = (swComponentUuid: string) => {
   const [receiverPortFailures, setReceiverPortFailures] = useState<{[portUuid: string]: PortFailure[]}>({});
 
   const refreshData = async () => {
-    if (swComponentUuid) {
-      console.log('🔄 Refreshing data for SW Component:', swComponentUuid);
-      setLoading(true);
-      
-      try {
-        const [swComponentResult, failuresResult, providerPortsResult, receiverPortsResult] = await Promise.all([
-          getInfoForAppSWComp(swComponentUuid),
-          getFailuresForSwComponents(swComponentUuid),
-          getProviderPortsForSWComponent(swComponentUuid),
-          getReceiverPortsForSWComponent(swComponentUuid)
-        ]);
+    if (!swComponentUuid) return;
+    
+    console.log('🔄 Refreshing data for SW Component:', swComponentUuid);
+    setLoading(true);
+    
+    try {
+      // Fetch component info, failures, and all ports in parallel
+      const [swComponentResult, failuresResult, providerPortsResult, receiverPortsResult] = await Promise.all([
+        getInfoForAppSWComp(swComponentUuid),
+        getFailuresAndCountsForComponent(swComponentUuid),
+        getProviderPortsForSWComponent(swComponentUuid),
+        getReceiverPortsForSWComponent(swComponentUuid)
+      ]);
 
-        if (swComponentResult.success && swComponentResult.data) {
-          setSwComponent({
-            uuid: swComponentResult.data.uuid,
-            name: swComponentResult.data.name,
-            failures: failuresResult.success && failuresResult.data ? failuresResult.data.map((f: Failure) => ({ uuid: f.failureUuid, name: f.failureName || 'Unnamed Failure' })) : []
-          });
-        }
-
-        if (failuresResult.success && failuresResult.data) {
-          const failuresWithCounts = await Promise.all(failuresResult.data.map(async (failure: Failure) => {
-            const [riskRatings, tasks, reqs, notes] = await Promise.all([
-              getRiskRatingNodes(failure.failureUuid),
-              getSafetyTasksForNode(failure.failureUuid),
-              getSafetyReqsForNode(failure.failureUuid),
-              getSafetyNotesForNode(failure.failureUuid),
-            ]);
-            return {
-              ...failure,
-              riskRatingCount: riskRatings.success ? riskRatings.data?.length ?? 0 : 0,
-              safetyTaskCount: tasks.success ? tasks.data?.length ?? 0 : 0,
-              safetyReqCount: reqs.success ? reqs.data?.length ?? 0 : 0,
-              safetyNoteCount: notes.success ? notes.data?.length ?? 0 : 0,
-            };
-          }));
-          setFailures(failuresWithCounts);
-        } else {
-          setFailures([]);
-        }
-
-        if (providerPortsResult.success && providerPortsResult.data) {
-          const freshProviderPorts = providerPortsResult.data;
-          setProviderPorts(freshProviderPorts);
-          const portFailuresMap: {[portUuid: string]: PortFailure[]} = {};
-          for (const port of freshProviderPorts) {
-            const portFailuresResult = await getFailuresForPorts(port.uuid);
-            if (portFailuresResult.success && portFailuresResult.data) {
-              const failuresWithCounts = await Promise.all(portFailuresResult.data.map(async (failure: PortFailure) => {
-                const [riskRatings, tasks, reqs, notes] = await Promise.all([
-                  getRiskRatingNodes(failure.failureUuid),
-                  getSafetyTasksForNode(failure.failureUuid),
-                  getSafetyReqsForNode(failure.failureUuid),
-                  getSafetyNotesForNode(failure.failureUuid),
-                ]);
-                return {
-                  ...failure,
-                  riskRatingCount: riskRatings.success ? riskRatings.data?.length ?? 0 : 0,
-                  safetyTaskCount: tasks.success ? tasks.data?.length ?? 0 : 0,
-                  safetyReqCount: reqs.success ? reqs.data?.length ?? 0 : 0,
-                  safetyNoteCount: notes.success ? notes.data?.length ?? 0 : 0,
-                };
-              }));
-              portFailuresMap[port.uuid] = failuresWithCounts;
-            } else {
-              portFailuresMap[port.uuid] = [];
-            }
-          }
-          setPortFailures(portFailuresMap);
-        } else {
-          setProviderPorts([]);
-          setPortFailures({});
-        }
-
-        if (receiverPortsResult.success && receiverPortsResult.data) {
-          const freshReceiverPorts = receiverPortsResult.data;
-          setReceiverPorts(freshReceiverPorts);
-          if (freshReceiverPorts.length > 0) {
-            const receiverPortFailuresMap: {[portUuid: string]: PortFailure[]} = {};
-            for (const port of freshReceiverPorts) {
-              const receiverPortFailuresResult = await getFailuresForPorts(port.uuid);
-              if (receiverPortFailuresResult.success && receiverPortFailuresResult.data) {
-                const failuresWithCounts = await Promise.all(receiverPortFailuresResult.data.map(async (failure: PortFailure) => {
-                  const [riskRatings, tasks, reqs, notes] = await Promise.all([
-                    getRiskRatingNodes(failure.failureUuid),
-                    getSafetyTasksForNode(failure.failureUuid),
-                    getSafetyReqsForNode(failure.failureUuid),
-                    getSafetyNotesForNode(failure.failureUuid),
-                  ]);
-                  return {
-                    ...failure,
-                    riskRatingCount: riskRatings.success ? riskRatings.data?.length ?? 0 : 0,
-                    safetyTaskCount: tasks.success ? tasks.data?.length ?? 0 : 0,
-                    safetyReqCount: reqs.success ? reqs.data?.length ?? 0 : 0,
-                    safetyNoteCount: notes.success ? notes.data?.length ?? 0 : 0,
-                  };
-                }));
-                receiverPortFailuresMap[port.uuid] = failuresWithCounts;
-              } else {
-                receiverPortFailuresMap[port.uuid] = [];
-              }
-            }
-            setReceiverPortFailures(receiverPortFailuresMap);
-          }
-        } else {
-          setReceiverPorts([]);
-          setReceiverPortFailures({});
-        }
-      } catch (error) {
-        console.error("Error loading component data:", error);
-        message.error('An unexpected error occurred while loading data.');
-      } finally {
-        setLoading(false);
+      // Process component info
+      if (swComponentResult.success && swComponentResult.data) {
+        setSwComponent({
+          uuid: swComponentResult.data.uuid,
+          name: swComponentResult.data.name,
+          failures: failuresResult.success && failuresResult.data ? failuresResult.data.map((f: Failure) => ({ uuid: f.failureUuid, name: f.failureName || 'Unnamed Failure' })) : []
+        });
       }
+
+      // Process component failures
+      setFailures(failuresResult.success && failuresResult.data ? failuresResult.data : []);
+
+      // Process provider ports and their failures
+      const providerPortsData = providerPortsResult.success && providerPortsResult.data ? providerPortsResult.data : [];
+      setProviderPorts(providerPortsData);
+      const providerPortUuids = providerPortsData.map(p => p.uuid);
+      const providerPortFailuresResult = await getFailuresAndCountsForPorts(providerPortUuids);
+      if (providerPortFailuresResult.success) {
+        setPortFailures(providerPortFailuresResult.data || {});
+      }
+
+      // Process receiver ports and their failures
+      const receiverPortsData = receiverPortsResult.success && receiverPortsResult.data ? receiverPortsResult.data : [];
+      setReceiverPorts(receiverPortsData);
+      const receiverPortUuids = receiverPortsData.map(p => p.uuid);
+      const receiverPortFailuresResult = await getFailuresAndCountsForPorts(receiverPortUuids);
+      if (receiverPortFailuresResult.success) {
+        setReceiverPortFailures(receiverPortFailuresResult.data || {});
+      }
+
+    } catch (error) {
+      console.error("Error loading component data:", error);
+      message.error('An unexpected error occurred while loading data.');
+    } finally {
+      setLoading(false);
     }
   };
 

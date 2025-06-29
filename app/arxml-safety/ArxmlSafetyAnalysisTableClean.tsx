@@ -13,6 +13,7 @@ import { createRiskRatingNode, getRiskRatingNodes } from '../services/neo4j/quer
 import { createSafetyTask, getSafetyTasksForNode, updateSafetyTask, deleteSafetyTask, SafetyTaskStatus, SafetyTaskType } from '../services/neo4j/queries/safety/safetyTasks';
 import { getSafetyReqsForNode } from '../services/neo4j/queries/safety/safetyReq';
 import { getSafetyNotesForNode } from '../services/neo4j/queries/safety/safetyNotes';
+import { getFailuresAndCountsForComponents } from '../services/neo4j/queries/safety/failureModes';
 import { SafetyTableRow } from './types';
 import { ASIL_OPTIONS, PLACEHOLDER_VALUES, MESSAGES } from './utils/constants';
 import RiskRatingModal from './components/RiskRatingModal';
@@ -133,65 +134,60 @@ export default function ArxmlSafetyAnalysisTable() {
   const [failureToDelete, setFailureToDelete] = useState<SafetyTableRow | null>(null);
 
   const loadData = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      
       const swComponentsResult = await getApplicationSwComponents();
-      if (swComponentsResult.success && swComponentsResult.data) {
-        const tableRows: SafetyTableRow[] = [];
-        
-        for (const component of swComponentsResult.data) {
-          const failuresResult = await getFailuresForSwComponents(component.uuid);
-          
-          if (failuresResult.success && failuresResult.data && failuresResult.data.length > 0) {
-            const failurePromises = failuresResult.data.map(async (failure: any) => {
-              const [riskRatingsResult, tasksResult, reqsResult, notesResult] = await Promise.all([
-                getRiskRatingNodes(failure.failureUuid),
-                getSafetyTasksForNode(failure.failureUuid),
-                getSafetyReqsForNode(failure.failureUuid),
-                getSafetyNotesForNode(failure.failureUuid),
-              ]);
+      if (!swComponentsResult.success || !swComponentsResult.data) {
+        message.error(MESSAGES.ERROR.LOAD_FAILED);
+        setLoading(false);
+        return;
+      }
+      
+      const allComponents = swComponentsResult.data;
+      const componentUuids = allComponents.map(c => c.uuid);
+      
+      const failuresResult = await getFailuresAndCountsForComponents(componentUuids);
 
-              return {
-                key: `${component.uuid}-${failure.failureUuid}`,
-                swComponentUuid: component.uuid,
-                swComponentName: component.name,
-                failureName: failure.failureName || '',
-                failureDescription: failure.failureDescription || '',
-                asil: failure.asil || PLACEHOLDER_VALUES.DEFAULT_ASIL,
-                failureUuid: failure.failureUuid,
-                riskRatingCount: riskRatingsResult.data?.length || 0,
-                safetyTaskCount: tasksResult.data?.length || 0,
-                safetyReqCount: reqsResult.data?.length || 0,
-                safetyNoteCount: notesResult.data?.length || 0,
-              };
-            });
+      if (failuresResult.success && failuresResult.data) {
+        const failureRows = failuresResult.data.map(f => ({
+          key: `${f.swComponentUuid}-${f.failureUuid}`,
+          swComponentUuid: f.swComponentUuid,
+          swComponentName: f.swComponentName,
+          failureName: f.failureName || '',
+          failureDescription: f.failureDescription || '',
+          asil: f.asil || PLACEHOLDER_VALUES.DEFAULT_ASIL,
+          failureUuid: f.failureUuid,
+          riskRatingCount: f.riskRatingCount,
+          safetyTaskCount: f.safetyTaskCount,
+          safetyReqCount: f.safetyReqCount,
+          safetyNoteCount: f.safetyNoteCount,
+        }));
 
-            const componentRows = await Promise.all(failurePromises);
-            tableRows.push(...componentRows);
+        const componentsWithFailures = new Set(failureRows.map(f => f.swComponentUuid));
+        const componentsWithoutFailures = allComponents.filter(c => !componentsWithFailures.has(c.uuid));
 
-          } else {
-            tableRows.push({
-              key: `${component.uuid}-empty`,
-              swComponentUuid: component.uuid,
-              swComponentName: component.name,
-              failureName: PLACEHOLDER_VALUES.NO_FAILURES,
-              failureDescription: PLACEHOLDER_VALUES.NO_DESCRIPTION,
-              asil: PLACEHOLDER_VALUES.NO_DESCRIPTION
-            });
-          }
-        }
-        
-        tableRows.sort((a, b) => {
+        const placeholderRows = componentsWithoutFailures.map(c => ({
+          key: `${c.uuid}-empty`,
+          swComponentUuid: c.uuid,
+          swComponentName: c.name,
+          failureName: PLACEHOLDER_VALUES.NO_FAILURES,
+          failureDescription: PLACEHOLDER_VALUES.NO_DESCRIPTION,
+          asil: PLACEHOLDER_VALUES.NO_DESCRIPTION,
+        }));
+
+        const combinedData = [...failureRows, ...placeholderRows].sort((a, b) => {
           if (a.swComponentName && b.swComponentName && a.swComponentName !== b.swComponentName) {
             return a.swComponentName.localeCompare(b.swComponentName);
           }
           if (a.failureName === PLACEHOLDER_VALUES.NO_FAILURES) return 1;
           if (b.failureName === PLACEHOLDER_VALUES.NO_FAILURES) return -1;
-          return a.failureName.localeCompare(b.failureName);
+          // Note: The primary sort is now handled by the database query
+          return 0;
         });
         
-        setTableData(tableRows);
+        setTableData(combinedData);
+      } else {
+        message.error(failuresResult.message || MESSAGES.ERROR.LOAD_FAILED);
       }
     } catch (error) {
       console.error('Error loading data:', error);

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Modal, Form, Select, Button, Space, Typography, Divider, Input, Tabs, Popconfirm, Collapse } from 'antd';
+import { Modal, Form, Select, Button, Space, Typography, Divider, Input, Tabs, Popconfirm, Collapse, Progress, Statistic, Row, Col, Card, theme } from 'antd';
 import { PlusOutlined, DeleteOutlined, ClockCircleOutlined, EditOutlined, BugOutlined, CheckSquareOutlined } from '@ant-design/icons';
 import { 
   SEVERITY_OPTIONS, 
@@ -15,102 +15,12 @@ const { Option } = Select;
 const { Text } = Typography;
 const { TextArea } = Input;
 
-// Pressure Gauge Component
-const PressureGauge: React.FC<{ value: number; maxValue: number }> = ({ value, maxValue }) => {
-  const percentage = Math.min((value / maxValue) * 100, 100);
-  
-  const getColor = (val: number) => {
-    if (val >= 17) return '#ff4d4f'; // Red for high risk
-    if (val >= 9) return '#faad14'; // Yellow for medium risk
-    return '#52c41a'; // Green for low risk
-  };
-
-  const color = getColor(value);
-
-  return (
-    <div style={{ width: '100%', marginTop: '8px' }}>
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center',
-        marginBottom: '8px'
-      }}>
-        <Text strong style={{ color }}>Overall Risk: {value}</Text>
-        <Text type="secondary">Max: {maxValue}</Text>
-      </div>
-      
-      {/* Gauge Background */}
-      <div style={{
-        width: '100%',
-        height: '24px',
-        backgroundColor: '#f0f0f0',
-        borderRadius: '12px',
-        border: '2px solid #d9d9d9',
-        position: 'relative',
-        overflow: 'hidden'
-      }}>
-        {/* Gauge Fill */}
-        <div style={{
-          width: `${percentage}%`,
-          height: '100%',
-          backgroundColor: color,
-          borderRadius: '10px',
-          transition: 'all 0.3s ease',
-          position: 'relative'
-        }}>
-          {/* Shine Effect */}
-          <div style={{
-            position: 'absolute',
-            top: '2px',
-            left: '2px',
-            right: '2px',
-            height: '6px',
-            background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)',
-            borderRadius: '6px'
-          }} />
-        </div>
-        
-        {/* Gauge Markers */}
-        <div style={{
-          position: 'absolute',
-          top: '0',
-          left: '33.33%',
-          width: '2px',
-          height: '100%',
-          backgroundColor: '#bfbfbf',
-          opacity: 0.7
-        }} />
-        <div style={{
-          position: 'absolute',
-          top: '0',
-          left: '62.96%',
-          width: '2px',
-          height: '100%',
-          backgroundColor: '#bfbfbf',
-          opacity: 0.7
-        }} />
-      </div>
-      
-      {/* Risk Level Indicators */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        marginTop: '4px',
-        fontSize: '12px'
-      }}>
-        <Text style={{ color: '#52c41a' }}>Low (1-8)</Text>
-        <Text style={{ color: '#faad14' }}>Medium (9-16)</Text>
-        <Text style={{ color: '#ff4d4f' }}>High (17-27)</Text>
-      </div>
-    </div>
-  );
-};
-
 interface RiskRatingModalProps {
   open: boolean;
   onCancel: () => void;
   onSave?: (severity: number, occurrence: number, detection: number, ratingComment?: string) => Promise<void>;
-  onOk?: (values: { severity: number; occurrence: number; detection: number; ratingComment?: string }) => Promise<void>;  onCreateNew?: () => void; // New callback for creating additional risk ratings
+  onOk?: (values: { severity: number; occurrence: number; detection: number; ratingComment?: string }) => Promise<void>;
+  onCreateNew?: () => void; // New callback for creating additional risk ratings
   onDelete?: () => Promise<void>; // New callback for deleting risk ratings
   failureName: string;
   failureDescription?: string; // New prop for failure description
@@ -161,6 +71,14 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
     detection?: number;
   }>({});
 
+  const { token } = theme.useToken();
+
+  const getOverallRiskColor = (val: number) => {
+    if (val >= 17) return token.colorError;
+    if (val >= 9) return token.colorWarning;
+    return token.colorSuccess;
+  };
+
   // Calculate overall risk
   const overallRisk = (formValues.severity || 0) * (formValues.occurrence || 0) * (formValues.detection || 0);
 
@@ -183,7 +101,9 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
       form.resetFields();
       setFormValues({});
     }
-  }, [form, mode, activeRiskRating]);  const handleOk = async () => {
+  }, [form, mode, activeRiskRating]);
+
+  const handleOk = async () => {
     try {
       const values = await form.validateFields();
       
@@ -222,17 +142,21 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
       case 'tabs':
         return 'Risk Rating Assessments';
       default:
-        return 'Risk Rating Assessment';    }
+        return 'Risk Rating Assessment';
+    }
   };
+
   const renderFormContent = () => {
-    return (      <Form
+    return (
+      <Form
         form={form}
         layout="vertical"
         requiredMark={false}
         onValuesChange={(changedValues, allValues) => {
           setFormValues(allValues);
         }}
-      >        <Form.Item
+      >
+        <Form.Item
           name="severity"
           label={<span style={{ fontWeight: 'bold' }}>Severity</span>}
           rules={[{ required: true, message: 'Please select a severity level' }]}
@@ -257,7 +181,8 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
           </Select>
         </Form.Item>
 
-        <Divider />        <Form.Item
+        <Divider />
+        <Form.Item
           name="occurrence"
           label={<span style={{ fontWeight: 'bold' }}>Occurrence</span>}
           rules={[{ required: true, message: 'Please select an occurrence level' }]}
@@ -282,7 +207,8 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
           </Select>
         </Form.Item>
 
-        <Divider />        <Form.Item
+        <Divider />
+        <Form.Item
           name="detection"
           label={<span style={{ fontWeight: 'bold' }}>Detection</span>}
           rules={[{ required: true, message: 'Please select a detection level' }]}
@@ -311,22 +237,39 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
 
         {/* Overall Risk Display */}
         <Form.Item label={<span style={{ fontWeight: 'bold' }}>Overall Risk Assessment</span>}>
-          <div style={{ 
-            padding: '16px', 
-            backgroundColor: '#fafafa', 
-            borderRadius: '8px',
-            border: '1px solid #d9d9d9'
-          }}>
-            <PressureGauge value={overallRisk} maxValue={27} />
-            <div style={{ marginTop: '12px', textAlign: 'center' }}>
+          <Card bordered>
+            <Row align="middle" gutter={16}>
+              <Col>
+                <Statistic
+                  title="Risk Score"
+                  value={overallRisk}
+                  valueStyle={{ color: getOverallRiskColor(overallRisk), fontSize: '24px', fontWeight: 600 }}
+                />
+              </Col>
+              <Col flex="auto">
+                <Progress
+                  percent={(overallRisk / 27) * 100}
+                  strokeColor={getOverallRiskColor(overallRisk)}
+                  showInfo={false}
+                />
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px', fontSize: '12px' }}>
+                  <Text style={{ color: token.colorSuccess }}>Low (1-8)</Text>
+                  <Text style={{ color: token.colorWarning }}>Medium (9-16)</Text>
+                  <Text style={{ color: token.colorError }}>High (17-27)</Text>
+                </div>
+              </Col>
+            </Row>
+            <Divider style={{ margin: '12px 0' }} />
+            <div style={{ textAlign: 'center' }}>
               <Text type="secondary" style={{ fontSize: '12px' }}>
                 Calculation: Severity ({formValues.severity || 0}) × Occurrence ({formValues.occurrence || 0}) × Detection ({formValues.detection || 0}) = {overallRisk}
               </Text>
             </div>
-          </div>
+          </Card>
         </Form.Item>
 
-        <Divider />        <Form.Item
+        <Divider />
+        <Form.Item
           name="ratingComment"
           label="Rating Comment (Optional)"
         >
@@ -363,7 +306,9 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
         />
       </Form>
     );
-  };  const renderModalContent = () => {
+  };
+
+  const renderModalContent = () => {
     if (mode === 'tabs' && existingRiskRatings.length > 1) {
       const tabItems = existingRiskRatings.map((rating, index) => ({
         key: index.toString(),
@@ -380,7 +325,8 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
       );
     }
     
-    return renderFormContent();  };
+    return renderFormContent();
+  };
 
   const getModalFooter = () => {
     const buttons = [
@@ -418,7 +364,8 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
     if ((mode === 'edit' || mode === 'tabs') && onCreateNew) {
       buttons.push(
         <Button
-          key="createNew"          onClick={onCreateNew}
+          key="createNew"
+          onClick={onCreateNew}
           disabled={loading}
           icon={<PlusOutlined />}
           size="small"
@@ -429,12 +376,14 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
     }
 
     // Add Save/Update button
-    buttons.push(      <Button
+    buttons.push(
+      <Button
         key="save"
         type="primary"
         onClick={handleOk}
         loading={loading}
-        size="small"      >
+        size="small"
+      >
         {mode === 'create' ? 'Create Rating' : 'Update Rating'}
       </Button>
     );
@@ -456,33 +405,33 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
       destroyOnHidden
     >
       <div style={{ marginBottom: 16 }}>
-          <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <BugOutlined style={{ color: '#fa8c16', fontSize: '18px' }} />
-            <Text style={{ fontSize: '16px', fontWeight: 'bold' }}>
-              {failureName}
-            </Text>
-          </div>
-          
-          {mode === 'edit' && activeRiskRating && (
-            <Text type="secondary" style={{ fontSize: '12px' }}>
-              Editing: {activeRiskRating.name}
-            </Text>
-          )}
-            {mode === 'tabs' && activeRiskRating && failureDescription && (
-            <Text style={{ fontSize: '12px', color: '#595959' }}>
-              {failureDescription}
-            </Text>
-          )}
-          
-          {mode === 'create' && existingRiskRatings.length > 0 && (
-            <Text type="secondary" style={{ fontSize: '12px' }}>
-              Creating additional risk rating ({existingRiskRatings.length} existing)
-            </Text>
-          )}
+        <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <BugOutlined style={{ color: '#fa8c16', fontSize: '18px' }} />
+          <Text style={{ fontSize: '16px', fontWeight: 'bold' }}>
+            {failureName}
+          </Text>
         </div>
+        
+        {mode === 'edit' && activeRiskRating && (
+          <Text type="secondary" style={{ fontSize: '12px' }}>
+            Editing: {activeRiskRating.name}
+          </Text>
+        )}
+        {mode === 'tabs' && activeRiskRating && failureDescription && (
+          <Text style={{ fontSize: '12px', color: '#595959' }}>
+            {failureDescription}
+          </Text>
+        )}
+        
+        {mode === 'create' && existingRiskRatings.length > 0 && (
+          <Text type="secondary" style={{ fontSize: '12px' }}>
+            Creating additional risk rating ({existingRiskRatings.length} existing)
+          </Text>
+        )}
+      </div>
 
-        {/* Timestamp Information for Edit and Tabs modes */}
-        {(mode === 'edit' || mode === 'tabs') && activeRiskRating && (
+      {/* Timestamp Information for Edit and Tabs modes */}
+      {(mode === 'edit' || mode === 'tabs') && activeRiskRating && (
         <div style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
