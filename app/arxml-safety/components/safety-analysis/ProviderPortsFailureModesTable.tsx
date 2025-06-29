@@ -21,6 +21,7 @@ interface ProviderPortsFailureModesTableProps {
   getFailureSelectionState?: (failureUuid: string) => 'first' | 'second' | null;
   handleFailureSelection?: (failureUuid: string, failureName: string, sourceType: 'component' | 'provider-port' | 'receiver-port', componentUuid?: string, componentName?: string) => void | Promise<void>;
   isCauseSelected?: boolean;
+  loading?: boolean;
 }
 
 export default function ProviderPortsFailureModesTable({
@@ -34,6 +35,7 @@ export default function ProviderPortsFailureModesTable({
   getFailureSelectionState,
   handleFailureSelection,
   isCauseSelected,
+  loading,
 }: ProviderPortsFailureModesTableProps) {
   const {
     form,
@@ -49,7 +51,7 @@ export default function ProviderPortsFailureModesTable({
     handleCancelPort,
     handleDeletePort,
     handleAddPortFailure
-  } = useProviderPortFailures(providerPorts, portFailures, setPortFailures);
+  } = useProviderPortFailures(providerPorts, portFailures, setPortFailures, refreshData);
 
   const [isDeleteModalVisible, setIsDeleteModalVisible] = React.useState(false);
   const [failureToDelete, setFailureToDelete] = React.useState<PortFailure | null>(null);
@@ -164,14 +166,13 @@ export default function ProviderPortsFailureModesTable({
       title={`Provider Ports Failure Modes for ${swComponent.name}`}
       dataSource={portTableData}
       columns={portColumns}
-      loading={false}
+      loading={isSavingPort || loading}
       editingKey={editingPortKey}
       onEdit={handleEditPort}
       onSave={handleSavePort}
       onCancel={handleCancelPort}
       onAdd={handleAddPortFailure}
       onDelete={handleDeleteWithModal}
-      isSaving={isSavingPort}
       showComponentActions={true}
       form={form}
       onFailureSelect={onFailureSelect}
@@ -207,6 +208,7 @@ export default function ProviderPortsFailureModesTable({
       getFailureSelectionState={getFailureSelectionState}
       handleFailureSelection={handleFailureSelection}
       isCauseSelected={isCauseSelected}
+      refreshData={refreshData}
     />
     <CascadeDeleteModal
       open={isDeleteModalVisible && !!deletePreview}

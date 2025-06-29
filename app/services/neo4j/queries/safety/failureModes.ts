@@ -296,20 +296,20 @@ export const getFailuresForPorts = async (portUuid: string): Promise<{
 }> => {
   const session = driver.session();
   
-  try {    const result = await session.run(
-      `MATCH (port)-[r]-(failure:FAILUREMODE)
-       WHERE port.uuid = $portUuid 
-       AND (port:P_PORT_PROTOTYPE OR port:R_PORT_PROTOTYPE)
-       RETURN 
-         failure.uuid AS failureModeUuid,
-         failure.name AS failureModeName,
-         failure.description AS failureModeDescription,
-         failure.asil AS asil,
-         labels(failure) AS failureLabels,
-         type(r) AS relationshipType
-       ORDER BY failure.name`,
-      { portUuid }
-    );
+  try {    const query = `
+      MATCH (port)-[r]-(failure:FAILUREMODE)
+      WHERE port.uuid = $portUuid
+      AND (port:P_PORT_PROTOTYPE OR port:R_PORT_PROTOTYPE)
+      RETURN 
+        failure.uuid AS failureModeUuid,
+        failure.name AS failureModeName,
+        failure.description AS failureModeDescription,
+        failure.asil AS asil,
+        labels(failure) AS failureLabels,
+        type(r) AS relationshipType
+      ORDER BY failure.Created ASC`;
+    
+    const result = await session.run(query, { portUuid });
 
     if (result.records.length === 0) {
       return {
@@ -322,7 +322,7 @@ export const getFailuresForPorts = async (portUuid: string): Promise<{
       failureName: record.get('failureModeName'),
       failureDescription: record.get('failureModeDescription'),
       asil: record.get('asil'),
-      failureType: record.get('failureLabels')?.join(', ') || 'FAILURE',
+      failureType: record.get('failureLabels'),
       relationshipType: record.get('relationshipType'),
     }));
 
@@ -362,18 +362,18 @@ export const getFailuresForSwComponents = async (swComponentUuid: string): Promi
 }> => {
   const session = driver.session();
   
-  try {    const result = await session.run(
-      `MATCH (swComponent:APPLICATION_SW_COMPONENT_TYPE)-[r]-(failure:FAILUREMODE)
-       WHERE swComponent.uuid = $swComponentUuid 
-       RETURN 
-         failure.uuid AS failureModeUuid,
-         failure.name AS failureModeName,
-         failure.description AS failureModeDescription,
-         failure.asil AS asil,
-         type(r) AS relationshipType
-       ORDER BY failure.name`,
-      { swComponentUuid }
-    );
+  try {    const query = `
+      MATCH (swComponent:APPLICATION_SW_COMPONENT_TYPE)-[r]-(failure:FAILUREMODE)
+      WHERE swComponent.uuid = $swComponentUuid 
+      RETURN 
+        failure.uuid AS failureModeUuid,
+        failure.name AS failureModeName,
+        failure.description AS failureModeDescription,
+        failure.asil AS asil,
+        type(r) AS relationshipType
+      ORDER BY failure.Created ASC`;
+    
+    const result = await session.run(query, { swComponentUuid });
 
     if (result.records.length === 0) {
       return {

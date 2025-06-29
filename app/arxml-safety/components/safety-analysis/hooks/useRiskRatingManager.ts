@@ -12,7 +12,7 @@ interface RiskRatingModalState {
   activeTabIndex: number;
 }
 
-export const useRiskRatingManager = () => {
+export const useRiskRatingManager = (onSaveSuccess?: () => void) => {
   const [riskRatingModalVisible, setRiskRatingModalVisible] = useState(false);
   const [riskRatingModalLoading, setRiskRatingModalLoading] = useState(false);  const [modalState, setModalState] = useState<RiskRatingModalState>({
     failureUuid: '',
@@ -120,6 +120,7 @@ export const useRiskRatingManager = () => {
       if (result.success) {
         message.success('Risk rating created successfully!');
         await refreshRiskRatings();
+        onSaveSuccess?.();
           // After creating a new rating, determine the appropriate mode
         if (modalState.mode === 'create') {
           const updatedRatingsResult = await getRiskRatingNodes(modalState.failureUuid);          if (updatedRatingsResult.success) {
@@ -173,6 +174,7 @@ export const useRiskRatingManager = () => {
       if (result.success) {
         message.success('Risk rating updated successfully!');
         await refreshRiskRatings();
+        onSaveSuccess?.();
       } else {
         message.error(`Error updating risk rating: ${result.message}`);
       }
@@ -194,6 +196,7 @@ export const useRiskRatingManager = () => {
       if (result.success) {
         message.success('Risk rating deleted successfully!');
         const updatedRatingsResult = await getRiskRatingNodes(modalState.failureUuid);
+        onSaveSuccess?.();
         
         if (updatedRatingsResult.success) {
           const updatedRatings = updatedRatingsResult.data || [];

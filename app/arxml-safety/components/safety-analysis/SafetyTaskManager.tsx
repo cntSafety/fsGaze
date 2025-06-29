@@ -21,9 +21,10 @@ interface SafetyTaskManagerProps {
       activeTabIndex: number;
     };
   }) => React.ReactNode;
+  onSaveSuccess?: () => void;
 }
 
-export const SafetyTaskManager: React.FC<SafetyTaskManagerProps> = ({ children }) => {
+export const SafetyTaskManager: React.FC<SafetyTaskManagerProps> = ({ children, onSaveSuccess }) => {
   const {
     safetyTaskModalVisible,
     safetyTaskModalLoading,
@@ -35,7 +36,7 @@ export const SafetyTaskManager: React.FC<SafetyTaskManagerProps> = ({ children }
     handleUpdateSafetyTask,
     handleDeleteSafetyTask,
     closeModal,
-  } = useSafetyTaskManager();
+  } = useSafetyTaskManager(onSaveSuccess);
 
   const safetyTaskModalProps = {
     open: safetyTaskModalVisible,

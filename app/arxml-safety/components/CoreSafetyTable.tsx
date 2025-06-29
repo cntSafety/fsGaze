@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Table, Form, Input, Select, Button, Space, Tooltip, Dropdown, Modal, Popconfirm, message } from 'antd';
-import { SearchOutlined, DeleteOutlined, EditOutlined, PlusOutlined, LinkOutlined, DashboardOutlined, MoreOutlined, ExclamationCircleOutlined, FileTextOutlined, CheckSquareOutlined, EditFilled } from '@ant-design/icons';
+import { Table, Form, Input, Select, Button, Space, Tooltip, Dropdown, Modal, Popconfirm, message, Badge } from 'antd';
+import { SearchOutlined, DeleteOutlined, EditOutlined, PlusOutlined, LinkOutlined, DashboardOutlined, MoreOutlined, ExclamationCircleOutlined, FileTextOutlined, CheckSquareOutlined, EditFilled, SnippetsOutlined } from '@ant-design/icons';
 import type { TableProps, ColumnType } from 'antd/es/table';
 import type { FormInstance } from 'antd/es/form';
 import type { FilterDropdownProps } from 'antd/es/table/interface';
@@ -57,6 +57,10 @@ export interface SafetyTableRow {
   asil: string;
   isNewRow?: boolean;
   failureUuid?: string;
+  riskRatingCount?: number;
+  safetyTaskCount?: number;
+  safetyReqCount?: number;
+  safetyNoteCount?: number;
 }
 
 export interface SafetyTableColumn {
@@ -152,6 +156,7 @@ interface CoreSafetyTableProps {
   onRiskRatingClick?: (failureUuid: string, failureName: string, failureDescription?: string) => Promise<void>; // New enhanced handler
   onSafetyTaskClick?: (failureUuid: string, failureName: string, failureDescription?: string) => Promise<void>; // New safety task handler
   onSafetyReqClick?: (failureUuid: string, failureName: string, failureDescription?: string) => Promise<void>; // New safety requirement handler
+  refreshData?: () => void;
   isSaving?: boolean;
   pagination?: false | TableProps<SafetyTableRow>['pagination'];
   showComponentActions?: boolean;
@@ -223,6 +228,7 @@ export default function CoreSafetyTable({
   onRiskRatingClick,
   onSafetyTaskClick,
   onSafetyReqClick,
+  refreshData,
   isSaving = false,
   pagination = { pageSize: 50 },
   showComponentActions = false,
@@ -710,114 +716,133 @@ export default function CoreSafetyTable({
           </Space>
         ) : (
           <Space size="small">
-            {/* Always visible: Edit Button */}
-            {onEdit && record.failureName !== 'No failures defined' && (
-              <Button 
-                type="text"
-                size="small"
-                disabled={editingKey !== ''} 
-                onClick={() => onEdit(record)}
-                icon={<EditOutlined />}
-                title="Edit"
-              />
-            )}
-            
             {/* Always visible: Add Button */}
-            {onAdd && isFirstRowForComponent && record.swComponentUuid && record.swComponentName && (
-              <Button 
-                type="text"
-                size="small"
-                disabled={editingKey !== ''} 
-                onClick={() => onAdd(record.swComponentUuid!, record.swComponentName!)}
-                icon={<PlusOutlined />}
-                title="Add Failure"
-              />
-            )}            {/* More actions dropdown - only show if there are additional actions available */}
-            {(canLink || canRiskRating || onSafetyTaskClick || (onDelete && record.failureName !== 'No failures defined' && !record.isNewRow && record.failureUuid)) && (
-              <Dropdown
-                disabled={editingKey !== ''}
-                menu={{
-                  items: [
-                    // Link Icon for Causation Creation
-                    ...(canLink ? [{
-                      key: 'link',
-                      icon: <LinkOutlined />,
-                      label: (
-                        <Tooltip 
-                          key={`tooltip-${record.failureUuid}-${selectionState || 'none'}`}
-                          title={
-                            selectionState === 'first' ? 'Selected as Cause - Click another to set Effect' :
-                            selectionState === 'second' ? 'Selected as Effect' :
-                            selectedFailures?.first ? 'Click to set as Effect' :
-                            'Click to set as Cause'
-                          }
-                        >
-                          {selectionState === 'first' ? 'Selected as Cause' :
-                           selectionState === 'second' ? 'Selected as Effect' :
-                           selectedFailures?.first ? 'Set as Effect' :
-                           'Set as Cause'}
-                        </Tooltip>
-                      ),
-                      onClick: () => handleLinkClick(record),
-                      style: {
-                        color: selectionState === 'first' ? '#1890ff' : 
-                               selectionState === 'second' ? '#ff7875' : undefined
-                      }
-                    }] : []),
-                      // Risk Rating
-                    ...(canRiskRating ? [{
-                      key: 'risk-rating',
-                      icon: <DashboardOutlined />,
-                      label: 'Set Risk Rating',
-                      onClick: () => handleRiskRatingClick(record),
-                      style: { color: '#52c41a' }
-                    }] : []),
-                      // Safety Tasks
-                    ...(onSafetyTaskClick && record.failureName !== 'No failures defined' && record.failureUuid ? [{
-                      key: 'safety-tasks',
-                      icon: <CheckSquareOutlined />,
-                      label: 'Manage Safety Tasks',
-                      onClick: () => handleSafetyTaskClick(record),
-                      style: { color: '#1890ff' }
-                    }] : []),
-                    
-                    // Safety Requirements
-                    ...(onSafetyReqClick && record.failureName !== 'No failures defined' && record.failureUuid ? [{
-                      key: 'safety-requirements',
-                      icon: <FileTextOutlined />,
-                      label: 'Manage Requirements',
-                      onClick: () => handleSafetyReqClick(record),
-                      style: { color: '#722ed1' }
-                    }] : []),
-                      // Safety Notes
-                    ...(record.failureName !== 'No failures defined' && record.failureUuid ? [{
-                      key: 'safety-notes',
-                      icon: <EditFilled />,
-                      label: 'Safety Notes',
-                      onClick: () => handleSafetyNotesClick(record),
-                      style: { color: '#1890ff' }
-                    }] : []),
-                    
-                    // Delete Action
-                    ...(onDelete && record.failureName !== 'No failures defined' && !record.isNewRow && record.failureUuid ? [{
-                      key: 'delete',
-                      icon: <DeleteOutlined />,
-                      label: 'Delete',
-                      onClick: () => handleDeleteClick(record),
-                      danger: true
-                    }] : [])
-                  ]
-                }}
-                trigger={['click']}
-                placement="bottomRight"
-              >
+            {onAdd && record.swComponentUuid && record.swComponentName && (
+              <Tooltip title="Add Failure">
                 <Button 
                   type="text"
                   size="small"
-                  icon={<MoreOutlined />}
-                  title="More actions"
+                  disabled={editingKey !== ''} 
+                  onClick={() => onAdd(record.swComponentUuid!, record.swComponentName!)}
+                  icon={<PlusOutlined />}
                 />
-              </Dropdown>
+              </Tooltip>
+            )}
+
+            {/* Always visible: Edit Button */}
+            {onEdit && record.failureName !== 'No failures defined' && (
+              <Tooltip title="Edit">
+                <Button 
+                  type="text"
+                  size="small"
+                  disabled={editingKey !== ''} 
+                  onClick={() => onEdit(record)}
+                  icon={<EditOutlined />}
+                />
+              </Tooltip>
+            )}
+            
+            {/* Link Icon for Causation Creation */}
+            {canLink && (
+              <Tooltip 
+                key={`tooltip-${record.failureUuid}-${selectionState || 'none'}`}
+                title={
+                  selectionState === 'first' ? 'Selected as Cause - Click another to set Effect' :
+                  selectionState === 'second' ? 'Selected as Effect' :
+                  selectedFailures?.first ? 'Click to set as Effect' :
+                  'Click to set as Cause'
+                }
+              >
+                <Button
+                  type="text"
+                  size="small"
+                  onClick={() => handleLinkClick(record)}
+                  icon={<LinkOutlined />}
+                  style={{
+                    color: selectionState === 'first' ? '#1890ff' : 
+                           selectionState === 'second' ? '#ff7875' : undefined
+                  }}
+                />
+              </Tooltip>
+            )}
+            
+            {/* Safety Note Icon */}
+            {record.failureName !== 'No failures defined' && record.failureUuid && (
+              <Tooltip title="Safety Notes">
+                <Badge count={record.safetyNoteCount} size="small" offset={[0, 8]}>
+                  <Button
+                    type="text"
+                    size="small"
+                    onClick={() => handleSafetyNotesClick(record)}
+                    icon={<SnippetsOutlined />}
+                    style={{ color: '#1890ff' }}
+                  />
+                </Badge>
+              </Tooltip>
+            )}
+            
+            {/* Safety Requirements */}
+            {onSafetyReqClick && record.failureName !== 'No failures defined' && record.failureUuid && (
+              <Tooltip title="Manage Requirements">
+                <Badge count={record.safetyReqCount} size="small" offset={[0, 8]}>
+                  <Button
+                    type="text"
+                    size="small"
+                    onClick={() => handleSafetyReqClick(record)}
+                    icon={<FileTextOutlined />}
+                    style={{ color: '#722ed1' }}
+                  />
+                </Badge>
+              </Tooltip>
+            )}
+
+            {/* Risk Rating */}
+            {canRiskRating && (
+              <Tooltip title="Set Risk Rating">
+                <Badge count={record.riskRatingCount} size="small" offset={[0, 8]}>
+                  <Button
+                    type="text"
+                    size="small"
+                    onClick={() => handleRiskRatingClick(record)}
+                    icon={<DashboardOutlined />}
+                    style={{ color: '#52c41a' }}
+                  />
+                </Badge>
+              </Tooltip>
+            )}
+            
+            {/* Safety Tasks */}
+            {onSafetyTaskClick && record.failureName !== 'No failures defined' && record.failureUuid && (
+              <Tooltip title="Manage Safety Tasks">
+                <Badge count={record.safetyTaskCount} size="small" offset={[0, 8]}>
+                  <Button
+                    type="text"
+                    size="small"
+                    onClick={() => handleSafetyTaskClick(record)}
+                    icon={<CheckSquareOutlined />}
+                    style={{ color: '#1890ff' }}
+                  />
+                </Badge>
+              </Tooltip>
+            )}
+            
+            {/* Delete Action */}
+            {onDelete && record.failureName !== 'No failures defined' && !record.isNewRow && record.failureUuid && (
+              <Tooltip title="Delete">
+                <Popconfirm
+                  title="Are you sure you want to delete this item?"
+                  onConfirm={() => handleDeleteClick(record)}
+                  okText="Yes"
+                  cancelText="No"
+                >
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<DeleteOutlined />}
+                    danger
+                  />
+                </Popconfirm>
+              </Tooltip>
             )}
           </Space>
         );
@@ -967,6 +992,7 @@ export default function CoreSafetyTable({
             nodeType="Failure Mode"
             nodeName={selectedFailureForNotes.failureName}
             showInline={false}
+            onNotesUpdate={refreshData}
           />
         ) : (
           <div>Error: No failure UUID available for safety notes</div>

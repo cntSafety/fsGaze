@@ -7,7 +7,8 @@ import { SafetyTableRow } from '../../CoreSafetyTable';
 export const useProviderPortFailures = (
   providerPorts: ProviderPort[],
   portFailures: {[portUuid: string]: PortFailure[]},
-  setPortFailures: (portFailures: {[portUuid: string]: PortFailure[]}) => void
+  setPortFailures: (portFailures: {[portUuid: string]: PortFailure[]}) => void,
+  refreshData?: () => void
 ) => {
   const [form] = Form.useForm();
   const [portTableData, setPortTableData] = useState<SafetyTableRow[]>([]);
@@ -33,7 +34,11 @@ export const useProviderPortFailures = (
             failureName: failure.failureName || '',
             failureDescription: failure.failureDescription || '', // Use failureDescription from the failure data
             asil: failure.asil || 'TBC', // Use actual ASIL from database
-            failureUuid: failure.failureUuid
+            failureUuid: failure.failureUuid,
+            riskRatingCount: failure.riskRatingCount,
+            safetyTaskCount: failure.safetyTaskCount,
+            safetyReqCount: failure.safetyReqCount,
+            safetyNoteCount: failure.safetyNoteCount,
           });
         });
       } else {
@@ -70,114 +75,41 @@ export const useProviderPortFailures = (
 
       setIsSavingPort(true);
       
+      let result;
       if (record.isNewRow || record.failureName === 'No failureModes defined') {
-        // Create new failure for port - use the port UUID (stored in swComponentUuid for ports)
-        const result = await createFailureModeNode(
+        // Create new failure for port
+        result = await createFailureModeNode(
           record.swComponentUuid!, // This is the port UUID for port records
           row.failureName,
           row.failureDescription || '',
           row.asil
         );
-
-        if (result.success && result.failureUuid) {
-          // Update local state instead of reloading everything
-          const portUuid = record.swComponentUuid!;
-          const newPortFailure: PortFailure = {
-            failureUuid: result.failureUuid,
-            failureName: row.failureName,
-            failureDescription: row.failureDescription || '',
-            asil: row.asil,
-            failureType: null,
-            relationshipType: 'HAS_FAILURE'
-          };
-          
-          // Update port failureModes map
-          setPortFailures({
-            ...portFailures,
-            [portUuid]: [...(portFailures[portUuid] || []), newPortFailure]
-          });
-          
-          // Find the port info for the table row
-          const port = providerPorts.find(p => p.uuid === portUuid);
-          const newTableRow: SafetyTableRow = {
-            key: `${portUuid}-${result.failureUuid}`,
-            swComponentUuid: portUuid,
-            swComponentName: `${port?.name || 'Unknown'} (${port?.type || 'P_PORT_PROTOTYPE'})`,
-            failureName: row.failureName,
-            failureDescription: row.failureDescription || '',
-            asil: row.asil,
-            failureUuid: result.failureUuid
-          };
-          
-          // Update port table data
-          setPortTableData(prev => {
-            if (record.failureName === 'No failureModes defined') {
-              // Replace the "No failureModes defined" row with the new failure
-              return prev.map(item => 
-                item.key === record.key ? newTableRow : item
-              );
-            } else {
-              // Replace the temporary new row
-              return prev.map(item => 
-                item.key === record.key ? newTableRow : item
-              );
-            }
-          });
-          
-          setEditingPortKey('');
-          message.success('Port failure mode added successfully!');
-        } else {
-          message.error(`Error: ${result.message}`);
-        }
       } else {
-        // Update existing failure - call Neo4j update service
+        // Update existing failure
         if (!record.failureUuid) {
           message.error('Cannot update failure: No failure UUID found');
+          setIsSavingPort(false);
           return;
         }
-
-        const result = await updateFailureModeNode(
+        result = await updateFailureModeNode(
           record.failureUuid,
           row.failureName,
           row.failureDescription || '',
           row.asil
         );
+      }
 
-        if (result.success) {
-          // Update local port failureModes map
-          const portUuid = record.swComponentUuid!;
-          const updatedPortFailures = {
-            ...portFailures,
-            [portUuid]: portFailures[portUuid]?.map(failure => 
-              failure.failureUuid === record.failureUuid 
-                ? {
-                    ...failure,
-                    failureName: row.failureName,
-                    failureDescription: row.failureDescription || '',
-                    asil: row.asil
-                  }
-                : failure
-            ) || []
-          };
-          setPortFailures(updatedPortFailures);
-
-          // Update table data
-          const newData = [...portTableData];
-          const index = newData.findIndex(item => key === item.key);
-          if (index > -1) {
-            const item = newData[index];
-            newData.splice(index, 1, {
-              ...item,
-              ...row,
-            });
-            setPortTableData(newData);
-          }
-          
-          setEditingPortKey('');
-          message.success('Port failure mode updated successfully!');
-        } else {
-          message.error(`Error updating failure: ${result.message}`);
+      if (result.success) {
+        const action = (record.isNewRow || record.failureName === 'No failureModes defined') ? 'added' : 'updated';
+        message.success(`Port failure mode ${action} successfully!`);
+        setEditingPortKey('');
+        
+        // Call refreshData to refetch everything
+        if (refreshData) {
+          await refreshData();
         }
+      } else {
+        message.error(`Error: ${result.message}`);
       }
     } catch (errInfo) {
       console.log('Validate Failed:', errInfo);

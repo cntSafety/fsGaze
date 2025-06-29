@@ -4,6 +4,7 @@ export interface SwComponent {
   description?: string;
   arxmlPath?: string;
   componentType?: string;
+  failures: { uuid: string; name: string }[];
 }
 
 export interface Failure {
@@ -12,6 +13,10 @@ export interface Failure {
   failureDescription: string | null;
   asil: string | null;
   relationshipType: string;
+  riskRatingCount?: number;
+  safetyTaskCount?: number;
+  safetyReqCount?: number;
+  safetyNoteCount?: number;
 }
 
 export interface PortFailure {
@@ -21,6 +26,10 @@ export interface PortFailure {
   asil: string | null;
   failureType: string | null;
   relationshipType: string;
+  riskRatingCount?: number;
+  safetyTaskCount?: number;
+  safetyReqCount?: number;
+  safetyNoteCount?: number;
 }
 
 export interface ProviderPort {

@@ -21,6 +21,7 @@ interface ReceiverPortsFailureModesTableProps {
   getFailureSelectionState?: (failureUuid: string) => 'first' | 'second' | null;
   handleFailureSelection?: (failureUuid: string, failureName: string, sourceType: 'component' | 'provider-port' | 'receiver-port', componentUuid?: string, componentName?: string) => void | Promise<void>;
   isCauseSelected?: boolean;
+  loading?: boolean;
 }
 
 export default function ReceiverPortsFailureModesTable({
@@ -34,6 +35,7 @@ export default function ReceiverPortsFailureModesTable({
   getFailureSelectionState,
   handleFailureSelection,
   isCauseSelected,
+  loading,
 }: ReceiverPortsFailureModesTableProps) {
   const {
     form,
@@ -49,7 +51,7 @@ export default function ReceiverPortsFailureModesTable({
     handleCancelPort,
     handleDeletePort,
     handleAddPortFailure
-  } = useReceiverPortFailures(receiverPorts, portFailures, setPortFailures);
+  } = useReceiverPortFailures(receiverPorts, portFailures, setPortFailures, refreshData);
 
   const [isDeleteModalVisible, setIsDeleteModalVisible] = React.useState(false);
   const [failureToDelete, setFailureToDelete] = React.useState<PortFailure | null>(null);
@@ -164,7 +166,7 @@ export default function ReceiverPortsFailureModesTable({
       title={`Receiver Ports Failure Modes for ${swComponent.name}`}
       dataSource={portTableData}
       columns={portColumns}
-      loading={false}
+      loading={isSavingPort || loading}
       editingKey={editingPortKey}
       onEdit={handleEditPort}
       onSave={handleSavePort}
@@ -211,6 +213,7 @@ export default function ReceiverPortsFailureModesTable({
       getFailureSelectionState={getFailureSelectionState}
       handleFailureSelection={handleFailureSelection}
       isCauseSelected={isCauseSelected}
+      refreshData={refreshData}
     />
     <CascadeDeleteModal
       open={isDeleteModalVisible && !!deletePreview}

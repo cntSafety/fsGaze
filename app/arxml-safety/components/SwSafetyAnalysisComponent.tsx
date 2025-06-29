@@ -61,7 +61,7 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
     router.push('/arxml-safety');
   };
 
-  if (loading) {
+  if (loading && !swComponent) {
     return (
       <div style={{ 
         display: 'flex', 
@@ -166,6 +166,7 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
           getFailureSelectionState={getFailureSelectionState}
           handleFailureSelection={handleFailureSelection}
           isCauseSelected={isCauseSelected}
+          loading={loading}
         />
 
         {swComponent && (
@@ -180,6 +181,7 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
             getFailureSelectionState={getFailureSelectionState}
             handleFailureSelection={handleFailureSelection}
             isCauseSelected={isCauseSelected}
+            loading={loading}
           />
         )}
         
@@ -194,6 +196,7 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
           getFailureSelectionState={getFailureSelectionState}
           handleFailureSelection={handleFailureSelection}
           isCauseSelected={isCauseSelected}
+          loading={loading}
         />
       </div>
 

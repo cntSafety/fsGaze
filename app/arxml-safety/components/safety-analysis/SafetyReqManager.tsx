@@ -22,10 +22,11 @@ interface SafetyReqManagerProps {
       activeTabIndex: number;
     };
   }) => React.ReactNode;
+  onSaveSuccess?: () => void;
 }
 
-const SafetyReqManager: React.FC<SafetyReqManagerProps> = ({ children }) => {
-  const safetyReqManager = useSafetyReqManager();
+const SafetyReqManager: React.FC<SafetyReqManagerProps> = ({ children, onSaveSuccess }) => {
+  const safetyReqManager = useSafetyReqManager(onSaveSuccess);
 
   return (
     <>

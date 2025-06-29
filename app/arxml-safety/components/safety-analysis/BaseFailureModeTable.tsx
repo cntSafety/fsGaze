@@ -39,106 +39,105 @@ interface BaseFailureModeTableProps {
   getFailureSelectionState?: (failureUuid: string) => 'first' | 'second' | null;
   handleFailureSelection?: (failureUuid: string, failureName: string, sourceType: 'component' | 'provider-port' | 'receiver-port', componentUuid?: string, componentName?: string) => void | Promise<void>;
   isCauseSelected?: boolean;
+  refreshData?: () => void;
 }
 
-export const BaseFailureModeTable: React.FC<BaseFailureModeTableProps> = ({
-  title,
-  dataSource,
-  columns,
-  loading = false,
-  editingKey,
-  onEdit,
-  onSave,
-  onCancel,
-  onAdd,
-  onDelete,
-  isSaving = false,
-  showComponentActions = true,
-  form,
-  onFailureSelect,
-  selectedFailures,
-  pagination,
-  scroll,
-  emptyStateConfig,
-  onSafetyTaskClick,
-  getFailureSelectionState,
-  handleFailureSelection,
-  isCauseSelected,
-}) => {  return (
-    <RiskRatingManager>
-      {({ handleRiskRatingClick }) => (
-        <SafetyTaskManager>
-          {({ handleSafetyTaskClick }) => (
-            <SafetyReqManager>
-              {({ handleSafetyReqClick }) => (
-                <Card style={{ marginTop: '24px' }} className="base-failure-mode-table-card">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                    {typeof title === 'string' ? (
-                      <Title level={4} style={{ margin: 0 }}>
-                        {title}
-                      </Title>
+export const BaseFailureModeTable: React.FC<BaseFailureModeTableProps> =
+  ({
+    title,
+    dataSource,
+    columns,
+    loading,
+    editingKey,
+    onEdit,
+    onSave,
+    onCancel,
+    onAdd,
+    onDelete,
+    isSaving,
+    showComponentActions,
+    form,
+    onFailureSelect,
+    selectedFailures,
+    pagination,
+    scroll,
+    emptyStateConfig,
+    onSafetyTaskClick,
+    getFailureSelectionState,
+    handleFailureSelection,
+    isCauseSelected,
+    refreshData,
+  }) => {
+    return (
+      <RiskRatingManager onSaveSuccess={refreshData}>
+        {({ handleRiskRatingClick }) => (
+          <SafetyTaskManager onSaveSuccess={refreshData}>
+            {({ handleSafetyTaskClick }) => (
+              <SafetyReqManager onSaveSuccess={refreshData}>
+                {({ handleSafetyReqClick }) => (
+                  <Card style={{ marginTop: '24px' }} className="base-failure-mode-table-card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                      {typeof title === 'string' ? (
+                        <Title level={4} style={{ margin: 0 }}>
+                          {title}
+                        </Title>
+                      ) : (
+                        title
+                      )}
+                    </div>
+                
+                    {dataSource.length > 0 ? (
+                      <CoreSafetyTable
+                        dataSource={dataSource}
+                        columns={columns}
+                        loading={loading}
+                        editingKey={editingKey}
+                        onEdit={onEdit}
+                        onSave={onSave}
+                        onCancel={onCancel}
+                        onAdd={onAdd}
+                        onDelete={onDelete}
+                        onRiskRatingClick={handleRiskRatingClick}
+                        onSafetyTaskClick={onSafetyTaskClick || handleSafetyTaskClick}
+                        onSafetyReqClick={handleSafetyReqClick}
+                        isSaving={isSaving}
+                        showComponentActions={showComponentActions}
+                        form={form}
+                        onFailureSelect={onFailureSelect}
+                        selectedFailures={selectedFailures}
+                        pagination={pagination}
+                        scroll={scroll}
+                        getFailureSelectionState={getFailureSelectionState}
+                        handleFailureSelection={handleFailureSelection}
+                        isCauseSelected={isCauseSelected}
+                        refreshData={refreshData}
+                      />
                     ) : (
-                      title
+                      <div style={{ 
+                        textAlign: 'center', 
+                        padding: '40px',
+                        borderRadius: '8px'
+                      }}>
+                        <Typography.Text type="secondary" style={{ fontSize: '16px' }}>
+                          {emptyStateConfig.primaryMessage}
+                        </Typography.Text>
+                        <br />
+                        {emptyStateConfig.secondaryMessage && (
+                           <>
+                             <br />
+                             <Typography.Text type="secondary">
+                               {emptyStateConfig.secondaryMessage}
+                             </Typography.Text>
+                           </>
+                        )}
+                      </div>
                     )}
-                  </div>
-              
-              {dataSource.length > 0 ? (
-                <CoreSafetyTable
-                  dataSource={dataSource}
-                  columns={columns}
-                  loading={loading}
-                  editingKey={editingKey}
-                  onEdit={onEdit}
-                  onSave={onSave}
-                  onCancel={onCancel}
-                  onAdd={onAdd}
-                  onDelete={onDelete}                  onRiskRatingClick={handleRiskRatingClick}
-                  onSafetyTaskClick={onSafetyTaskClick || handleSafetyTaskClick}
-                  onSafetyReqClick={handleSafetyReqClick}
-                  isSaving={isSaving}
-                  showComponentActions={showComponentActions}
-                  form={form}
-                  onFailureSelect={onFailureSelect}
-                  selectedFailures={selectedFailures}
-                  pagination={pagination}
-                  scroll={scroll}
-                  getFailureSelectionState={getFailureSelectionState}
-                  handleFailureSelection={handleFailureSelection}
-                  isCauseSelected={isCauseSelected}
-                />
-              ) : (
-                <div style={{ 
-                  textAlign: 'center', 
-                  padding: '40px',
-                  backgroundColor: '#fafafa',
-                  borderRadius: '8px'
-                }}>
-                  <Typography.Text type="secondary" style={{ fontSize: '16px' }}>
-                    {emptyStateConfig.primaryMessage}
-                  </Typography.Text>
-                  {emptyStateConfig.secondaryMessage && (
-                    <>
-                      <br />
-                      <Typography.Text type="secondary" style={{ fontSize: '14px', marginTop: '8px' }}>
-                        {emptyStateConfig.secondaryMessage}
-                      </Typography.Text>
-                    </>
-                  )}
-                  {emptyStateConfig.itemsList && emptyStateConfig.itemsList.length > 0 && (
-                    <>
-                      <br />
-                      <Typography.Text type="secondary" style={{ fontSize: '14px', marginTop: '8px' }}>
-                        {emptyStateConfig.itemsList.join(', ')}
-                      </Typography.Text>
-                    </>
-                  )}                </div>
-              )}
-            </Card>
-              )}
-            </SafetyReqManager>
-          )}
-        </SafetyTaskManager>
-      )}
-    </RiskRatingManager>
-  );
-};
+                  </Card>
+                )}
+              </SafetyReqManager>
+            )}
+          </SafetyTaskManager>
+        )}
+      </RiskRatingManager>
+    );
+  };

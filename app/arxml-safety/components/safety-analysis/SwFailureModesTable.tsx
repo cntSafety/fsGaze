@@ -27,6 +27,7 @@ interface SwFailureModesTableProps {
   getFailureSelectionState?: (failureUuid: string) => 'first' | 'second' | null;
   handleFailureSelection?: (failureUuid: string, failureName: string, sourceType: 'component' | 'provider-port' | 'receiver-port', componentUuid?: string, componentName?: string) => void | Promise<void>;
   isCauseSelected?: boolean;
+  loading?: boolean;
 }
 
 export default function SwFailureModesTable({
@@ -40,6 +41,7 @@ export default function SwFailureModesTable({
   getFailureSelectionState,
   handleFailureSelection,
   isCauseSelected,
+  loading,
 }: SwFailureModesTableProps) {
   const {
     form,
@@ -59,7 +61,7 @@ export default function SwFailureModesTable({
     setIsDeleteModalVisible,
     failureToDelete,
     setFailureToDelete
-  } = useSwFailureModes(swComponentUuid, swComponent, failures, setFailures);
+  } = useSwFailureModes(swComponentUuid, swComponent, failures, setFailures, refreshData);
 
   const [deletePreview, setDeletePreview] = React.useState<DeletionPreview | null>(null);
 
@@ -182,7 +184,7 @@ export default function SwFailureModesTable({
         }
         dataSource={tableData}
         columns={columns}
-        loading={false}
+        loading={isSaving || loading}
         editingKey={editingKey}
         onEdit={handleEdit}
         onSave={handleSave}
@@ -226,6 +228,7 @@ export default function SwFailureModesTable({
         getFailureSelectionState={getFailureSelectionState}
         handleFailureSelection={handleFailureSelection}
         isCauseSelected={isCauseSelected}
+        refreshData={refreshData}
       />
       <CascadeDeleteModal
         open={isDeleteModalVisible && !!deletePreview}

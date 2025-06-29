@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Form, message } from 'antd';
 import { createFailureModeNode, updateFailureModeNode } from '../../../../services/neo4j/queries/safety/failureModes';
+import { getRiskRatingNodes } from '../../../../services/neo4j/queries/safety/riskRating';
+import { getSafetyTasksForNode } from '../../../../services/neo4j/queries/safety/safetyTasks';
+import { getSafetyReqsForNode } from '../../../../services/neo4j/queries/safety/safetyReq';
+import { getSafetyNotesForNode } from '../../../../services/neo4j/queries/safety/safetyNotes';
 import { SwComponent, Failure } from '../types';
 import { SafetyTableRow } from '../../CoreSafetyTable';
 
@@ -8,7 +12,8 @@ export const useSwFailureModes = (
   swComponentUuid: string,
   swComponent: SwComponent | null,
   failures: Failure[],
-  setFailures: (failures: Failure[]) => void
+  setFailures: (failures: Failure[]) => void,
+  refreshData?: () => void
 ) => {
   const [form] = Form.useForm();
   const [tableData, setTableData] = useState<SafetyTableRow[]>([]);
@@ -49,7 +54,11 @@ export const useSwFailureModes = (
         failureName: failure.failureName || '',
         failureDescription: failure.failureDescription || '',
         asil: failure.asil || 'TBC',
-        failureUuid: failure.failureUuid
+        failureUuid: failure.failureUuid,
+        riskRatingCount: failure.riskRatingCount,
+        safetyTaskCount: failure.safetyTaskCount,
+        safetyReqCount: failure.safetyReqCount,
+        safetyNoteCount: failure.safetyNoteCount,
       }));
       setTableData(tableRows);
     }
@@ -73,101 +82,41 @@ export const useSwFailureModes = (
 
       setIsSaving(true);
       
+      let result;
       if (record.isNewRow) {
         // Create new failure
-        const result = await createFailureModeNode(
+        result = await createFailureModeNode(
           swComponentUuid,
           row.failureName,
           row.failureDescription,
           row.asil
         );
-
-        if (result.success && result.failureUuid) {
-          // Update local state instead of reloading everything
-          const newFailure: Failure = {
-            failureUuid: result.failureUuid,
-            failureName: row.failureName,
-            failureDescription: row.failureDescription,
-            asil: row.asil,
-            relationshipType: 'HAS_FAILURE'
-          };
-          
-          // Update failures array
-          setFailures([...failures, newFailure]);
-          
-          // Update table data with the new failure
-          const newTableRow: SafetyTableRow = {
-            key: result.failureUuid,
-            swComponentUuid: swComponentUuid,
-            swComponentName: swComponent!.name,
-            failureName: row.failureName,
-            failureDescription: row.failureDescription,
-            asil: row.asil,
-            failureUuid: result.failureUuid
-          };
-          
-          // Replace the temporary row with the real one, or remove "No failureModes defined" if this is the first failure
-          setTableData(prev => {
-            // If this was the first failure and we only had "No failureModes defined", replace the placeholder
-            if (prev.length === 1 && prev[0].failureName === 'No failureModes defined') {
-              return [newTableRow];
-            }
-            // Otherwise, replace the temporary new row
-            return prev.map(item => 
-              item.key === record.key ? newTableRow : item
-            );
-          });
-          
-          setEditingKey('');
-          message.success('Failure mode added successfully!');
-        } else {
-          message.error(`Error: ${result.message}`);
-        }
       } else {
-        // Update existing failure - call Neo4j update service
+        // Update existing failure
         if (!record.failureUuid) {
           message.error('Cannot update failure: No failure UUID found');
+          setIsSaving(false);
           return;
         }
-
-        const result = await updateFailureModeNode(
+        result = await updateFailureModeNode(
           record.failureUuid,
           row.failureName,
           row.failureDescription,
           row.asil
         );
+      }
 
-        if (result.success) {
-          // Update local failures array
-          const updatedFailures = failures.map(failure => 
-            failure.failureUuid === record.failureUuid 
-              ? {
-                  ...failure,
-                  failureName: row.failureName,
-                  failureDescription: row.failureDescription,
-                  asil: row.asil
-                }
-              : failure
-          );
-          setFailures(updatedFailures);
-
-          // Update table data
-          const newData = [...tableData];
-          const index = newData.findIndex(item => key === item.key);
-          if (index > -1) {
-            const item = newData[index];
-            newData.splice(index, 1, {
-              ...item,
-              ...row,
-            });
-            setTableData(newData);
-          }
-          
-          setEditingKey('');
-          message.success('Failure mode updated successfully!');
-        } else {
-          message.error(`Error updating failure: ${result.message}`);
+      if (result.success) {
+        const action = record.isNewRow ? 'added' : 'updated';
+        message.success(`Failure mode ${action} successfully!`);
+        setEditingKey('');
+        
+        // Call refreshData to refetch everything
+        if (refreshData) {
+          await refreshData();
         }
+      } else {
+        message.error(`Error: ${result.message}`);
       }
     } catch (errInfo) {
       console.log('Validate Failed:', errInfo);

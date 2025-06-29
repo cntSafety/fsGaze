@@ -20,9 +20,10 @@ interface RiskRatingManagerProps {
       onTabChange: (index: number) => void;
     };
   }) => React.ReactNode;
+  onSaveSuccess?: () => void;
 }
 
-export const RiskRatingManager: React.FC<RiskRatingManagerProps> = ({ children }) => {
+export const RiskRatingManager: React.FC<RiskRatingManagerProps> = ({ children, onSaveSuccess }) => {
   const {
     riskRatingModalVisible,
     riskRatingModalLoading,
@@ -34,7 +35,7 @@ export const RiskRatingManager: React.FC<RiskRatingManagerProps> = ({ children }
     handleUpdateRiskRating,
     handleDeleteRiskRating,
     closeModal,
-  } = useRiskRatingManager();
+  } = useRiskRatingManager(onSaveSuccess);
 
   const riskRatingModalProps = {
     open: riskRatingModalVisible,

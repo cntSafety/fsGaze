@@ -19,7 +19,7 @@ interface SafetyTaskModalState {
   activeTabIndex: number;
 }
 
-export const useSafetyTaskManager = () => {
+export const useSafetyTaskManager = (onSaveSuccess?: () => void) => {
   const [safetyTaskModalVisible, setSafetyTaskModalVisible] = useState(false);
   const [safetyTaskModalLoading, setSafetyTaskModalLoading] = useState(false);
   const [modalState, setModalState] = useState<SafetyTaskModalState>({
@@ -87,6 +87,24 @@ export const useSafetyTaskManager = () => {
     }
   };
 
+  const refreshSafetyTasks = async () => {
+    try {
+      const updatedTasksResult = await getSafetyTasksForNode(modalState.failureUuid);
+      if (updatedTasksResult.success) {
+        const updatedTasks = updatedTasksResult.data || [];
+        
+        setModalState(prev => ({
+          ...prev,
+          existingTasks: updatedTasks,
+          activeTask: updatedTasks.length > 0 ? updatedTasks[Math.min(prev.activeTabIndex, updatedTasks.length - 1)] : null,
+          activeTabIndex: Math.min(prev.activeTabIndex, Math.max(0, updatedTasks.length - 1)),
+        }));
+      }
+    } catch (error) {
+      console.error('Error refreshing safety tasks:', error);
+    }
+  };
+
   const handleCreateSafetyTask = async (taskData: CreateSafetyTaskInput) => {
     try {
       setSafetyTaskModalLoading(true);
@@ -95,17 +113,19 @@ export const useSafetyTaskManager = () => {
       
       if (result.success) {
         message.success('Safety task created successfully');
-        setSafetyTaskModalVisible(false);
-        // Reset modal state
-        setModalState({
-          failureUuid: '',
-          failureName: '',
-          failureDescription: '',
-          mode: 'create',
-          activeTask: null,
-          existingTasks: [],
-          activeTabIndex: 0,
-        });
+        await refreshSafetyTasks();
+        onSaveSuccess?.();
+        
+        const updatedTasksResult = await getSafetyTasksForNode(modalState.failureUuid);
+        if (updatedTasksResult.success) {
+          const updatedTasks = updatedTasksResult.data || [];
+          if (updatedTasks.length === 1) {
+            setModalState(prev => ({ ...prev, mode: 'edit', activeTask: updatedTasks[0], existingTasks: updatedTasks }));
+          } else {
+            const newIndex = updatedTasks.length - 1;
+            setModalState(prev => ({ ...prev, mode: 'tabs', activeTask: updatedTasks[newIndex], existingTasks: updatedTasks, activeTabIndex: newIndex }));
+          }
+        }
       } else {
         message.error(result.message || 'Failed to create safety task');
       }
@@ -130,17 +150,8 @@ export const useSafetyTaskManager = () => {
       
       if (result.success) {
         message.success('Safety task updated successfully');
-        setSafetyTaskModalVisible(false);
-        // Reset modal state
-        setModalState({
-          failureUuid: '',
-          failureName: '',
-          failureDescription: '',
-          mode: 'create',
-          activeTask: null,
-          existingTasks: [],
-          activeTabIndex: 0,
-        });
+        await refreshSafetyTasks();
+        onSaveSuccess?.();
       } else {
         message.error(result.message || 'Failed to update safety task');
       }
@@ -165,17 +176,21 @@ export const useSafetyTaskManager = () => {
       
       if (result.success) {
         message.success('Safety task deleted successfully');
-        setSafetyTaskModalVisible(false);
-        // Reset modal state
-        setModalState({
-          failureUuid: '',
-          failureName: '',
-          failureDescription: '',
-          mode: 'create',
-          activeTask: null,
-          existingTasks: [],
-          activeTabIndex: 0,
-        });
+        await refreshSafetyTasks();
+        onSaveSuccess?.();
+
+        const updatedTasksResult = await getSafetyTasksForNode(modalState.failureUuid);
+        if (updatedTasksResult.success) {
+          const updatedTasks = updatedTasksResult.data || [];
+          if (updatedTasks.length === 0) {
+            closeModal();
+          } else if (updatedTasks.length === 1) {
+            setModalState(prev => ({ ...prev, mode: 'edit', activeTask: updatedTasks[0], existingTasks: updatedTasks, activeTabIndex: 0 }));
+          } else {
+            const newIndex = Math.min(modalState.activeTabIndex, updatedTasks.length - 1);
+            setModalState(prev => ({ ...prev, activeTask: updatedTasks[newIndex], existingTasks: updatedTasks, activeTabIndex: newIndex }));
+          }
+        }
       } else {
         message.error(result.message || 'Failed to delete safety task');
       }
