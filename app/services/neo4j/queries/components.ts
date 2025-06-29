@@ -1,8 +1,17 @@
+/**
+ * @file This file contains all Neo4j queries related to software components.
+ * It includes functions for fetching component details, their relationships,
+ * and data for building dependency graphs and connection visualizations.
+ * These queries are essential for understanding the architecture and
+ * interactions of software components within the system.
+ */
 import { driver } from '../config';
 import { ComponentVisualizationNode, ComponentVisualizationRelationship, ComponentVisualizationResult } from '../types';
 
 /**
- * Get all application software component types from the database
+ * Retrieves all Application, Composition, and Service software component types from the database.
+ * This is used to populate selection lists for safety analysis and other viewers.
+ * @returns A promise that resolves to an object containing the success status and the list of components.
  */
 export const getApplicationSwComponents = async () => {
   const session = driver.session();
@@ -41,7 +50,10 @@ export const getApplicationSwComponents = async () => {
 };
 
 /**
- * Get all relationships for a specific component by UUID
+ * Fetches all incoming and outgoing relationships for a specific node by its UUID.
+ * This is useful for detailed inspection of a single element's connections.
+ * @param uuid The UUID of the node to query.
+ * @returns A promise that resolves to an object containing the success status and the list of relationships.
  */
 export const getComponentRelations = async (uuid: string) => {
   const session = driver.session();
@@ -96,7 +108,13 @@ export const getComponentRelations = async (uuid: string) => {
 };
 
 /**
- * Get comprehensive dependency graph for a software component
+ * Gathers all nodes and relationships connected to a specific software component prototype
+ * to build a comprehensive dependency graph for visualization.
+ * This complex query traverses various relationship types like context components,
+ * connectors, ports, and interfaces to assemble a complete picture.
+ * @param swcProtoUuid The UUID of the central SW_COMPONENT_PROTOTYPE to build the graph around.
+ * @returns A promise that resolves to an object containing the success status and the graph data,
+ *          or an error message if the component is not found or an issue occurs.
  */
 export const getComponentDependencyGraph = async (swcProtoUuid: string): Promise<{
   success: boolean;

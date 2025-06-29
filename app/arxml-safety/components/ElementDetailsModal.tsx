@@ -344,7 +344,7 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
               {srInterfaceConnections.length > 0 && (
                 <Card
                   type="inner"
-                  title={`📡 Connections via shared SENDER_RECEIVER_INTERFACE definitions (${srInterfaceConnections.length})`}
+                  title={`📡 Shared SENDER_RECEIVER_INTERFACE definitions (${srInterfaceConnections.length})`}
                 >
                   <Space direction="vertical" style={{ width: '100%' }}>
                     {srInterfaceConnections.map((conn, index) => (
