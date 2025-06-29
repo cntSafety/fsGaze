@@ -7,6 +7,38 @@ import { QueryResult } from 'neo4j-driver';
 import { AssemblyContextInfo, ProvidedInterfaceInfo, PortInfo, FullPortConnectionInfo } from '../types';
 
 /**
+ * Defines the structure for interface-based connection information for a P-Port.
+ */
+export interface SRInterfaceConnectionInfo {
+  SRInterfaceName: string | null;
+  SRInterfaceUUID: string | null;
+  receiverPortUUID: string | null;
+  receiverPortName: string | null;
+  failureModeName: string | null;
+  failureModeUUID: string | null;
+  failureModeASIL: string | null;
+  swComponentClassName: string | null;
+  swComponentClassUUID: string | null;
+  swComponentClassType: string | null;
+}
+
+/**
+ * Defines the structure for interface-based connection information for an R-Port.
+ */
+export interface SRInterfaceConnectionInfoRPort {
+  SRInterfaceName: string | null;
+  SRInterfaceUUID: string | null;
+  providerPortUUID: string | null;
+  providerPortName: string | null;
+  failureModeName: string | null;
+  failureModeUUID: string | null;
+  failureModeASIL: string | null;
+  swComponentClassName: string | null;
+  swComponentClassUUID: string | null;
+  swComponentClassType: string | null;
+}
+
+/**
  * Retrieves the assembly context for a given P-Port (Provider Port).
  * This query finds the software component that the P-Port is connected to
  * via an assembly connector, effectively identifying the "other end" of the connection.
@@ -26,7 +58,7 @@ export const getAssemblyContextForPPort = async (pPortUuid: string): Promise<Que
       //find the SW_COMPONENT_PROTOTYPEs which are connected to the swConnector
       MATCH (swConnector)-[:\`CONTEXT-COMPONENT-REF\`]->(swCompPro)
       WHERE swCompPro:SW_COMPONENT_PROTOTYPE OR swCompPro:VirtualArxmlRefTarget
-      //find the APPLICATION_SW_COMPONENT_TYPE which is connected for filtering out
+      //find the APPLICATION_SW_COMPONENT_TYPE etc which is connected for filtering out
       MATCH (containingSwc) -[:CONTAINS]->(pPortNode)
       WHERE (containingSwc:APPLICATION_SW_COMPONENT_TYPE OR containingSwc:COMPOSITION_SW_COMPONENT_TYPE OR containingSwc:SERVICE_SW_COMPONENT_TYPE)
         AND swCompPro.name <> containingSwc.name
@@ -472,4 +504,89 @@ export const getAllPortConnections = async (): Promise<{
     } finally {
         await session.close();
     }
+};
+
+/**
+ * Retrieves partner components and ports for a provider port via SENDER_RECEIVER_INTERFACE.
+ * This query finds connections that are not based on direct ASSEMBLY_SW_CONNECTORs but on
+ * shared SENDER_RECEIVER_INTERFACE definitions.
+ *
+ * @param pPortUuid The UUID of the P_PORT_PROTOTYPE node.
+ * @returns A Promise that resolves to the raw Neo4j QueryResult containing interface-based connection info.
+ */
+export const getSRInterfaceBasedConforPPort = async (pPortUuid: string): Promise<QueryResult<SRInterfaceConnectionInfo>> => {
+  const session = driver.session();
+  try {
+    const result = await session.run<SRInterfaceConnectionInfo>(
+      `
+      MATCH (pPortNode:P_PORT_PROTOTYPE {uuid: $pPortUuid})
+      //find the swConnector for this P_PORT
+      OPTIONAL MATCH (pPortNode)-[:\`PROVIDED-INTERFACE-TREF\`]->(SRInterface:SENDER_RECEIVER_INTERFACE)
+      // Get the connected R_PORT 
+      OPTIONAL MATCH (SRInterface)<-[:\`REQUIRED-INTERFACE-TREF\`]-(rPortNode) 
+      // get the FM of the R_PORT
+      OPTIONAL MATCH (rPortNode)<-[:OCCURRENCE]-(FM:FAILUREMODE)
+      // Get the component which contain the rPort
+      OPTIONAL MATCH (rPortNode)<-[:CONTAINS]-(swCompClass) 
+      RETURN DISTINCT 
+             SRInterface.name as SRInterfaceName,
+             SRInterface.uuid as SRInterfaceUUID,
+             rPortNode.uuid as receiverPortUUID,
+             rPortNode.name as receiverPortName,
+             FM.name as failureModeName,
+             FM.uuid as failureModeUUID,
+             FM.asil as failureModeASIL,
+             swCompClass.name as swComponentClassName,
+             swCompClass.uuid as swComponentClassUUID,
+             labels(swCompClass)[0] as swComponentClassType,
+             pPortNode, SRInterface, rPortNode, swCompClass, FM
+      `,
+      { pPortUuid }
+    );
+    return result;
+  } finally {
+    await session.close();
+  }
+};
+
+/**
+ * Retrieves partner components and ports for a receiver port via SENDER_RECEIVER_INTERFACE.
+ * This query finds connections that are not based on direct ASSEMBLY_SW_CONNECTORs but on
+ * shared SENDER_RECEIVER_INTERFACE definitions, looking from the perspective of an R-Port.
+ *
+ * @param rPortUuid The UUID of the R_PORT_PROTOTYPE node.
+ * @returns A Promise that resolves to the raw Neo4j QueryResult containing interface-based connection info.
+ */
+export const getSRInterfaceBasedConforRPort = async (rPortUuid: string): Promise<QueryResult<SRInterfaceConnectionInfoRPort>> => {
+  const session = driver.session();
+  try {
+    const result = await session.run<SRInterfaceConnectionInfoRPort>(
+      `
+      MATCH (rPortNode:R_PORT_PROTOTYPE {uuid: $rPortUuid})
+      //find the swConnector for this P_PORT
+      OPTIONAL MATCH (rPortNode)-[:\`REQUIRED-INTERFACE-TREF\`]->(SRInterface:SENDER_RECEIVER_INTERFACE)
+      // Get the connected p_PORT 
+      OPTIONAL MATCH (SRInterface)<-[:\`PROVIDED-INTERFACE-TREF\`]-(pPortNode) 
+      // get the FM of the P_PORT
+      OPTIONAL MATCH (pPortNode)<-[:OCCURRENCE]-(FM:FAILUREMODE)
+      // Get the component which contain the rPort
+      OPTIONAL MATCH (pPortNode)<-[:CONTAINS]-(swCompClass) 
+      RETURN DISTINCT 
+             SRInterface.name as SRInterfaceName,
+             SRInterface.uuid as SRInterfaceUUID,
+             pPortNode.uuid as providerPortUUID,
+             pPortNode.name as providerPortName,
+             FM.name as failureModeName,
+             FM.uuid as failureModeUUID,
+             FM.asil as failureModeASIL,
+             swCompClass.name as swComponentClassName,
+             swCompClass.uuid as swComponentClassUUID,
+             labels(swCompClass)[0] as swComponentClassType
+      `,
+      { rPortUuid }
+    );
+    return result;
+  } finally {
+    await session.close();
+  }
 };

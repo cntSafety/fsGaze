@@ -17,7 +17,7 @@ import ReactFlow, {
     Handle
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { Select, Alert, Spin, Card, Divider, Button, Modal, Typography, Switch, theme } from 'antd';
+import { Select, Alert, Spin, Card, Divider, Button, Modal, Typography, Switch, theme, Space, Flex, Descriptions } from 'antd';
 import { InfoCircleOutlined, NodeCollapseOutlined } from '@ant-design/icons';
 import ELK from 'elkjs/lib/elk.bundled.js';
 import {
@@ -504,131 +504,152 @@ function ArxmlFlowViewer() {
                 title="Partner Component Details"
                 open={isModalVisible}
                 onCancel={() => setIsModalVisible(false)}
-            footer={[
-                <div key="footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                        <Text style={{ marginRight: '8px' }}>Show Details:</Text>
-                        <Switch
-                            checked={showDetails}
-                            onChange={setShowDetails}
-                            size="small"
-                        />
-                    </div>
-                    <Button onClick={() => setIsModalVisible(false)}>
-                        Close
-                    </Button>
-                </div>
-            ]}
-            width={800}
-        >
-            {selectedConnection && (
-                <div>
-                    {/* Partner Component Info */}
-                    <div style={{ marginBottom: '24px', padding: '16px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #e9ecef' }}>
-                        <Title level={4} style={{ marginBottom: '12px', color: '#1890ff' }}>
-                            {selectedConnection.partner.name}
-                        </Title>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            <div>
-                                <Text strong>Type:</Text> <Text style={{ marginLeft: '8px' }}>{selectedConnection.partner.type}</Text>
-                            </div>
-                            {showDetails && (
-                                <div>
-                                    <Text strong style={{ fontSize: '12px' }}>UUID:</Text> <Text code style={{ fontSize: '11px', marginLeft: '8px' }}>{selectedConnection.partner.uuid}</Text>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* All Partner Ports */}
-                    <div style={{ marginBottom: '24px' }}>
-                        <Title level={5} style={{ marginBottom: '12px' }}>All Ports of ({selectedConnection.partner.ports.length})</Title>
-                        <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid #e9ecef', borderRadius: '6px' }}>
-                            {selectedConnection.partner.ports.map((port: PortInfo, index: number) => (
-                                <div key={index} style={{
-                                    padding: '12px',
-                                    borderBottom: index < selectedConnection.partner.ports.length - 1 ? '1px solid #f0f0f0' : 'none',
-                                    backgroundColor: index % 2 === 0 ? '#fafafa' : '#ffffff'
-                                }}>
-                                    <div style={{ marginBottom: '4px' }}>
-                                        <Text strong style={{ fontSize: '16px' }}>{port.name}</Text>
-                                    </div>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                        <div>
-                                            <PortInterfaceInfo portUuid={port.uuid} />
-                                        </div>
+                footer={
+                    <Flex justify="space-between" align="center" style={{ width: '100%' }}>
+                        <Space>
+                            <Text>Show Details:</Text>
+                            <Switch checked={showDetails} onChange={setShowDetails} size="small" />
+                        </Space>
+                        <Button onClick={() => setIsModalVisible(false)}>Close</Button>
+                    </Flex>
+                }
+                width={800}
+            >
+                {selectedConnection && (
+                    <Space direction="vertical" style={{ width: '100%' }}>
+                        {/* Partner Component Info */}
+                        <Card
+                            type="inner"
+                            title={
+                                <Title level={4} style={{ margin: 0, color: token.colorPrimary }}>
+                                    {selectedConnection.partner.name}
+                                </Title>
+                            }
+                        >
+                            <Descriptions column={1} size="small">
+                                <Descriptions.Item label="Type">
+                                    {selectedConnection.partner.type}
+                                </Descriptions.Item>
+                                {showDetails && (
+                                    <Descriptions.Item label="UUID">
+                                        <Text code>{selectedConnection.partner.uuid}</Text>
+                                    </Descriptions.Item>
+                                )}
+                            </Descriptions>
+                        </Card>
+                        
+                        {/* All Partner Ports */}
+                        <Card
+                            type="inner"
+                            title={`All Ports of (${selectedConnection.partner.ports.length})`}
+                            bodyStyle={{ maxHeight: '200px', overflowY: 'auto' }}
+                        >
+                            <Space direction="vertical" style={{ width: '100%' }}>
+                                {selectedConnection.partner.ports.map((port: PortInfo, index: number) => (
+                                    <Card 
+                                        key={index} 
+                                        size="small" 
+                                        style={{ 
+                                            backgroundColor: index % 2 === 0 ? token.colorBgLayout : token.colorBgContainer
+                                        }}
+                                    >
+                                        <Text strong>{port.name}</Text>
+                                        <PortInterfaceInfo portUuid={port.uuid} />
                                         {showDetails && (
-                                            <div>
-                                                <Text strong style={{ fontSize: '12px' }}>UUID:</Text> <Text code style={{ fontSize: '11px', marginLeft: '8px' }}>{port.uuid}</Text>
-                                            </div>
+                                            <Descriptions column={1} size="small" style={{ marginTop: token.marginXS }}>
+                                                <Descriptions.Item label="UUID">
+                                                    <Text code>{port.uuid}</Text>
+                                                </Descriptions.Item>
+                                            </Descriptions>
                                         )}
-                                    </div>
-                                </div>
+                                    </Card>
+                                ))}
+                            </Space>
+                        </Card>
+                        
+                        {/* All Connections to this Partner */}
+                        <Card
+                            type="inner"
+                            title={`All Connections to this Partner (${selectedConnection.allConnections.length})`}
+                            bodyStyle={{ maxHeight: '300px', overflowY: 'auto' }}
+                        >
+                            {selectedConnection.allConnections.map((connection: Connection, index: number) => (
+                                <Card 
+                                    key={index} 
+                                    size="small" 
+                                    style={{ 
+                                        marginBottom: token.marginSM,
+                                        backgroundColor: index % 2 === 0 ? token.colorBgLayout : token.colorBgContainer
+                                    }}
+                                    title={connection.name}
+                                >
+                                    <Descriptions column={1} size="small">
+                                        {showDetails && (
+                                            <Descriptions.Item label="UUID">
+                                                <Text code>{connection.uuid}</Text>
+                                            </Descriptions.Item>
+                                        )}
+                                    </Descriptions>
+
+                                    {connection.TargetPPort && (
+                                        <Card
+                                            type="inner"
+                                            size="small"
+                                            title="Provider Port"
+                                            headStyle={{ 
+                                                color: token.colorSuccessText, 
+                                                backgroundColor: token.colorSuccessBg 
+                                            }}
+                                            style={{ marginTop: token.marginXS }}
+                                        >
+                                            <Text strong>{connection.TargetPPort.name}</Text>
+                                            {showDetails && (
+                                                <Descriptions column={1} size="small" style={{ marginTop: token.marginXS }}>
+                                                    <Descriptions.Item label="UUID">
+                                                        <Text code>{connection.TargetPPort.uuid}</Text>
+                                                    </Descriptions.Item>
+                                                </Descriptions>
+                                            )}
+                                        </Card>
+                                    )}
+
+                                    {connection.TargetRPort && (
+                                        <Card
+                                            type="inner"
+                                            size="small"
+                                            title="Receiver Port"
+                                            headStyle={{
+                                                color: token.colorPrimaryText,
+                                                backgroundColor: token.colorPrimaryBg
+                                            }}
+                                            style={{ marginTop: token.marginXS }}
+                                        >
+                                            <Text strong>{connection.TargetRPort.name}</Text>
+                                            {showDetails && (
+                                                <Descriptions column={1} size="small" style={{ marginTop: token.marginXS }}>
+                                                    <Descriptions.Item label="UUID">
+                                                        <Text code>{connection.TargetRPort.uuid}</Text>
+                                                    </Descriptions.Item>
+                                                </Descriptions>
+                                            )}
+                                        </Card>
+                                    )}
+                                </Card>
                             ))}
-                        </div>
-                    </div>
-
-                    {/* All Connections to this Partner */}
-                    <div>
-                        <Title level={5} style={{ marginBottom: '12px' }}>All Connections to this Partner ({selectedConnection.allConnections.length})</Title>
-                        <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid #e9ecef', borderRadius: '6px' }}>
-                            {selectedConnection.allConnections.map((connection: Connection, index: number) => {
-                                return (
-                                    <div key={index} style={{
-                                        padding: '16px',
-                                        borderBottom: index < selectedConnection.allConnections.length - 1 ? '1px solid #f0f0f0' : 'none',
-                                        backgroundColor: index % 2 === 0 ? '#fafafa' : '#ffffff'
-                                    }}>
-                                        <div style={{ marginBottom: '8px' }}>
-                                            <Text strong style={{ fontSize: '16px' }}>{connection.name}</Text>
-                                        </div>
-                                        {showDetails && (
-                                            <div style={{ marginBottom: '8px' }}>
-                                                <Text strong style={{ fontSize: '12px' }}>UUID:</Text> <Text code style={{ fontSize: '11px', marginLeft: '8px' }}>{connection.uuid}</Text>
-                                            </div>
-                                        )}
-
-                                        {connection.TargetPPort && (
-                                            <div style={{ marginBottom: '8px', padding: '8px', backgroundColor: '#f0f8ff', borderRadius: '4px' }}>
-                                                <Text strong style={{ fontSize: '14px', color: '#0050b3' }}>Provider Port:</Text>
-                                                <div style={{ marginTop: '4px', marginLeft: '12px' }}>
-                                                    <div><Text strong style={{ fontSize: '16px' }}>{connection.TargetPPort.name}</Text></div>
-                                                    {showDetails && (
-                                                        <div><Text strong style={{ fontSize: '12px' }}>UUID:</Text> <Text code style={{ fontSize: '11px', marginLeft: '8px' }}>{connection.TargetPPort.uuid}</Text></div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {connection.TargetRPort && (
-                                            <div style={{ padding: '8px', backgroundColor: '#f6ffed', borderRadius: '4px' }}>
-                                                <Text strong style={{ fontSize: '14px', color: '#389e0d' }}>Receiver Port:</Text>
-                                                <div style={{ marginTop: '4px', marginLeft: '12px' }}>
-                                                    <div><Text strong style={{ fontSize: '16px' }}>{connection.TargetRPort.name}</Text></div>
-                                                    {showDetails && (
-                                                        <div><Text strong style={{ fontSize: '12px' }}>UUID:</Text> <Text code style={{ fontSize: '11px', marginLeft: '8px' }}>{connection.TargetRPort.uuid}</Text></div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                </div>
-            )}
-        </Modal>
+                        </Card>
+                    </Space>
+                )}
+            </Modal>
         );
     };
 
     if (loadingPrototypes) {
         return (
             <Card title={
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Space align="center">
                     <NodeCollapseOutlined />
                     <span>SW Component Connection Flow</span>
-                </div>
+                </Space>
             }>
                 <Spin />
             </Card>
@@ -638,94 +659,96 @@ function ArxmlFlowViewer() {
     return (
         <Card
             title={
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Space align="center">
                     <NodeCollapseOutlined />
                     <span>SW Component Connection Flow</span>
-                </div>
+                </Space>
             }
         >
-            <div style={{ marginBottom: '20px' }}>
-                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
-                    Select SW Component Prototype:
-                </label>
-                <Select
-                    style={{ width: '100%', maxWidth: '500px' }}
-                    placeholder="Choose a SW Component Prototype"
-                    value={selectedPrototype}
-                    onChange={handlePrototypeSelect}
-                    loading={loadingPrototypes}
-                    showSearch
-                    filterOption={(input, option) =>
-                        option?.children?.toString().toLowerCase().includes(input.toLowerCase()) ?? false
-                    }
-                >
-                    {prototypes.map(prototype => (
-                        <Option key={prototype.uuid} value={prototype.uuid}>
-                            {prototype.name} ({prototype.shortName})
-                        </Option>
-                    ))}
-                </Select>
-            </div>
+            <Flex vertical gap="large">
+                <Flex vertical>
+                    <label style={{ fontWeight: 'bold' }}>
+                        Select SW Component Prototype:
+                    </label>
+                    <Select
+                        style={{ width: '100%', maxWidth: '500px' }}
+                        placeholder="Choose a SW Component Prototype"
+                        value={selectedPrototype}
+                        onChange={handlePrototypeSelect}
+                        loading={loadingPrototypes}
+                        showSearch
+                        filterOption={(input, option) =>
+                            option?.children?.toString().toLowerCase().includes(input.toLowerCase()) ?? false
+                        }
+                    >
+                        {prototypes.map(prototype => (
+                            <Option key={prototype.uuid} value={prototype.uuid}>
+                                {prototype.name} ({prototype.shortName})
+                            </Option>
+                        ))}
+                    </Select>
+                </Flex>
 
-            {error && (
-                <Alert
-                    message="Error"
-                    description={error}
-                    type="error"
-                    showIcon
-                    style={{ marginBottom: '20px' }}
-                />
-            )}
+                {error && (
+                    <Alert
+                        message="Error"
+                        description={error}
+                        type="error"
+                        showIcon
+                        style={{ marginBottom: '20px' }}
+                    />
+                )}
 
-            {loading && (
-                <div style={{ textAlign: 'center', padding: '40px' }}>
-                    <Spin size="large" />
-                    <div style={{ marginTop: '16px' }}>Loading connection flow...</div>
-                </div>
-            )}
-            
-            {scopedData && !loading && (
-                 <div style={{ height: '70vh', border: `1px solid ${token.colorBorder}`, borderRadius: token.borderRadiusLG, background: token.colorBgContainer }}>
-                    <ReactFlowProvider>
-                        <ReactFlow
-                            nodes={nodes}
-                            edges={edges}
-                            onNodesChange={onNodesChange}
-                            onEdgesChange={onEdgesChange}
-                            onEdgeClick={handleEdgeClick}
-                            nodeTypes={nodeTypes}
-                            fitView
-                            fitViewOptions={{ padding: 0.2 }}
-                            minZoom={0.1}
-                            maxZoom={2}
-                            connectionLineType={ConnectionLineType.SmoothStep}
-                            elementsSelectable={true}
-                            edgesFocusable={true}
-                        >
-                            <Background />
-                            <Controls />
-                            <Panel position="top-left">
-                                <div style={{ background: 'rgba(255, 255, 255, 0.9)', padding: '8px', borderRadius: '4px', fontSize: '12px' }}>
-                                    <div><strong>Legend:</strong></div>
-                                    <div>🎯 Scope Element (Center)</div>
-                                    <div>🔗 Partner Components</div>
-                                    <div style={{ color: '#22C55E', fontWeight: 'bold' }}>■ Green: Standard Partners (P-Port OR R-Port)</div>
-                                    <div style={{ color: '#3B82F6', fontWeight: 'bold' }}>■ Blue: Mixed Partners (P-Port AND R-Port)</div>
-                                    <div>📡 Click edges for connection details</div>
-                                </div>
-                            </Panel>
-                        </ReactFlow>
-                    </ReactFlowProvider>
-                </div>
-            )}
-            
-            {!selectedPrototype && !loadingPrototypes && (
-                <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
-                    <InfoCircleOutlined style={{ fontSize: '24px', marginBottom: '16px' }} />
-                    <div>Please select a SW Component Prototype to view its connection flow</div>
-                </div>
-            )}
-            {renderConnectionModal()}
+                {loading && (
+                    <Flex vertical align="center" justify="center" style={{ padding: '40px' }}>
+                        <Spin size="large" />
+                        <div style={{ marginTop: '16px' }}>Loading connection flow...</div>
+                    </Flex>
+                )}
+                
+                {scopedData && !loading && (
+                    <div style={{ height: '70vh', border: `1px solid ${token.colorBorder}`, borderRadius: token.borderRadiusLG, background: token.colorBgContainer }}>
+                        <ReactFlowProvider>
+                            <ReactFlow
+                                nodes={nodes}
+                                edges={edges}
+                                onNodesChange={onNodesChange}
+                                onEdgesChange={onEdgesChange}
+                                onEdgeClick={handleEdgeClick}
+                                nodeTypes={nodeTypes}
+                                fitView
+                                fitViewOptions={{ padding: 0.2 }}
+                                minZoom={0.1}
+                                maxZoom={2}
+                                connectionLineType={ConnectionLineType.SmoothStep}
+                                elementsSelectable={true}
+                                edgesFocusable={true}
+                            >
+                                <Background />
+                                <Controls />
+                                <Panel position="top-left">
+                                    <div style={{ background: 'rgba(255, 255, 255, 0.9)', padding: '8px', borderRadius: '4px', fontSize: '12px' }}>
+                                        <div><strong>Legend:</strong></div>
+                                        <div>🎯 Scope Element (Center)</div>
+                                        <div>🔗 Partner Components</div>
+                                        <div style={{ color: '#22C55E', fontWeight: 'bold' }}>■ Green: Standard Partners (P-Port OR R-Port)</div>
+                                        <div style={{ color: '#3B82F6', fontWeight: 'bold' }}>■ Blue: Mixed Partners (P-Port AND R-Port)</div>
+                                        <div>📡 Click edges for connection details</div>
+                                    </div>
+                                </Panel>
+                            </ReactFlow>
+                        </ReactFlowProvider>
+                    </div>
+                )}
+                
+                {!selectedPrototype && !loadingPrototypes && (
+                    <Flex vertical align="center" justify="center" style={{ padding: '40px', color: token.colorTextSecondary }}>
+                        <InfoCircleOutlined style={{ fontSize: '24px', marginBottom: '16px' }} />
+                        <div>Please select a SW Component Prototype to view its connection flow</div>
+                    </Flex>
+                )}
+                {renderConnectionModal()}
+            </Flex>
         </Card>
     );
 }

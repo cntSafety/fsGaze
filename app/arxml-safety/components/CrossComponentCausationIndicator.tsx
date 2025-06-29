@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Card, Typography, Space, Button, Tag, Alert } from 'antd';
+import { Card, Typography, Space, Button, Tag, Alert, theme, Flex } from 'antd';
 import { LinkOutlined, CloseOutlined } from '@ant-design/icons';
 import type { CausationSelection } from '../hooks/types/causation';
 
@@ -24,6 +24,8 @@ export const CrossComponentCausationIndicator: React.FC<CrossComponentCausationI
   statusText,
   onClear
 }) => {
+  const { token } = theme.useToken();
+
   if (!first && !second) {
     return null;
   }
@@ -32,13 +34,13 @@ export const CrossComponentCausationIndicator: React.FC<CrossComponentCausationI
     <Card 
       size="small" 
       style={{ 
-        marginBottom: '16px',
-        backgroundColor: isCrossComponent ? '#f6ffed' : '#f0f8ff',
-        border: isCrossComponent ? '1px solid #b7eb8f' : '1px solid #91caff'
+        marginBottom: token.marginMD,
+        backgroundColor: isCrossComponent ? token.colorSuccessBg : token.colorPrimaryBg,
+        border: `1px solid ${isCrossComponent ? token.colorSuccessBorder : token.colorPrimaryBorder}`
       }}
       title={
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <Flex align="center" justify="space-between">
+          <Space>
             <LinkOutlined />
             <span>
               {isCrossComponent ? 'Cross-Component Causation' : 'Causation Link'}
@@ -46,7 +48,7 @@ export const CrossComponentCausationIndicator: React.FC<CrossComponentCausationI
             {isCrossComponent && (
               <Tag color="green">Cross-Component</Tag>
             )}
-          </div>
+          </Space>
           <Button 
             size="small"
             type="text"
@@ -54,37 +56,37 @@ export const CrossComponentCausationIndicator: React.FC<CrossComponentCausationI
             onClick={onClear}
             title="Clear selections"
           />
-        </div>
+        </Flex>
       }
     >
       <Space direction="vertical" style={{ width: '100%' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-          <div>
-            <Text strong>Cause: </Text>
+        <Flex align="center" gap="large" wrap="wrap">
+          <Space direction="vertical">
+            <Text strong>Cause:</Text>
             {first ? (
               <div>
-                <Text code style={{ color: '#1890ff' }}>{first.failureName}</Text>
+                <Text code style={{ color: token.colorPrimaryText }}>{first.failureName}</Text>
                 <br />
-                <Text type="secondary" style={{ fontSize: '12px' }}>
+                <Text type="secondary" style={{ fontSize: token.fontSizeSM }}>
                   {first.componentName} • {first.sourceType}
                 </Text>
               </div>
             ) : (
               <Text type="secondary">Click a failure to select cause</Text>
             )}
-          </div>
+          </Space>
           
           {first && (
-            <span style={{ fontSize: '16px', color: '#52c41a' }}>→</span>
+            <Text style={{ fontSize: token.fontSizeLG, color: token.colorSuccess }}>→</Text>
           )}
           
-          <div>
-            <Text strong>Effect: </Text>
+          <Space direction="vertical">
+            <Text strong>Effect:</Text>
             {second ? (
               <div>
-                <Text code style={{ color: '#ff7875' }}>{second.failureName}</Text>
+                <Text code style={{ color: token.colorErrorText }}>{second.failureName}</Text>
                 <br />
-                <Text type="secondary" style={{ fontSize: '12px' }}>
+                <Text type="secondary" style={{ fontSize: token.fontSizeSM }}>
                   {second.componentName} • {second.sourceType}
                 </Text>
               </div>
@@ -93,14 +95,14 @@ export const CrossComponentCausationIndicator: React.FC<CrossComponentCausationI
             ) : (
               <Text type="secondary">Select cause failure first</Text>
             )}
-          </div>
-        </div>
+          </Space>
+        </Flex>
         
         <Alert
           message={statusText}
           type={isReady ? 'success' : 'info'}
           showIcon
-          style={{ marginTop: '8px' }}
+          style={{ marginTop: token.marginSM }}
         />
       </Space>
     </Card>

@@ -2,12 +2,37 @@ import { useCallback } from 'react';
 import { message } from 'antd';
 import { useCausationStorage } from './useCausationStorage';
 import { createCausationBetweenFailureModes } from '@/app/services/ArxmlToNeoService';
-import type { CausationSelection } from './types/causation';
+import type { CausationSelection, CausationSelectionState } from './types/causation';
+
+interface SelectionDisplayInfo {
+  first: CausationSelection | null;
+  second: CausationSelection | null;
+  firstDisplay: string | null;
+  secondDisplay: string | null;
+  statusText: string;
+  isReady: boolean;
+  isCrossComponent: boolean;
+}
+
+interface UseCrossComponentCausationReturn {
+  selectionState: CausationSelectionState;
+  handleFailureSelection: (
+    failureUuid: string,
+    failureName: string,
+    sourceType?: 'component' | 'provider-port' | 'receiver-port',
+    overrideComponentUuid?: string,
+    overrideComponentName?: string
+  ) => Promise<void>;
+  clearSelections: () => void;
+  isFailureSelected: (failureUuid: string) => boolean;
+  getFailureSelectionState: (failureUuid: string) => 'first' | 'second' | null;
+  getSelectionDisplayInfo: () => SelectionDisplayInfo;
+}
 
 export const useCrossComponentCausation = (
   currentComponentUuid: string,
   currentComponentName: string
-) => {
+): UseCrossComponentCausationReturn => {
   const {
     selectionState,
     addSelection,
@@ -67,7 +92,7 @@ export const useCrossComponentCausation = (
   ]);
 
   // Get display information for selections
-  const getSelectionDisplayInfo = useCallback(() => {
+  const getSelectionDisplayInfo = useCallback((): SelectionDisplayInfo => {
     const info = getSelectionInfo();
     
     return {
