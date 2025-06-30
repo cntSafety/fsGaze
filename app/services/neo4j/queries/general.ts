@@ -536,26 +536,48 @@ export const importFullGraph = async (
     
     log(`[IMPORT] Phase 3 complete: ${totalNodesCreated} nodes created.`);
     
-    // Phase 4: Create relationships in batches
+    // Phase 4: Create relationships in batches using an optimized strategy
     log('[IMPORT] Phase 4: Creating relationships...');
     
     let totalRelationshipsCreated = 0;
     
-    // Group relationships by type for efficient Cypher queries
-    const typeGroups = new Map<string, ImportRelationshipData[]>();
-    
+    // Step 4.1: Create a map of UUIDs to their labels for fast lookups.
+    const uuidToLabelsMap = new Map<string, string[]>();
+    nodesData.forEach(node => {
+      // Sorting labels ensures a consistent key for grouping later.
+      uuidToLabelsMap.set(node.uuid, [...node.labels].sort());
+    });
+    log('[IMPORT] Created a UUID-to-label map for relationship matching.');
+
+    // Step 4.2: Group relationships by a composite key: type|startLabels|endLabels
+    const relsByGroupKey = new Map<string, ImportRelationshipData[]>();
+    const relsWithMissingLabels: ImportRelationshipData[] = [];
+
     relationshipsData.forEach(rel => {
-      if (!typeGroups.has(rel.type)) {
-        typeGroups.set(rel.type, []);
+      const startLabels = uuidToLabelsMap.get(rel.start);
+      const endLabels = uuidToLabelsMap.get(rel.end);
+
+      if (startLabels && endLabels && startLabels.length > 0 && endLabels.length > 0) {
+        const groupKey = `${rel.type}|${startLabels.join(':')}|${endLabels.join(':')}`;
+        if (!relsByGroupKey.has(groupKey)) {
+          relsByGroupKey.set(groupKey, []);
+        }
+        relsByGroupKey.get(groupKey)!.push(rel);
+      } else {
+        // Fallback for relationships where one of the nodes might be missing labels
+        relsWithMissingLabels.push(rel);
       }
-      typeGroups.get(rel.type)!.push(rel);
     });
     
-    log(`[IMPORT] Grouped relationships into ${typeGroups.size} types.`);
+    log(`[IMPORT] Grouped relationships into ${relsByGroupKey.size} optimized groups.`);
+    if (relsWithMissingLabels.length > 0) {
+      log(`[WARN] Found ${relsWithMissingLabels.length} relationships with missing node label info; will use a slower, generic import for these.`);
+    }
     
-    // Create relationships for each type in batches
-    for (const [relType, groupRels] of Array.from(typeGroups)) {
-      log(`[IMPORT] Processing ${groupRels.length} relationships of type: ${relType}`);
+    // Step 4.3: Create relationships for each optimized group in batches
+    for (const [groupKey, groupRels] of Array.from(relsByGroupKey)) {
+      const [relType, startLabelsStr, endLabelsStr] = groupKey.split('|');
+      log(`[IMPORT] Processing ${groupRels.length} relationships of type '${relType}' between :${startLabelsStr.replace(/:/g, ':')} and :${endLabelsStr.replace(/:/g, ':')}`);
       
       for (let i = 0; i < groupRels.length; i += BATCH_SIZE) {
         const batch = groupRels.slice(i, i + BATCH_SIZE);
@@ -563,8 +585,8 @@ export const importFullGraph = async (
         await session.writeTransaction(async tx => {
           const result = await tx.run(`
             UNWIND $relBatch AS relData
-            MATCH (startNode {uuid: relData.start})
-            MATCH (endNode {uuid: relData.end})
+            MATCH (startNode:${startLabelsStr} {uuid: relData.start})
+            MATCH (endNode:${endLabelsStr} {uuid: relData.end})
             CREATE (startNode)-[r:\`${relType}\`]->(endNode)
             SET r += relData.properties
             RETURN count(r) AS created
@@ -574,7 +596,30 @@ export const importFullGraph = async (
           totalRelationshipsCreated += created;
         });
         
-        log(`[IMPORT] Created batch of ${batch.length} relationships for ${relType}.`);
+        log(`[IMPORT] Created batch of ${batch.length} relationships for group ${groupKey}.`);
+      }
+    }
+
+    // Step 4.4: Process any fallback relationships
+    if (relsWithMissingLabels.length > 0) {
+      for (let i = 0; i < relsWithMissingLabels.length; i += BATCH_SIZE) {
+        const batch = relsWithMissingLabels.slice(i, i + BATCH_SIZE);
+        
+        await session.writeTransaction(async tx => {
+          const result = await tx.run(`
+            UNWIND $relBatch AS relData
+            MATCH (startNode {uuid: relData.start})
+            MATCH (endNode {uuid: relData.end})
+            CREATE (startNode)-[r:\`${batch[0].type}\`]->(endNode)
+            SET r += relData.properties
+            RETURN count(r) AS created
+          `, { relBatch: batch });
+          
+          const created = result.records[0]?.get('created')?.toNumber() || 0;
+          totalRelationshipsCreated += created;
+        });
+        
+        log(`[IMPORT] Created fallback batch of ${batch.length} relationships.`);
       }
     }
     
