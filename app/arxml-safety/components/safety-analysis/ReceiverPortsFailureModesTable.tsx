@@ -178,6 +178,7 @@ export default function ReceiverPortsFailureModesTable({
       form={form}
       onFailureSelect={onFailureSelect}
       selectedFailures={selectedFailures}
+      scroll={{ x: 'max-content' }}
       pagination={{
         current: portCurrentPage,
         pageSize: portPageSize,

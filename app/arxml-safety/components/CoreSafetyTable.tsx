@@ -675,9 +675,9 @@ export default function CoreSafetyTable({
       title: 'Actions',
       dataIndex: 'actions',
       key: 'actions',
-      width: columnWidths['actions'] || 120, // Reduced width since we have fewer visible buttons
+      width: 240, // Fixed width for Actions column
       onHeaderCell: () => ({
-        width: columnWidths['actions'] || 120,
+        width: 240,
         onResize: handleResize(columns.length, 'actions'),
       } as any),
       render: (_: unknown, record: SafetyTableRow, index: number) => {

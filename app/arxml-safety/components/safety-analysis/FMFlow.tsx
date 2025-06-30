@@ -301,7 +301,7 @@ export default function FMFlow({
       // console.log('🔍 Fetching causation relationships...');
       const result = await getSafetyGraph();
       if (result.success && result.data?.causationLinks) {
-        console.log(`✅ Found ${result.data.causationLinks.length} causation links:`, result.data.causationLinks);
+        //console.log(`✅ Found ${result.data.causationLinks.length} causation links:`, result.data.causationLinks);
         // console.log (`data from getSafetzGraph:`, result.data);
         return result.data.causationLinks;
       }

@@ -27,16 +27,16 @@ export const useSwFailureModes = (
 
   // Update table data when failures or component changes
   useEffect(() => {
-    console.log('🔄 useSwFailureModes: useEffect triggered', {
+/*     console.log('🔄 useSwFailureModes: useEffect triggered', {
       swComponent: swComponent?.name,
       failuresCount: failures.length,
       failures: failures.map(f => ({ uuid: f.failureUuid, name: f.failureName }))
-    });
+    }); */
     
     if (!swComponent) return;
     
     if (failures.length === 0) {
-      console.log('📝 useSwFailureModes: Setting empty state');
+      // console.log('📝 useSwFailureModes: Setting empty state');
       setTableData([{
         key: `${swComponentUuid}-empty`,
         swComponentUuid,
@@ -46,7 +46,7 @@ export const useSwFailureModes = (
         asil: '-'
       }]);
     } else {
-      console.log('📝 useSwFailureModes: Setting table data with failures');
+      // console.log('📝 useSwFailureModes: Setting table data with failures');
       const tableRows: SafetyTableRow[] = failures.map(failure => ({
         key: failure.failureUuid,
         swComponentUuid: swComponentUuid,

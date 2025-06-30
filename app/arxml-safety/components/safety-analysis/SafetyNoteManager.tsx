@@ -301,6 +301,7 @@ export default function SafetyNoteManager({
           rows={6}
           maxLength={2000}
           showCount
+          style={{ marginBottom: '20px' }}
         />
       </Modal>
     </>
