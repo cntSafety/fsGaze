@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useCallback, useRef } from 'react';
-import { Button, Space, Typography, Spin, Alert, Card, Upload, Input, Modal, Tabs } from 'antd';
-import { UploadOutlined, DatabaseOutlined, DownloadOutlined, ExportOutlined, LinkOutlined } from '@ant-design/icons';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { Button, Space, Typography, Spin, Alert, Card, Upload, Input, Modal, Tabs, Popover } from 'antd';
+import { UploadOutlined, DatabaseOutlined, DownloadOutlined, ExportOutlined, LinkOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { getSafetyGraph } from '@/app/services/neo4j/queries/safety/exportGraph';
 import { importFullGraph } from '@/app/services/neo4j/queries/general';
 import StatusDB, { StatusDBRef } from '@/app/components/statusDB';
@@ -107,8 +107,41 @@ const SafetyDataExchange: React.FC = () => {
   const [showFullGraphImportModal, setShowFullGraphImportModal] = useState<boolean>(false);
   const [selectedImportFiles, setSelectedImportFiles] = useState<File[]>([]);
 
+  // State for pre-parsed import data
+  const [parsedNodes, setParsedNodes] = useState<any[]>([]);
+  const [parsedRelationships, setParsedRelationships] = useState<any[]>([]);
+
   // Ref to trigger refresh of StatusDB component after import
   const statusDBRef = useRef<StatusDBRef | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const importLogTextAreaRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (importLogTextAreaRef.current) {
+      // The actual textarea element is nested within Ant Design's component structure
+      const textArea = importLogTextAreaRef.current.resizableTextArea?.textArea;
+      if (textArea) {
+        textArea.scrollTop = textArea.scrollHeight;
+      }
+    }
+  }, [fullGraphImportLogs]);
+
+  const unzipHelpContent = (
+    <div>
+      <Paragraph style={{ margin: 0, fontSize: '14px' }}>
+        <strong>Win PowerShell:</strong>
+        <Typography.Paragraph code copyable>
+          {'Expand-Archive -Path "myPath\\graph-export.zip" -DestinationPath "myPath\\extracted-graph"'}
+        </Typography.Paragraph>
+      </Paragraph>
+      <Paragraph style={{ margin: 0, fontSize: '14px' }}>
+        <strong>Linux:</strong>
+        <Typography.Paragraph code copyable>
+          {'unzip path/to/graph-export.zip -d path/to/extracted-graph'}
+        </Typography.Paragraph>
+      </Paragraph>
+    </div>
+  );
 
 
   const handleExport = useCallback(async () => {
@@ -297,137 +330,67 @@ const SafetyDataExchange: React.FC = () => {
     }
   };
 
+  // Helper function to transform Neo4j Integer-like objects back to numbers
+  const transformProperties = (properties: Record<string, any>): Record<string, any> => {
+    if (!properties) return properties;
+    const newProps: Record<string, any> = {};
+    for (const key in properties) {
+      if (Object.prototype.hasOwnProperty.call(properties, key)) {
+        const value = properties[key];
+        if (
+          value !== null &&
+          typeof value === 'object' &&
+          !Array.isArray(value) &&
+          'low' in value &&
+          'high' in value &&
+          typeof value.low === 'number' &&
+          typeof value.high === 'number'
+        ) {
+          // This looks like a Neo4j Integer object that was JSON.stringified.
+          // Reconstruct it as a number. Note: This might lose precision for very large numbers,
+          // but it's often sufficient and solves the import error.
+          // A more robust solution for 64-bit integers would require a BigInt library.
+          newProps[key] = value.high * Math.pow(2, 32) + value.low;
+        } else if (typeof value === 'object' && value !== null) {
+          // Recursively transform nested objects (though Neo4j properties are typically flat)
+          newProps[key] = transformProperties(value);
+        } else {
+          newProps[key] = value;
+        }
+      }
+    }
+    return newProps;
+  };
+
   const handleFullGraphImport = async () => {
     console.log('[DEBUG] handleFullGraphImport called');
-    console.log('[DEBUG] selectedImportFiles.length:', selectedImportFiles.length);
-    console.log('[DEBUG] selectedImportFiles:', selectedImportFiles.map(f => ({ name: f.name, size: f.size, path: f.webkitRelativePath })));
     
-    if (selectedImportFiles.length === 0) {
-      setFullGraphImportError('Please select graph data files to import');
+    if (parsedNodes.length === 0 || parsedRelationships.length === 0) {
+      setFullGraphImportError('No parsed graph data available. Please select a folder first.');
       return;
     }
 
     setIsImportingFullGraph(true);
-    setFullGraphImportLogs(['[INFO] Starting full graph import...']);
+    // Keep existing logs, just add new ones
+    setFullGraphImportLogs(prev => [
+      ...prev, 
+      '[INFO] Starting database import operation...',
+      '[WARNING] This operation will COMPLETELY WIPE the current database!'
+    ]);
     setFullGraphImportError(null);
     setShowFullGraphImportModal(true);
 
     try {
-      console.log('[DEBUG] Starting file processing...');
-      setFullGraphImportLogs(prev => [...prev, `[INFO] Processing ${selectedImportFiles.length} files...`]);
-      
-      // Validate file structure
-      console.log('[DEBUG] Validating file structure...');
-      const hasRelationships = selectedImportFiles.some(file => file.name === 'relationships.json');
-      const nodeFiles = selectedImportFiles.filter(file => 
-        file.webkitRelativePath?.includes('/nodes/') && file.name.endsWith('.json')
-      );
-      
-      console.log('[DEBUG] hasRelationships:', hasRelationships);
-      console.log('[DEBUG] nodeFiles.length:', nodeFiles.length);
-      console.log('[DEBUG] nodeFiles:', nodeFiles.map(f => ({ name: f.name, path: f.webkitRelativePath })));
-      
-      if (!hasRelationships) {
-        throw new Error('relationships.json file is required for import');
-      }
-      
-      if (nodeFiles.length === 0) {
-        throw new Error('No node files found. Please ensure node files are in a "nodes" directory structure');
-      }
-      
-      setFullGraphImportLogs(prev => [...prev, `[INFO] Found ${nodeFiles.length} node files and relationships.json`]);
-      setFullGraphImportLogs(prev => [...prev, '[WARNING] This operation will COMPLETELY WIPE the current database!']);
-      
-      // Parse files directly
-      console.log('[DEBUG] Starting file parsing...');
-      setFullGraphImportLogs(prev => [...prev, '[INFO] Parsing node files...']);
-      
-      const nodesData: any[] = [];
-      let relationshipsData: any[] = [];
-      
-      console.log('[DEBUG] Processing files...');
-      // Parse all files
-      for (const file of selectedImportFiles) {
-        console.log(`[DEBUG] Processing file: ${file.name}, size: ${file.size}, path: ${file.webkitRelativePath}`);
-        
-        const content = await file.text();
-        console.log(`[DEBUG] File content length: ${content.length}`);
-        
-        const data = JSON.parse(content);
-        console.log(`[DEBUG] Parsed data for ${file.name}:`, typeof data, Array.isArray(data) ? `Array(${data.length})` : 'Object');
-        
-        if (file.name === 'relationships.json') {
-          // This is the relationships file
-          console.log('[DEBUG] Processing relationships.json');
-          if (Array.isArray(data)) {
-            // Map the exported format to the import format
-            relationshipsData = data.map((rel: any) => ({
-              type: rel.type,
-              properties: rel.properties,
-              start: rel.startNodeUuid, // Map startNodeUuid to start
-              end: rel.endNodeUuid      // Map endNodeUuid to end
-            }));
-            console.log(`[DEBUG] Mapped ${data.length} relationships`);
-            setFullGraphImportLogs(prev => [...prev, `[INFO] Found ${data.length} relationships in ${file.name}`]);
-          } else {
-            throw new Error(`${file.name} does not contain an array of relationships`);
-          }
-        } else if (file.name.endsWith('.json')) {
-          // This should be a node file
-          console.log(`[DEBUG] Processing node file: ${file.name}`);
-          if (data.labels && data.properties) {
-            // Check if uuid is in the data, if not try to extract from filename
-            let uuid = data.uuid;
-            console.log(`[DEBUG] Node UUID from data: ${uuid}`);
-            
-            if (!uuid) {
-              // Try to extract UUID from filename
-              // Expected format: "LABEL_uuid-here.json" or similar
-              const filenameWithoutExt = file.name.replace('.json', '');
-              const parts = filenameWithoutExt.split('_');
-              
-              if (parts.length >= 2) {
-                // Take everything after the first underscore as the UUID
-                uuid = parts.slice(1).join('_');
-              }
-              
-              console.log(`[DEBUG] Extracted UUID from filename: ${uuid}`);
-              
-              if (!uuid) {
-                console.log(`[DEBUG] WARN: ${file.name} has no uuid in data and couldn't extract from filename, skipping...`);
-                setFullGraphImportLogs(prev => [...prev, `[WARN] ${file.name} has no uuid in data and couldn't extract from filename, skipping...`]);
-                continue;
-              }
-            }
-            
-            const nodeData = {
-              uuid: uuid,
-              labels: data.labels,
-              properties: data.properties
-            };
-            nodesData.push(nodeData);
-            console.log(`[DEBUG] Added node: ${uuid}, labels: ${data.labels.join(',')}`);
-          } else {
-            console.log(`[DEBUG] WARN: ${file.name} does not have expected node structure, skipping...`);
-            setFullGraphImportLogs(prev => [...prev, `[WARN] ${file.name} does not have expected node structure (missing labels or properties), skipping...`]);
-          }
-        }
-      }
-      
-      console.log(`[DEBUG] Final parsing results:`);
-      console.log(`[DEBUG] - nodesData.length: ${nodesData.length}`);
-      console.log(`[DEBUG] - relationshipsData.length: ${relationshipsData.length}`);
-      console.log(`[DEBUG] - Sample node:`, nodesData[0]);
-      console.log(`[DEBUG] - Sample relationship:`, relationshipsData[0]);
-      
-      setFullGraphImportLogs(prev => [...prev, `[INFO] Successfully parsed ${nodesData.length} nodes and ${relationshipsData.length} relationships`]);
-      setFullGraphImportLogs(prev => [...prev, '[INFO] Starting database import operation...']);
-      
-      console.log('[DEBUG] About to call importFullGraph...');
+      console.log('[DEBUG] About to call importFullGraph with pre-parsed data...');
       const startTime = Date.now();
       
-      // Call the import function directly
-      const result = await importFullGraph(nodesData, relationshipsData);
+      // Define the progress callback
+      const onProgress = (message: string) => {
+        setFullGraphImportLogs(prev => [...prev, message]);
+      };
+      
+      // Call the import function directly with the pre-parsed data and the callback
+      const result = await importFullGraph(parsedNodes, parsedRelationships, onProgress);
       
       const duration = Date.now() - startTime;
       console.log(`[DEBUG] importFullGraph completed in ${duration}ms`);
@@ -441,16 +404,18 @@ const SafetyDataExchange: React.FC = () => {
       console.log('[DEBUG] Import successful:', result);
       setFullGraphImportLogs(prev => [
         ...prev,
-        `[SUCCESS] Import completed successfully in ${duration}ms!`,
+        `[SUCCESS] Client-side operation completed in ${duration}ms!`,
         `[INFO] Nodes created: ${result.stats?.nodesCreated || 'N/A'}`,
         `[INFO] Relationships created: ${result.stats?.relationshipsCreated || 'N/A'}`,
         `[INFO] Constraints created: ${result.stats?.constraintsCreated || 'N/A'}`,
         `[INFO] Database performance: ${result.stats?.duration || 'N/A'}ms`,
       ]);
       
-      // Clear selected files after successful import
+      // Clear selected files and parsed data after successful import
       console.log('[DEBUG] Clearing selected files and refreshing status...');
       setSelectedImportFiles([]);
+      setParsedNodes([]);
+      setParsedRelationships([]);
       
       // Refresh database status
       if (statusDBRef.current) {
@@ -488,67 +453,230 @@ const SafetyDataExchange: React.FC = () => {
     }
   };
 
-  const handleImportFileSelect = (fileList: File[]) => {
-    console.log('[DEBUG] handleImportFileSelect called');
-    console.log('[DEBUG] fileList.length:', fileList.length);
-    
+  const handleImportFileSelect = async (fileList: any[]) => {
+    console.log('[DEBUG] handleImportFileSelect called with fileList.length:', fileList.length);
     const startTime = Date.now();
+  
+    // The modal is already visible, now we process the files
+    const files = fileList.map(f => f.originFileObj!).filter(Boolean);
+    console.log('[DEBUG] Filtered files count:', files.length);
     
-    setSelectedImportFiles(fileList);
+    setSelectedImportFiles(files);
+    setParsedNodes([]);
+    setParsedRelationships([]);
     setFullGraphImportError(null);
-    setFullGraphImportLogs([]);
-    
-    if (fileList.length === 0) {
+    setFullGraphImportLogs([`[INFO] Analyzing and parsing ${files.length} selected files...`]);
+  
+    if (files.length === 0) {
       console.log('[DEBUG] No files selected');
+      setFullGraphImportLogs([]);
+      setIsImportingFullGraph(false);
       return;
     }
-    
-    // More efficient validation - stop early when found
-    console.log('[DEBUG] Starting optimized file validation...');
+  
+    // Asynchronous validation and parsing in batches to prevent UI freeze
+    console.log('[DEBUG] Starting async batched file parsing...');
     
     let hasRelationships = false;
-    let nodeFileCount = 0;
-    
-    // Single pass through files for efficiency
-    for (let i = 0; i < fileList.length; i++) {
-      const file = fileList[i];
+    const allParsedNodes: any[] = [];
+    let tempRelationships: any[] = [];
+    const batchSize = 100; // Smaller batch size for parsing
+  
+    for (let i = 0; i < files.length; i += batchSize) {
+      const batch = files.slice(i, i + batchSize);
+      const promises = batch.map(async (file) => {
+        try {
+          const content = await file.text();
+          const data = JSON.parse(content);
+
+          if (file.name === 'relationships.json' && Array.isArray(data)) {
+            hasRelationships = true;
+            // This can be assigned directly as there should only be one such file.
+            tempRelationships = data.map((rel: any) => ({
+              type: rel.type,
+              properties: transformProperties(rel.properties),
+              start: rel.startNodeUuid,
+              end: rel.endNodeUuid
+            }));
+            return null; // Return null for non-node files
+          } else {
+            const normalizedPath = file.webkitRelativePath?.replace(/\\/g, '/');
+            if (normalizedPath?.includes('nodes/') && data.labels && data.properties) {
+              let uuid = data.uuid;
+              if (!uuid) {
+                const filenameWithoutExt = file.name.replace('.json', '');
+                const parts = filenameWithoutExt.split('_');
+                if (parts.length >= 2) uuid = parts.slice(1).join('_');
+              }
+              if (uuid) {
+                // Return the parsed node object
+                return { uuid, labels: data.labels, properties: transformProperties(data.properties) };
+              }
+            }
+          }
+        } catch (e) {
+          console.warn(`[WARN] Could not parse file ${file.name}, skipping.`, e);
+        }
+        return null; // Return null on error or if not a node file
+      });
+
+      const parsedBatchResults = await Promise.all(promises);
+      const newNodes = parsedBatchResults.filter(Boolean); // Filter out nulls
+      allParsedNodes.push(...newNodes);
+  
+      // Update progress and yield to the main thread
+      const processedCount = Math.min(i + batchSize, files.length);
+      const progressMessage = `[INFO] Parsed ${processedCount} / ${files.length} files...`;
+      setFullGraphImportLogs(prev => {
+        const newLogs = [...prev];
+        if (newLogs.length > 1 && newLogs[newLogs.length - 1].startsWith('[INFO] Parsed')) {
+          newLogs[newLogs.length - 1] = progressMessage; // Update last line
+        } else {
+          newLogs.push(progressMessage); // Add new line
+        }
+        return newLogs;
+      });
       
-      if (file.name === 'relationships.json') {
-        hasRelationships = true;
-        console.log('[DEBUG] Found relationships.json');
-      }
-      
-      if (file.webkitRelativePath?.includes('/nodes/') && file.name.endsWith('.json')) {
-        nodeFileCount++;
-      }
-      
-      // Early break if we have what we need for validation (optional optimization)
-      // We can still count all files for accuracy, but this shows the principle
+      // Yield to the event loop to allow UI updates
+      await new Promise(resolve => setTimeout(resolve, 0)); 
     }
     
+    setParsedNodes(allParsedNodes);
+    setParsedRelationships(tempRelationships);
     const validationTime = Date.now() - startTime;
-    console.log(`[DEBUG] File validation completed in ${validationTime}ms`);
-    console.log(`[DEBUG] hasRelationships: ${hasRelationships}`);
-    console.log(`[DEBUG] nodeFileCount: ${nodeFileCount}`);
     
-    if (fileList.length > 0) {
-      if (!hasRelationships) {
-        console.log('[DEBUG] Missing relationships.json');
-        setFullGraphImportError('Missing relationships.json file. Please select the complete graph export folder.');
-      } else if (nodeFileCount === 0) {
-        console.log('[DEBUG] No node files found');
-        setFullGraphImportError('No node files found in nodes/ directory. Please select the complete graph export folder.');
-      } else {
-        console.log('[DEBUG] Validation successful');
-        setFullGraphImportLogs([
-          `[INFO] Selected ${fileList.length} files for import`,
-          `[INFO] Found ${nodeFileCount} node files and relationships.json`,
-          '[READY] Click "Import Complete Graph" to proceed with wipe-and-load operation'
-        ]);
-      }
+    if (!hasRelationships) {
+      console.log('[DEBUG] Missing relationships.json');
+      setFullGraphImportError('Missing relationships.json file. Please select the complete graph export folder.');
+      setFullGraphImportLogs(prev => [...prev, '[ERROR] Missing relationships.json file.']);
+    } else if (allParsedNodes.length === 0) {
+      console.log('[DEBUG] No node files found');
+      setFullGraphImportError('No node files found in nodes/ directory. Please select the complete graph export folder.');
+      setFullGraphImportLogs(prev => [...prev, '[ERROR] No node files found in nodes/ directory.']);
+    } else {
+      console.log('[DEBUG] Validation successful');
+      setFullGraphImportError(null); // Clear previous errors
+      setFullGraphImportLogs([
+        `[INFO] Parsed ${files.length} files for import.`,
+        `[INFO] Found ${allParsedNodes.length} nodes and ${tempRelationships.length} relationships.`,
+        `[INFO] File parsing completed in ${validationTime}ms.`,
+        '[READY] Click "Import Complete Graph" to proceed with wipe-and-load operation.'
+      ]);
     }
     
+    // Stop the spinner after validation is complete
+    setIsImportingFullGraph(false);
     console.log(`[DEBUG] handleImportFileSelect completed in ${Date.now() - startTime}ms`);
+  };
+
+  const handleFolderSelect = async () => {
+    // Modern async directory picker for Chrome/Edge
+    if ('showDirectoryPicker' in window) {
+      try {
+        const directoryHandle = await (window as any).showDirectoryPicker();
+        setShowFullGraphImportModal(true);
+        setIsImportingFullGraph(true);
+        setFullGraphImportLogs(['[INFO] Scanning and parsing directory for .json files...']);
+        const startTime = Date.now();
+
+        const allFiles: File[] = [];
+        const tempNodes: any[] = [];
+        let tempRelationships: any[] = [];
+        let hasRelationships = false;
+
+        const processDirectory = async (dirHandle: any, path: string = '') => {
+          for await (const entry of dirHandle.values()) {
+            const newPath = path ? `${path}/${entry.name}` : entry.name;
+            if (entry.kind === 'file' && entry.name.endsWith('.json')) {
+              const file = await entry.getFile();
+              Object.defineProperty(file, 'webkitRelativePath', { value: newPath, configurable: true });
+              allFiles.push(file);
+
+              try {
+                const content = await file.text();
+                const data = JSON.parse(content);
+
+                if (file.name === 'relationships.json' && Array.isArray(data)) {
+                  hasRelationships = true;
+                  tempRelationships = data.map((rel: any) => ({
+                    type: rel.type,
+                    properties: transformProperties(rel.properties),
+                    start: rel.startNodeUuid,
+                    end: rel.endNodeUuid
+                  }));
+                } else {
+                  // Normalize path for robust checking
+                  const normalizedPath = newPath.replace(/\\/g, '/');
+                  if (normalizedPath.includes('nodes/') && data.labels && data.properties) {
+                    let uuid = data.uuid;
+                    if (!uuid) {
+                      const filenameWithoutExt = file.name.replace('.json', '');
+                      const parts = filenameWithoutExt.split('_');
+                      if (parts.length >= 2) uuid = parts.slice(1).join('_');
+                    }
+                    if (uuid) {
+                      tempNodes.push({ uuid, labels: data.labels, properties: transformProperties(data.properties) });
+                    }
+                  }
+                }
+              } catch (e) {
+                console.warn(`[WARN] Could not parse file ${file.name}, skipping.`, e);
+              }
+
+              if (allFiles.length % 100 === 0) {
+                const progressMessage = `[INFO] Parsed ${allFiles.length} files... Found ${tempNodes.length} nodes.`;
+                setFullGraphImportLogs(prev => {
+                  const newLogs = [...prev];
+                  if (newLogs.length > 0 && newLogs[newLogs.length - 1].startsWith('[INFO] Parsed')) {
+                    newLogs[newLogs.length - 1] = progressMessage; // Update last line
+                  } else {
+                    newLogs.push(progressMessage); // Add new line
+                  }
+                  return newLogs;
+                });
+                await new Promise(r => setTimeout(r, 0));
+              }
+            } else if (entry.kind === 'directory') {
+              await processDirectory(entry, newPath);
+            }
+          }
+        };
+
+        await processDirectory(directoryHandle);
+        const analysisTime = Date.now() - startTime;
+        setSelectedImportFiles(allFiles);
+        setParsedNodes(tempNodes);
+        setParsedRelationships(tempRelationships);
+
+        if (!hasRelationships) {
+          setFullGraphImportError('Missing relationships.json file.');
+          setFullGraphImportLogs(prev => [...prev, '[ERROR] Missing relationships.json file.']);
+        } else if (tempNodes.length === 0) {
+          setFullGraphImportError('No node files found in nodes/ directory.');
+          setFullGraphImportLogs(prev => [...prev, '[ERROR] No node files found in nodes/ directory.']);
+        } else {
+          setFullGraphImportError(null);
+          setFullGraphImportLogs([
+            `[INFO] Parsed ${allFiles.length} files for import.`,
+            `[INFO] Found ${tempNodes.length} nodes and ${tempRelationships.length} relationships.`,
+            `[INFO] File parsing completed in ${analysisTime}ms.`,
+            '[READY] Click "Import Complete Graph" to proceed.'
+          ]);
+        }
+        setIsImportingFullGraph(false);
+      } catch (err: any) {
+        if (err.name !== 'AbortError') {
+          console.error('Error selecting directory:', err);
+          setFullGraphImportError('Could not read the selected directory.');
+        } else {
+          setShowFullGraphImportModal(false);
+        }
+        setIsImportingFullGraph(false);
+      }
+    } else {
+      // Fallback for other browsers
+      fileInputRef.current?.click();
+    }
   };
 
   const handleFileSelect = (file: File) => {
@@ -654,9 +782,11 @@ const SafetyDataExchange: React.FC = () => {
 
   const renderDataAsJson = (data: unknown, title: string) => (
     <Card title={title} style={{ marginTop: 16 }}>
-      <pre style={{ maxHeight: 300, overflowY: 'auto', backgroundColor: '#f5f5f5', padding: 10 }}>
-        {JSON.stringify(data, null, 2)}
-      </pre>
+      <Input.TextArea
+        readOnly
+        rows={10}
+        value={JSON.stringify(data, null, 2)}
+      />
     </Card>
   );
 
@@ -700,35 +830,32 @@ const SafetyDataExchange: React.FC = () => {
           <Card title="Full Graph Import (Graph-as-Code)">
             <Space direction="vertical" style={{ width: '100%' }}>
               <div>
-                <Upload
+                <Button icon={<UploadOutlined />} disabled={isImportingFullGraph} onClick={handleFolderSelect}>
+                  {selectedImportFiles.length > 0 
+                    ? `Selected ${selectedImportFiles.length} files` 
+                    : "Select Graph Export Folder (unzip archive first)"}
+                </Button>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  style={{ display: 'none' }}
+                  // @ts-expect-error -- webkitdirectory is a non-standard attribute for folder selection fallback
+                  webkitdirectory="true"
                   multiple
-                  directory
-                  beforeUpload={() => false}
-                  onChange={(info) => {
-                    console.log('[DEBUG] Upload onChange triggered');
-                    console.log('[DEBUG] info.fileList.length:', info.fileList.length);
+                  onChange={(e) => {
+                    if (!e.target.files || e.target.files.length === 0) return;
+                    console.log('[DEBUG] Legacy input onChange triggered');
+                    setShowFullGraphImportModal(true);
+                    setIsImportingFullGraph(true);
+                    setFullGraphImportLogs(['[INFO] Preparing file list... This may take a moment for large folders.']);
                     
-                    // Process files more efficiently
-                    const files = info.fileList
-                      .map(f => f.originFileObj!)
-                      .filter(Boolean);
-                    
-                    console.log('[DEBUG] Filtered files count:', files.length);
-                    
-                    // Use setTimeout to avoid blocking the UI
+                    const antdFileList = Array.from(e.target.files).map(file => ({ originFileObj: file }));
+
                     setTimeout(() => {
-                      handleImportFileSelect(files);
-                    }, 0);
+                      handleImportFileSelect(antdFileList);
+                    }, 100);
                   }}
-                  showUploadList={false}
-                  accept=".json"
-                >
-                  <Button icon={<UploadOutlined />} disabled={isImportingFullGraph}>
-                    {selectedImportFiles.length > 0 
-                      ? `Selected ${selectedImportFiles.length} files` 
-                      : "Select Graph Export Folder"}
-                  </Button>
-                </Upload>
+                />
               </div>
               {selectedImportFiles.length > 0 && !fullGraphImportError && (
                 <Button
@@ -746,6 +873,12 @@ const SafetyDataExchange: React.FC = () => {
                 Select the folder that contains the &ldquo;nodes/&rdquo; directory and &ldquo;relationships.json&rdquo; file from a previous export.
                 This is a three-phase atomic operation: (1) Wipe database, (2) Create nodes, (3) Create relationships.
               </Paragraph>
+                <Paragraph style={{ margin: 0, fontSize: '14px', color: '#666' }}>
+                <strong>Note:</strong> To extract the ZIP file, you can use the commands shown here.
+                <Popover content={unzipHelpContent} title="Extraction Commands" trigger="hover">
+                  <InfoCircleOutlined style={{ marginLeft: 8, color: '#1677ff', cursor: 'pointer' }} />
+                </Popover>
+                </Paragraph>
               {fullGraphImportError && (
                 <Alert message={fullGraphImportError} type="error" showIcon style={{ marginTop: 8 }} />
               )}
@@ -982,6 +1115,7 @@ const SafetyDataExchange: React.FC = () => {
         {fullGraphImportLogs.length > 0 && (
           <Card title="Import Logs" size="small">
             <Input.TextArea
+              ref={importLogTextAreaRef}
               rows={12}
               readOnly
               value={fullGraphImportLogs.join('\n')}
@@ -992,5 +1126,4 @@ const SafetyDataExchange: React.FC = () => {
     </div>
   );
 };
-
 export default SafetyDataExchange;

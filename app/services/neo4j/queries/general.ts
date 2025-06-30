@@ -1,21 +1,36 @@
 import { driver } from '../config';
 
 // Type definitions for import/export
+/**
+ * Defines the structure for a node during graph import operations.
+ */
 interface ImportNodeData {
+  /** The unique identifier for the node. */
   uuid: string;
+  /** An array of labels to apply to the node. */
   labels: string[];
+  /** A key-value map of the node's properties. */
   properties: Record<string, any>;
 }
 
+/**
+ * Defines the structure for a relationship during graph import operations.
+ */
 interface ImportRelationshipData {
+  /** The type of the relationship. */
   type: string;
+  /** A key-value map of the relationship's properties. */
   properties: Record<string, any>;
+  /** The UUID of the starting node. */
   start: string;
+  /** The UUID of the ending node. */
   end: string;
 }
 
 /**
- * Get all node labels for a specific node by UUID
+ * Get all node labels for a specific node by UUID.
+ * @param nodeUuid The UUID of the node to query.
+ * @returns A promise that resolves with the success status, an array of labels, and optional messages.
  */
 export const getNodeLabels = async (nodeUuid: string): Promise<{
   success: boolean;
@@ -65,7 +80,11 @@ export const getNodeLabels = async (nodeUuid: string): Promise<{
 };
 
 /**
- * Delete a node or relationship by UUID or elementId
+ * Deletes a node or a relationship from the database using its UUID or elementId.
+ * @param identifier The unique identifier (UUID or elementId) of the entity to delete.
+ * @param identifierType Specifies whether the identifier is a 'uuid' or 'elementId'.
+ * @param entityType Specifies whether to delete a 'node' or a 'relationship'. Defaults to 'node'.
+ * @returns A promise that resolves with the success status and a message.
  */
 export async function deleteNodeByUuid(identifier: string, identifierType: 'uuid' | 'elementId', entityType: 'node' | 'relationship' = 'node') {
   const session = driver.session();
@@ -131,7 +150,9 @@ export async function deleteNodeByUuid(identifier: string, identifierType: 'uuid
 }
 
 /**
- * Get database statistics including node count and relationship count
+ * Retrieves statistics about the Neo4j database.
+ * This includes the total count of nodes and relationships, and lists of all available labels and relationship types.
+ * @returns A promise that resolves with the success status and a data object containing the statistics.
  */
 export const getDatabaseStats = async (): Promise<{
   success: boolean;
@@ -205,7 +226,8 @@ export const getDatabaseStats = async (): Promise<{
 };
 
 /**
- * Simple test to verify Neo4j connection
+ * Performs a simple query to verify that the connection to the Neo4j database is active.
+ * @returns A promise that resolves with the success status and a connection message.
  */
 export const testDatabaseConnection = async (): Promise<{
   success: boolean;
@@ -243,15 +265,10 @@ export const testDatabaseConnection = async (): Promise<{
   }
 };
 
-
-
-
-
-
-
-
 /**
- * Single query optimized export that gets both nodes and relationships in one transaction
+ * Exports the entire graph from the database in a single, optimized transaction.
+ * Fetches all nodes and relationships with their properties, labels, and types.
+ * @returns A promise that resolves with the success status and a data object containing arrays of nodes and relationships.
  */
 export const exportFullGraphOptimized = async (): Promise<{
   success: boolean;
@@ -341,7 +358,10 @@ export const exportFullGraphOptimized = async (): Promise<{
 };
 
 /**
- * Create performance indexes for faster graph export
+ * Creates indexes on node and relationship properties to improve export performance.
+ * Specifically, it creates indexes on `uuid` for nodes and `startNodeUuid`/`endNodeUuid` for relationships.
+ * These operations are idempotent due to the `IF NOT EXISTS` clause.
+ * @returns A promise that resolves with the success status and a message.
  */
 export const createExportIndexes = async (): Promise<{
   success: boolean;
@@ -396,14 +416,24 @@ interface ImportRelationshipData {
 }
 
 /**
- * Full graph import with three-phase wipe-and-load operation
- * Phase 1: Wipe database and create constraints
- * Phase 2: Import all nodes in batches
- * Phase 3: Import all relationships in batches
+ * Imports a full graph into the database using a robust, multi-phase, transactional approach.
+ * This function performs a complete wipe-and-load operation.
+ * 
+ * The process is as follows:
+ * 1.  **Wipe Database:** Deletes all existing nodes and relationships.
+ * 2.  **Create Constraints:** Analyzes all unique node labels from the input data and creates a `UNIQUE` constraint on the `uuid` property for each label. This is crucial for performance and data integrity.
+ * 3.  **Import Nodes:** Creates all nodes in batches, grouped by their label combinations for efficiency.
+ * 4.  **Import Relationships:** Creates all relationships in batches, grouped by their type.
+ * 
+ * @param nodesData An array of node objects to import.
+ * @param relationshipsData An array of relationship objects to import.
+ * @param onProgress An optional callback function that receives progress messages during the import.
+ * @returns A promise that resolves with the success status, a summary message, and detailed statistics about the import process.
  */
 export const importFullGraph = async (
   nodesData: ImportNodeData[],
-  relationshipsData: ImportRelationshipData[]
+  relationshipsData: ImportRelationshipData[],
+  onProgress?: (message: string) => void
 ): Promise<{
   success: boolean;
   message?: string;
@@ -418,25 +448,29 @@ export const importFullGraph = async (
   const session = driver.session();
   const startTime = Date.now();
   
+  const log = (message: string) => {
+    onProgress?.(message);
+  };
+  
   try {
-    console.log('[IMPORT] Starting robust full graph import with separate transactions...');
+    log('[IMPORT] Starting robust full graph import with separate transactions...');
     
     // Phase 1: Wipe database in its own transaction
-    console.log('[IMPORT] Phase 1: Wiping database...');
+    log('[IMPORT] Phase 1: Wiping database...');
     await session.writeTransaction(async tx => {
       await tx.run('MATCH (n) DETACH DELETE n');
     });
-    console.log('[IMPORT] Database wiped successfully');
+    log('[IMPORT] Database wiped successfully.');
     
     // Phase 2: Collect unique labels and create constraints
-    console.log('[IMPORT] Phase 2: Creating constraints...');
+    log('[IMPORT] Phase 2: Creating constraints...');
     const allLabels = new Set<string>();
     
     nodesData.forEach(node => {
       node.labels.forEach(label => allLabels.add(label));
     });
     
-    console.log(`[IMPORT] Found ${allLabels.size} unique labels: ${Array.from(allLabels).join(', ')}`);
+    log(`[IMPORT] Found ${allLabels.size} unique labels: ${Array.from(allLabels).join(', ')}`);
     
     // Create constraints in separate transactions (one per constraint)
     let constraintsCreated = 0;
@@ -446,19 +480,19 @@ export const importFullGraph = async (
           await tx.run(`CREATE CONSTRAINT IF NOT EXISTS FOR (n:${label}) REQUIRE n.uuid IS UNIQUE`);
         });
         constraintsCreated++;
-        console.log(`[IMPORT] Created constraint for ${label}`);
+        log(`[IMPORT] Created constraint for ${label}.`);
       } catch (error) {
         // Constraint might already exist, which is fine
-        console.log(`[IMPORT] Constraint for ${label} might already exist: ${error}`);
+        log(`[IMPORT] Constraint for ${label} might already exist.`);
       }
     }
     
-    console.log(`[IMPORT] Created ${constraintsCreated} constraints`);
+    log(`[IMPORT] Created ${constraintsCreated} constraints.`);
     
     // Phase 3: Create nodes in batches
-    console.log('[IMPORT] Phase 3: Creating nodes...');
+    log('[IMPORT] Phase 3: Creating nodes...');
     
-    const BATCH_SIZE = 1000;
+    const BATCH_SIZE = 3000;
     let totalNodesCreated = 0;
     
     // Group nodes by label combinations for efficient Cypher queries
@@ -472,14 +506,14 @@ export const importFullGraph = async (
       labelGroups.get(labelKey)!.push(node);
     });
     
-    console.log(`[IMPORT] Grouped nodes into ${labelGroups.size} label combinations`);
+    log(`[IMPORT] Grouped nodes into ${labelGroups.size} label combinations.`);
     
     // Create nodes for each label group in batches
     for (const [labelKey, groupNodes] of Array.from(labelGroups)) {
       const labels = labelKey.split(':').filter(Boolean);
       const labelQuery = labels.length > 0 ? ':' + labels.join(':') : '';
       
-      console.log(`[IMPORT] Processing ${groupNodes.length} nodes with labels: ${labelKey}`);
+      log(`[IMPORT] Processing ${groupNodes.length} nodes with labels: ${labelKey}`);
       
       for (let i = 0; i < groupNodes.length; i += BATCH_SIZE) {
         const batch = groupNodes.slice(i, i + BATCH_SIZE);
@@ -496,14 +530,14 @@ export const importFullGraph = async (
           totalNodesCreated += created;
         });
         
-        console.log(`[IMPORT] Created batch of ${batch.length} nodes for ${labelKey}`);
+        log(`[IMPORT] Created batch of ${batch.length} nodes for ${labelKey}.`);
       }
     }
     
-    console.log(`[IMPORT] Phase 3 complete: ${totalNodesCreated} nodes created`);
+    log(`[IMPORT] Phase 3 complete: ${totalNodesCreated} nodes created.`);
     
     // Phase 4: Create relationships in batches
-    console.log('[IMPORT] Phase 4: Creating relationships...');
+    log('[IMPORT] Phase 4: Creating relationships...');
     
     let totalRelationshipsCreated = 0;
     
@@ -517,11 +551,11 @@ export const importFullGraph = async (
       typeGroups.get(rel.type)!.push(rel);
     });
     
-    console.log(`[IMPORT] Grouped relationships into ${typeGroups.size} types`);
+    log(`[IMPORT] Grouped relationships into ${typeGroups.size} types.`);
     
     // Create relationships for each type in batches
     for (const [relType, groupRels] of Array.from(typeGroups)) {
-      console.log(`[IMPORT] Processing ${groupRels.length} relationships of type: ${relType}`);
+      log(`[IMPORT] Processing ${groupRels.length} relationships of type: ${relType}`);
       
       for (let i = 0; i < groupRels.length; i += BATCH_SIZE) {
         const batch = groupRels.slice(i, i + BATCH_SIZE);
@@ -540,14 +574,14 @@ export const importFullGraph = async (
           totalRelationshipsCreated += created;
         });
         
-        console.log(`[IMPORT] Created batch of ${batch.length} relationships for ${relType}`);
+        log(`[IMPORT] Created batch of ${batch.length} relationships for ${relType}.`);
       }
     }
     
-    console.log(`[IMPORT] Phase 4 complete: ${totalRelationshipsCreated} relationships created`);
+    log(`[IMPORT] Phase 4 complete: ${totalRelationshipsCreated} relationships created.`);
     
     const duration = Date.now() - startTime;
-    console.log(`[IMPORT] Full graph import completed successfully in ${duration}ms`);
+    log(`[IMPORT] Full graph import completed successfully in ${duration}ms.`);
     
     return {
       success: true,
@@ -561,9 +595,10 @@ export const importFullGraph = async (
     };
     
   } catch (error) {
-    console.error('[IMPORT] Error during import:', error);
-    
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    const fullErrorMessage = `[IMPORT] Error during import: ${errorMessage}`;
+    console.error(fullErrorMessage, error); // Keep error logging in the console
+    log(fullErrorMessage); // Send error message to the UI
     
     return {
       success: false,
