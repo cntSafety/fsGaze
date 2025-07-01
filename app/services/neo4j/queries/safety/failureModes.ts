@@ -346,7 +346,7 @@ export const getFailuresForPorts = async (portUuid: string): Promise<{
 };
 
 /**
- * Get failures that have OCCURRENCE relations to APPLICATION_SW_COMPONENT_TYPE
+ * Get failures that have OCCURRENCE relations to APPLICATION_SW_COMPONENT_TYPE or COMPOSITION_SW_COMPONENT_TYPE
  */
 export const getFailuresForSwComponents = async (swComponentUuid: string): Promise<{
   success: boolean;
@@ -363,8 +363,9 @@ export const getFailuresForSwComponents = async (swComponentUuid: string): Promi
   const session = driver.session();
   
   try {    const query = `
-      MATCH (swComponent:APPLICATION_SW_COMPONENT_TYPE)-[r]-(failure:FAILUREMODE)
+      MATCH (swComponent)-[r]-(failure:FAILUREMODE)
       WHERE swComponent.uuid = $swComponentUuid 
+      AND (swComponent:APPLICATION_SW_COMPONENT_TYPE OR swComponent:COMPOSITION_SW_COMPONENT_TYPE)
       RETURN 
         failure.uuid AS failureModeUuid,
         failure.name AS failureModeName,
@@ -414,8 +415,9 @@ export const getFailuresAndCountsForComponents = async (
   const session = driver.session();
   try {
     const query = `
-      MATCH (swc:APPLICATION_SW_COMPONENT_TYPE)
+      MATCH (swc)
       WHERE swc.uuid IN $componentUuids
+      AND (swc:APPLICATION_SW_COMPONENT_TYPE OR swc:COMPOSITION_SW_COMPONENT_TYPE)
       OPTIONAL MATCH (swc)<-[:OCCURRENCE]-(fm:FAILUREMODE)
       WITH swc, fm
       WHERE fm IS NOT NULL
@@ -468,7 +470,9 @@ export const getFailuresAndCountsForComponent = async (
   const session = driver.session();
   try {
     const query = `
-      MATCH (swc:APPLICATION_SW_COMPONENT_TYPE {uuid: $componentUuid})<-[:OCCURRENCE]-(fm:FAILUREMODE)
+      MATCH (swc {uuid: $componentUuid})
+      WHERE (swc:APPLICATION_SW_COMPONENT_TYPE OR swc:COMPOSITION_SW_COMPONENT_TYPE)
+      MATCH (swc)<-[:OCCURRENCE]-(fm:FAILUREMODE)
       WITH fm
       OPTIONAL MATCH (fm)-[:RATED]->(rr:RISKRATING)
       OPTIONAL MATCH (fm)-[:TASKREF]->(t:SAFETYTASKS)
