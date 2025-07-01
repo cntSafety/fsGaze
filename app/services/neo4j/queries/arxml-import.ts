@@ -114,7 +114,54 @@ function recursiveExtractLogic(
     if (xmlElement.hasOwnProperty(key) && key !== '$' && key !== '_' && key !== 'SHORT-NAME' && key !== 'UUID') {
       const childValue = xmlElement[key];
 
-      if (key.endsWith("-REF") || key.endsWith("-TREF")) {
+      if (key.endsWith("-IREF")) {
+        // This block handles complex instance references (ending in -IREF).
+        // These are structured references containing other references inside,
+        // like an INNER-PORT-IREF in a DELEGATION-SW-CONNECTOR.
+        // Instead of creating intermediate nodes for the instance reference structure,
+        // this logic flattens the hierarchy by creating direct relationships
+        // from the source element (e.g., the DELEGATION-SW-CONNECTOR)
+        // to the final target elements referenced within.
+        const irefs = ensureArray(childValue);
+        const effectiveSourceNodeUuid = currentNeo4jNodeUuid || parentNeo4jNodeUuid;
+
+        if (effectiveSourceNodeUuid) {
+          for (const iref of irefs) {
+            if (typeof iref !== 'object' || iref === null) continue;
+            for (const instanceRefKey in iref) {
+              if (iref.hasOwnProperty(instanceRefKey) && instanceRefKey.endsWith("-INSTANCE-REF")) {
+                const instanceRefContent = iref[instanceRefKey];
+                if (typeof instanceRefContent === 'object' && instanceRefContent !== null) {
+                  for (const finalRefKey in instanceRefContent) {
+                    if (instanceRefContent.hasOwnProperty(finalRefKey) && (finalRefKey.endsWith('-REF') || finalRefKey.endsWith('-TREF'))) {
+                      const refs = ensureArray(instanceRefContent[finalRefKey]);
+                      for (const refItem of refs) {
+                        let refPath = null;
+                        let refDest = null;
+                        if (typeof refItem === 'string') {
+                          refPath = refItem;
+                        } else if (refItem && typeof refItem === 'object') {
+                          refPath = refItem._ || refItem.CONTENT;
+                          refDest = (refItem.$ && refItem.$.DEST) || refItem.DEST;
+                        }
+
+                        if (refPath) {
+                          pendingReferences.push({
+                            from: effectiveSourceNodeUuid,
+                            toPath: refPath,
+                            type: finalRefKey,
+                            props: { ...(refDest && { destinationType: refDest }) },
+                          });
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      } else if (key.endsWith("-REF") || key.endsWith("-TREF")) {
         const refs = ensureArray(childValue);
         const effectiveSourceNodeUuid = currentNeo4jNodeUuid || parentNeo4jNodeUuid;
 
