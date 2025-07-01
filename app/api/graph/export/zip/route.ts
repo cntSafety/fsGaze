@@ -80,23 +80,21 @@ export async function POST(request: Request) {
     for (const [labelName, labelNodes] of Object.entries(nodesByLabelGroups)) {
       console.log(`[ZIP EXPORT] Adding ${labelNodes.length} nodes for label: ${labelName}`);
       
-      for (const node of labelNodes) {
-        const safeUuid = sanitizeFileName(node.uuid);
-        const filename = `nodes/${labelName}/${labelName}_${safeUuid}.json`;
-        
-        const nodeData = {
-          uuid: node.uuid,
-          labels: node.labels.sort(),
-          properties: Object.keys(node.properties)
-            .sort()
-            .reduce((sorted: Record<string, any>, key) => {
-              sorted[key] = node.properties[key];
-              return sorted;
-            }, {})
-        };
-        
-        archive.append(JSON.stringify(nodeData, null, 2), { name: filename });
-      }
+      const filename = `nodes/${labelName}.json`;
+      
+      // Prepare all nodes for this label, ensuring properties are sorted for consistency
+      const nodesForFile = labelNodes.map(node => ({
+        uuid: node.uuid,
+        labels: node.labels.sort(),
+        properties: Object.keys(node.properties)
+          .sort()
+          .reduce((sorted: Record<string, any>, key) => {
+            sorted[key] = node.properties[key];
+            return sorted;
+          }, {})
+      }));
+      
+      archive.append(JSON.stringify(nodesForFile, null, 2), { name: filename });
     }
 
     // Add relationships to ZIP
@@ -114,7 +112,7 @@ export async function POST(request: Request) {
     }));
 
     archive.append(JSON.stringify(relationshipsData, null, 2), { 
-      name: 'relationships/relationships.json' 
+      name: 'relationships.json' 
     });
 
     // Add metadata
@@ -134,7 +132,7 @@ export async function POST(request: Request) {
     };
 
     archive.append(JSON.stringify(metadata, null, 2), { 
-      name: 'metadata/export-info.json' 
+      name: 'export-info.json' 
     });
 
     console.log(`[ZIP EXPORT] Archive prepared, finalizing...`);

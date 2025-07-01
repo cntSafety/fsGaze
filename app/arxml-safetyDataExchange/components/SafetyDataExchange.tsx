@@ -500,18 +500,15 @@ const SafetyDataExchange: React.FC = () => {
             }));
             return null; // Return null for non-node files
           } else {
+            // New format: A file in nodes/ contains an array of nodes.
             const normalizedPath = file.webkitRelativePath?.replace(/\\/g, '/');
-            if (normalizedPath?.includes('nodes/') && data.labels && data.properties) {
-              let uuid = data.uuid;
-              if (!uuid) {
-                const filenameWithoutExt = file.name.replace('.json', '');
-                const parts = filenameWithoutExt.split('_');
-                if (parts.length >= 2) uuid = parts.slice(1).join('_');
-              }
-              if (uuid) {
-                // Return the parsed node object
-                return { uuid, labels: data.labels, properties: transformProperties(data.properties) };
-              }
+            if (normalizedPath?.includes('nodes/') && Array.isArray(data)) {
+              // The file contains an array of nodes, so we process them all.
+              return data.map((node: any) => ({
+                uuid: node.uuid,
+                labels: node.labels,
+                properties: transformProperties(node.properties)
+              }));
             }
           }
         } catch (e) {
@@ -521,7 +518,8 @@ const SafetyDataExchange: React.FC = () => {
       });
 
       const parsedBatchResults = await Promise.all(promises);
-      const newNodes = parsedBatchResults.filter(Boolean); // Filter out nulls
+      // Flatten the results, as some items in parsedBatchResults might be arrays of nodes
+      const newNodes = parsedBatchResults.flat().filter(Boolean);
       allParsedNodes.push(...newNodes);
   
       // Update progress and yield to the main thread
@@ -605,18 +603,15 @@ const SafetyDataExchange: React.FC = () => {
                     end: rel.endNodeUuid
                   }));
                 } else {
-                  // Normalize path for robust checking
+                  // New format: A file in nodes/ contains an array of nodes.
                   const normalizedPath = newPath.replace(/\\/g, '/');
-                  if (normalizedPath.includes('nodes/') && data.labels && data.properties) {
-                    let uuid = data.uuid;
-                    if (!uuid) {
-                      const filenameWithoutExt = file.name.replace('.json', '');
-                      const parts = filenameWithoutExt.split('_');
-                      if (parts.length >= 2) uuid = parts.slice(1).join('_');
-                    }
-                    if (uuid) {
-                      tempNodes.push({ uuid, labels: data.labels, properties: transformProperties(data.properties) });
-                    }
+                  if (normalizedPath.includes('nodes/') && Array.isArray(data)) {
+                    const nodesFromFile = data.map((node: any) => ({
+                      uuid: node.uuid,
+                      labels: node.labels,
+                      properties: transformProperties(node.properties)
+                    }));
+                    tempNodes.push(...nodesFromFile);
                   }
                 }
               } catch (e) {

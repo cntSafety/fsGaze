@@ -529,7 +529,6 @@ export default function ArxmlSafetyAnalysisTable() {
       title: 'SW Component Name',
       dataIndex: 'swComponentName',
       key: 'swComponentName',
-      width: 200,
       filterDropdown: (props: FilterDropdownProps) => (
         <SearchFilter {...props} dataIndex="swComponentName" />
       ),
@@ -563,75 +562,13 @@ export default function ArxmlSafetyAnalysisTable() {
       ),
     },
     {
-      title: 'Failure Mode Name',
-      dataIndex: 'failureName',
-      key: 'failureName',
-      width: 200,
-      filterDropdown: (props: FilterDropdownProps) => (
-        <SearchFilter {...props} dataIndex="failureName" />
-      ),
-      filterIcon: (filtered: boolean) => (
-        <SearchOutlined style={{ color: filtered ? '#1890ff' : undefined }} />
-      ),
-      onFilter: (value: any, record: SafetyTableRow) =>
-        record.failureName?.toLowerCase().includes(value.toLowerCase()) ?? false,
-      onCell: (record: SafetyTableRow) => {
-        if (record.failureName === PLACEHOLDER_VALUES.NO_FAILURES) {
-          return { colSpan: 4 };
-        }
-        return {
-          record,
-          inputType: 'text',
-          dataIndex: 'failureName',
-          title: 'Failure Mode Name',
-          editing: isEditing(record),
-        };
-      },
-      render: (text: string) => (
-        <span style={{ color: text === PLACEHOLDER_VALUES.NO_FAILURES ? '#999' : 'inherit' }}>
-          {text}
-        </span>
-      ),
-    },
-    {
-      title: 'Failure Description',
-      dataIndex: 'failureDescription',
-      key: 'failureDescription',
-      ellipsis: true,
-      filterDropdown: (props: FilterDropdownProps) => (
-        <SearchFilter {...props} dataIndex="failureDescription" />
-      ),
-      filterIcon: (filtered: boolean) => (
-        <SearchOutlined style={{ color: filtered ? '#1890ff' : undefined }} />
-      ),
-      onFilter: (value: any, record: SafetyTableRow) =>
-        record.failureDescription?.toLowerCase().includes(value.toLowerCase()) ?? false,
-      onCell: (record: SafetyTableRow) => {
-        if (record.failureName === PLACEHOLDER_VALUES.NO_FAILURES) {
-          return { colSpan: 0 };
-        }
-        return {
-          record,
-          inputType: 'text',
-          dataIndex: 'failureDescription',
-          title: 'Failure Description',
-          editing: isEditing(record),
-        };
-      },
-      render: (text: string) => (
-        <span style={{ color: text === PLACEHOLDER_VALUES.NO_DESCRIPTION ? '#999' : 'inherit' }}>
-          {text}
-        </span>
-      ),
-    },
-    {
       title: 'ASIL',
       dataIndex: 'asil',
       key: 'asil',
       width: 80,
       onCell: (record: SafetyTableRow) => {
         if (record.failureName === PLACEHOLDER_VALUES.NO_FAILURES) {
-          return { colSpan: 0 };
+          return { colSpan: 1 }; // Keep the cell for placeholder text
         }
         return {
           record,
@@ -642,152 +579,11 @@ export default function ArxmlSafetyAnalysisTable() {
           selectOptions: ASIL_OPTIONS,
         };
       },
-    },
-    {
-      title: 'Actions',
-      key: 'actions',
-      fixed: 'right',
-      width: 220,
-      onCell: (record: SafetyTableRow) => {
-        if (record.failureName === PLACEHOLDER_VALUES.NO_FAILURES) {
-          return { colSpan: 0 };
-        }
-        return {};
-      },
-      render: (_: unknown, record: SafetyTableRow) => {
-        const editable = isEditing(record);
-        
-        if (editable) {
-          return (
-            <Space>
-              <Button
-                type="primary"
-                size="small"
-                onClick={() => save(record.key)}
-                loading={isAddingFailure}
-              >
-                Save
-              </Button>
-              <Button size="small" onClick={cancel}>
-                Cancel
-              </Button>
-            </Space>
-          );
-        }
-
-        const canDelete = record.failureUuid && record.failureName !== PLACEHOLDER_VALUES.NO_FAILURES;
-        const canEdit = record.failureName !== PLACEHOLDER_VALUES.NO_FAILURES;
-
-        return (
-          <Space>
-            <Tooltip title="Add new failure mode">
-              <Button
-                icon={<PlusOutlined />}
-                size="small"
-                type="text"
-                onClick={() => addNewFailure(record.swComponentUuid!, record.swComponentName!)}
-              />
-            </Tooltip>
-
-            {canEdit && (
-              <Tooltip title="Edit failure mode">
-                <Button
-                  icon={<EditOutlined />}
-                  size="small"
-                  type="text"
-                  onClick={() => edit(record)}
-                />
-              </Tooltip>
-            )}
-            
-            <Tooltip title="Link for causation analysis">
-              <Button
-                icon={<LinkOutlined />}
-                size="small"
-                type="text"
-              />
-            </Tooltip>
-
-            {/* Safety Note Icon */}
-            {record.failureUuid && record.failureName !== PLACEHOLDER_VALUES.NO_FAILURES && (
-              <Tooltip title="Safety Notes">
-                <Badge count={record.safetyNoteCount} size="small" offset={[0, 8]}>
-                  <Button 
-                    type="text"
-                    size="small"
-                    onClick={() => handleSafetyNotesClick(record)}
-                    icon={<SnippetsOutlined />}
-                    style={{ color: '#1890ff' }}
-                  />
-                </Badge>
-              </Tooltip>
-            )}
-
-            {/* Safety Requirement Icon */}
-            {record.failureUuid && record.failureName !== PLACEHOLDER_VALUES.NO_FAILURES && (
-              <Tooltip title="Manage Safety Requirements">
-                <Badge count={record.safetyReqCount} size="small" offset={[0, 8]}>
-                  <Button 
-                    type="text"
-                    size="small"
-                    onClick={() => handleSafetyReqClick(record.failureUuid!, record.failureName, record.failureDescription)}
-                    icon={<FileTextOutlined />}
-                    style={{ color: '#722ed1' }}
-                  />
-                </Badge>
-              </Tooltip>
-            )}
-
-            {/* Risk Rating Icon */}
-            {record.failureUuid && record.failureName !== PLACEHOLDER_VALUES.NO_FAILURES && (
-              <Tooltip title="Set Risk Rating">
-                <Badge count={record.riskRatingCount} size="small" offset={[0, 8]}>
-                  <Button 
-                    type="text"
-                    size="small"
-                    onClick={() => handleRiskRatingClick(record)}
-                    icon={<DashboardOutlined />}
-                    style={{ color: '#52c41a' }}
-                  />
-                </Badge>
-              </Tooltip>
-            )}
-            
-            {/* Safety Task Icon */}
-            {record.failureUuid && record.failureName !== PLACEHOLDER_VALUES.NO_FAILURES && (
-              <Tooltip title="Manage Safety Tasks">
-                <Badge count={record.safetyTaskCount} size="small" offset={[0, 8]}>
-                  <Button 
-                    type="text"
-                    size="small"
-                    onClick={() => handleSafetyTaskClick(record)}
-                    icon={<CheckSquareOutlined />}
-                    style={{ color: '#1890ff' }}
-                  />
-                </Badge>
-              </Tooltip>
-            )}
-
-            {canDelete && (
-              <Popconfirm
-                title="Are you sure you want to delete this failure mode?"
-                okText="Yes"
-                cancelText="No"
-                onConfirm={() => handleDelete(record)}
-              >
-                <Tooltip title="Delete failure mode">
-                  <Button
-                    icon={<DeleteOutlined />}
-                    size="small"
-                    type="text"
-                    danger
-                  />
-                </Tooltip>
-              </Popconfirm>
-            )}
-          </Space>
-        );
-      },
+      render: (text: string) => (
+        <span style={{ color: text === PLACEHOLDER_VALUES.NO_DESCRIPTION ? '#999' : 'inherit' }}>
+          {text}
+        </span>
+      ),
     },
   ];
 
