@@ -153,6 +153,9 @@ export function Navbar({ children }: { children: React.ReactNode }) {
     const { showLoading, hideLoading } = useLoading();
     const { themeMode, toggleTheme } = useTheme();
 
+    // State to control open submenus
+    const [openKeys, setOpenKeys] = useState<string[]>([]);
+
     useEffect(() => {
         setMounted(true);
         const savedCollapsedState = localStorage.getItem('fsGaze-sidebar-collapsed');
@@ -160,6 +163,21 @@ export function Navbar({ children }: { children: React.ReactNode }) {
             setIsCollapsed(JSON.parse(savedCollapsedState));
         }
     }, []);
+
+    useEffect(() => {
+        if (isCollapsed) {
+            // When collapsed, popups are used, so no submenus should be "open"
+            setOpenKeys([]);
+        } else {
+            // When expanded, open the submenu corresponding to the current page
+            const currentTopLevelKey = menuItemsDef
+                .find(item => item.type === 'dropdown' && item.items.some(sub => sub.href === pathname))
+                ?.label;
+            if (currentTopLevelKey) {
+                setOpenKeys([currentTopLevelKey]);
+            }
+        }
+    }, [isCollapsed, pathname]); // Re-evaluate when collapse state or path changes
 
     const handleNavigation: MenuProps['onClick'] = (e) => {
         const domEvent = e.domEvent as React.MouseEvent<HTMLElement>;
@@ -192,10 +210,9 @@ export function Navbar({ children }: { children: React.ReactNode }) {
         localStorage.setItem('fsGaze-sidebar-collapsed', JSON.stringify(newCollapsedState));
     };
     
-    // Find the default open key based on the current path
-    const defaultOpenKey = menuItemsDef
-        .find(item => item.type === 'dropdown' && item.items.some(sub => sub.href === pathname))
-        ?.label;
+    const handleOpenChange = (keys: string[]) => {
+        setOpenKeys(keys);
+    };
 
     if (!mounted) {
         // Render a placeholder or skeleton to avoid layout shifts and hydration errors
@@ -240,7 +257,8 @@ export function Navbar({ children }: { children: React.ReactNode }) {
             theme={themeMode === 'dark' ? 'dark' : 'light'}
             mode="inline"
             selectedKeys={[pathname]}
-            defaultOpenKeys={defaultOpenKey ? [defaultOpenKey] : []}
+            openKeys={openKeys}
+            onOpenChange={handleOpenChange}
             onClick={handleNavigation}
             items={antdMenuItems}
             style={{ borderRight: 0 }}
