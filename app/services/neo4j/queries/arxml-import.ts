@@ -116,51 +116,55 @@ function recursiveExtractLogic(
 
       if (key.endsWith("-IREF")) {
         // This block handles complex instance references (ending in -IREF).
-        // These are structured references containing other references inside,
-        // like an INNER-PORT-IREF in a DELEGATION-SW-CONNECTOR.
-        // Instead of creating intermediate nodes for the instance reference structure,
-        // this logic flattens the hierarchy by creating direct relationships
-        // from the source element (e.g., the DELEGATION-SW-CONNECTOR)
-        // to the final target elements referenced within.
-        const irefs = ensureArray(childValue);
-        const effectiveSourceNodeUuid = currentNeo4jNodeUuid || parentNeo4jNodeUuid;
+        // It checks for two patterns:
+        // 1. Direct ...-REF children (e.g., inside a PROVIDER-IREF).
+        // 2. ...-REF children nested inside an ...-INSTANCE-REF (e.g., inside an INNER-PORT-IREF).
+        // In both cases, it creates a direct relationship from the containing element
+        // (like ASSEMBLY-SW-CONNECTOR) to the final target of the reference.
+         const irefs = ensureArray(childValue);
+         const effectiveSourceNodeUuid = currentNeo4jNodeUuid || parentNeo4jNodeUuid;
+ 
+         if (effectiveSourceNodeUuid) {
+           for (const iref of irefs) {
+             if (typeof iref !== 'object' || iref === null) continue;
+             
+             for (const childKey in iref) {
+                if (!iref.hasOwnProperty(childKey)) continue;
+                const childContent = iref[childKey];
 
-        if (effectiveSourceNodeUuid) {
-          for (const iref of irefs) {
-            if (typeof iref !== 'object' || iref === null) continue;
-            for (const instanceRefKey in iref) {
-              if (iref.hasOwnProperty(instanceRefKey) && instanceRefKey.endsWith("-INSTANCE-REF")) {
-                const instanceRefContent = iref[instanceRefKey];
-                if (typeof instanceRefContent === 'object' && instanceRefContent !== null) {
-                  for (const finalRefKey in instanceRefContent) {
-                    if (instanceRefContent.hasOwnProperty(finalRefKey) && (finalRefKey.endsWith('-REF') || finalRefKey.endsWith('-TREF'))) {
-                      const refs = ensureArray(instanceRefContent[finalRefKey]);
-                      for (const refItem of refs) {
-                        let refPath = null;
-                        let refDest = null;
-                        if (typeof refItem === 'string') {
-                          refPath = refItem;
-                        } else if (refItem && typeof refItem === 'object') {
-                          refPath = refItem._ || refItem.CONTENT;
-                          refDest = (refItem.$ && refItem.$.DEST) || refItem.DEST;
+                const processRef = (refKey: string, refData: any) => {
+                    const refsToProcess = ensureArray(refData);
+                    for (const refItem of refsToProcess) {
+                        let refPath = null, refDest = null;
+                        if (typeof refItem === 'string') refPath = refItem;
+                        else if (refItem && typeof refItem === 'object') {
+                            refPath = refItem._ || refItem.CONTENT;
+                            refDest = (refItem.$ && refItem.$.DEST) || refItem.DEST;
                         }
-
                         if (refPath) {
-                          pendingReferences.push({
-                            from: effectiveSourceNodeUuid,
-                            toPath: refPath,
-                            type: finalRefKey,
-                            props: { ...(refDest && { destinationType: refDest }) },
-                          });
+                            pendingReferences.push({
+                                from: effectiveSourceNodeUuid, toPath: refPath, type: refKey,
+                                props: { ...(refDest && { destinationType: refDest }) },
+                            });
                         }
-                      }
                     }
-                  }
+                };
+
+                // Check for the more specific case first!
+                if (childKey.endsWith('-INSTANCE-REF')) {
+                    if (typeof childContent === 'object' && childContent !== null) {
+                        for (const finalRefKey in childContent) {
+                            if (childContent.hasOwnProperty(finalRefKey) && (finalRefKey.endsWith('-REF') || finalRefKey.endsWith('-TREF'))) {
+                                processRef(finalRefKey, childContent[finalRefKey]);
+                            }
+                        }
+                    }
+                } else if (childKey.endsWith('-REF') || childKey.endsWith('-TREF')) {
+                    processRef(childKey, childContent);
                 }
-              }
-            }
-          }
-        }
+             }
+           }
+         }
       } else if (key.endsWith("-REF") || key.endsWith("-TREF")) {
         const refs = ensureArray(childValue);
         const effectiveSourceNodeUuid = currentNeo4jNodeUuid || parentNeo4jNodeUuid;
