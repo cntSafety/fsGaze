@@ -334,6 +334,69 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
                             </Descriptions.Item>
                           )}
                         </Descriptions>
+                        
+                        {/* Render delegated context within a composition */}
+                        {context.swComponentWithinCompName && (
+                          <Card 
+                            type="inner" 
+                            size="small" 
+                            title="Delegated Context (within Composition)" 
+                            style={{ marginTop: token.marginSM, borderColor: token.colorPrimaryBorder }}
+                          >
+                            <Descriptions column={1} size="small" labelStyle={{ width: '120px' }}>
+                              <Descriptions.Item label="Component">
+                                {context.swComponentWithinCompUUID ? (
+                                  <Link href={`/arxml-safety/${context.swComponentWithinCompUUID}`} legacyBehavior>
+                                    <a><Tag color="purple">{context.swComponentWithinCompName}</Tag></a>
+                                  </Link>
+                                ) : (
+                                  <Tag color="purple">{context.swComponentWithinCompName}</Tag>
+                                )}
+                              </Descriptions.Item>
+                              {context.receiverPortWithinCompositionUUIDName && (
+                                <Descriptions.Item label="Receiver Port">
+                                  <Text code>{context.receiverPortWithinCompositionUUIDName}</Text>
+                                </Descriptions.Item>
+                              )}
+                              {context.failureModeNameWithinCompositionRPort && (
+                                <Descriptions.Item label="Failure Mode">
+                                  <Space>
+                                    <Tag color="red">{context.failureModeNameWithinCompositionRPort}</Tag>
+                                    {context.failureModeASILWithinCompositionRPort && (
+                                      <Tag color={getAsilColor(context.failureModeASILWithinCompositionRPort)}>
+                                        ASIL: {context.failureModeASILWithinCompositionRPort}
+                                      </Tag>
+                                    )}
+                                    {context.failureModeUUIDWithinCompositionRPort && getFailureSelectionState && handleFailureSelection && (() => {
+                                      const selectionState = getFailureSelectionState(context.failureModeUUIDWithinCompositionRPort);
+                                      const buttonText =
+                                        selectionState === 'first' ? 'Selected as Cause' :
+                                        selectionState === 'second' ? 'Selected as Effect' :
+                                        isCauseSelected ? 'Set as Effect' : 'Set as Cause';
+
+                                      return (
+                                        <Button
+                                          icon={<LinkOutlined />}
+                                          size="small"
+                                          type={selectionState ? 'primary' : 'default'}
+                                          onClick={() => handleFailureSelection(
+                                            context.failureModeUUIDWithinCompositionRPort!,
+                                            context.failureModeNameWithinCompositionRPort!,
+                                            'receiver-port',
+                                            context.swComponentWithinCompUUID!,
+                                            context.swComponentWithinCompName!
+                                          )}
+                                        >
+                                          {buttonText}
+                                        </Button>
+                                      );
+                                    })()}
+                                  </Space>
+                                </Descriptions.Item>
+                              )}
+                            </Descriptions>
+                          </Card>
+                        )}
                       </Card>
                     ))}
                   </Space>

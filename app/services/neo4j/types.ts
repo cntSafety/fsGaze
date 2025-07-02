@@ -62,23 +62,30 @@ export interface ComponentVisualizationResult {
 
 // Assembly context interfaces
 export interface AssemblyContextInfo {
-  assemblySWConnectorName: string | null;
-  assemblySWConnectorUUID: string | null;
-  swComponentName: string | null;
-  swComponentUUID: string | null;
-  swComponentType: string | null;
-  // New fields for port and ASIL information
+  assemblySWConnectorName: string;
+  assemblySWConnectorUUID: string;
+  swComponentName: string;
+  swComponentUUID: string;
+  swComponentType: string;
+  receiverPortUUID: string | null;
+  receiverPortName: string | null;
+  // New fields for provider port failure modes
   providerPortUUID?: string | null;
   providerPortName?: string | null;
-  receiverPortUUID?: string | null;
-  receiverPortName?: string | null;
-  failureModeName?: string | null;
-  failureModeUUID?: string | null;
-  failureModeASIL?: string | null;
-  // Added for navigation to correct component type
-  swComponentClassName?: string | null;
-  swComponentClassUUID?: string | null;
-  swComponentClassType?: string | null;
+  failureModeName: string | null;
+  failureModeUUID: string | null;
+  failureModeASIL: string | null;
+  swComponentClassName: string | null;
+  swComponentClassUUID: string | null;
+  swComponentClassType: string | null;
+  swComponentWithinCompName?: string | null;
+  swComponentWithinCompUUID?: string | null;
+  receiverPortWithinCompositionUUID?: string | null;
+  receiverPortWithinCompositionUUIDName?: string | null;
+  receiverPortWithinCompositionName?: string | null;
+  failureModeNameWithinCompositionRPort?: string | null;
+  failureModeUUIDWithinCompositionRPort?: string | null;
+  failureModeASILWithinCompositionRPort?: string | null;
 }
 
 // Port and interface interfaces

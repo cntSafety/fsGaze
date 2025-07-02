@@ -39,16 +39,13 @@ export interface SRInterfaceConnectionInfoRPort {
 }
 
 /**
- * Retrieves the assembly context for a given P-Port (Provider Port).
- * This query finds the software component that the P-Port is connected to
- * via an assembly connector, effectively identifying the "other end" of the connection.
- * It filters out the component that contains the P-Port itself.
- *
- * @param pPortUuid The UUID of the P_PORT_PROTOTYPE node.
- * @returns A Promise that resolves to the raw Neo4j QueryResult containing assembly context info.
+ * Retrieves the assembly context for a given P-PORT-PROTOTYPE.
+ * This includes the connected R-PORT-PROTOTYPE, its containing SW_COMPONENT_PROTOTYPE,
+ * and any associated Failure Modes with their ASIL ratings.
+ * It also resolves the actual component and port within a composition if delegation is used.
  */
 export const getAssemblyContextForPPort = async (pPortUuid: string): Promise<QueryResult<AssemblyContextInfo>> => {
-  const session = driver.session(); 
+  const session = driver.session();
   try {
     const result = await session.run<AssemblyContextInfo>(
       `
@@ -68,6 +65,11 @@ export const getAssemblyContextForPPort = async (pPortUuid: string): Promise<Que
       //new --> get also the SW Component Type from prototype compoent to enable uuid based navigation
       OPTIONAL MATCH (swCompPro)-[:\`TYPE-TREF\`]->(swCompClass)
       WHERE (swCompClass:APPLICATION_SW_COMPONENT_TYPE OR swCompClass:COMPOSITION_SW_COMPONENT_TYPE OR swCompClass:SERVICE_SW_COMPONENT_TYPE)
+      //If the swCompPro type is COMPOSITION_SW_COMPONENT_TYPE lets find the DELEGATION_SW_CONNECTOR and with that find the component and port within that composition
+      OPTIONAL MATCH (rPortNode)<-[:\`OUTER-PORT-REF\`]-(delegationSWCon:DELEGATION_SW_CONNECTOR)  
+      OPTIONAL MATCH (delegationSWCon)-[:\`TARGET-R-PORT-REF\`]->(rPortNodeWithinComp)
+      OPTIONAL MATCH (rPortNodeWithinComp:R_PORT_PROTOTYPE)<-[:CONTAINS]->(compWithinComposition:APPLICATION_SW_COMPONENT_TYPE)
+      OPTIONAL MATCH (rPortNodeWithinComp)<-[:OCCURRENCE]-(FMwithinComprPort:FAILUREMODE)  
       RETURN DISTINCT 
        swConnector.name as assemblySWConnectorName,
        swConnector.uuid as assemblySWConnectorUUID,
@@ -81,7 +83,14 @@ export const getAssemblyContextForPPort = async (pPortUuid: string): Promise<Que
        FM.asil as failureModeASIL,
        swCompClass.name as swComponentClassName,
        swCompClass.uuid as swComponentClassUUID,
-       labels(swCompClass)[0] as swComponentClassType
+       labels(swCompClass)[0] as swComponentClassType,
+       compWithinComposition.name as swComponentWithinCompName,
+       compWithinComposition.uuid as swComponentWithinCompUUID,
+       rPortNodeWithinComp.uuid as receiverPortWithinCompositionUUID,
+       rPortNodeWithinComp.name as receiverPortWithinCompositionUUIDName,
+       FMwithinComprPort.name as failureModeNameWithinCompositionRPort,
+      FMwithinComprPort.uuid as failureModeUUIDWithinCompositionRPort,
+      FMwithinComprPort.asil as failureModeASILWithinCompositionRPort
       `,
       { pPortUuid }
     );
