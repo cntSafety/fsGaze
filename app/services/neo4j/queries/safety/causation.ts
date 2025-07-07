@@ -56,13 +56,15 @@ export const createCausationBetweenFailureModes = async (
     const causationName = `${sourceName} causes ${targetName}`;
 
     // Create the causation node and relationships
+    const currentTimestamp = new Date().toISOString();
     const result = await session.run(
       `MATCH (causationFirst:FAILUREMODE {uuid: $firstFailureUuid})
        MATCH (causationThen:FAILUREMODE {uuid: $thenFailureUuid})
        CREATE (causation:CAUSATION {
            name: $causationName,
            uuid: $causationUuid,
-           createdAt: $createdAt
+           created: $created,
+           lastModified: $lastModified
        })
        CREATE (causation)-[:FIRST]->(causationFirst)
        CREATE (causation)-[:THEN]->(causationThen)
@@ -72,7 +74,8 @@ export const createCausationBetweenFailureModes = async (
         thenFailureUuid: targetFailureModeUuid,
         causationName,
         causationUuid,
-        createdAt: new Date().toISOString()
+        created: new Date().toISOString(),
+        lastModified: new Date().toISOString()
       }
     );
 

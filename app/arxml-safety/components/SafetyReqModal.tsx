@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Form, Input, Select, Button, Typography, message, Tabs, Space, Tag, Popconfirm } from 'antd';
-import { PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, EditOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import { 
   SafetyReqData, 
   SafetyReqASIL, 
@@ -237,6 +237,22 @@ const SafetyReqModal: React.FC<SafetyReqModalProps> = ({
                 {existingReqs.length} requirement(s) found
               </Text>
             </div>
+            {activeReq && (
+              <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', marginTop: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <ClockCircleOutlined style={{ color: '#8c8c8c', fontSize: '14px' }} />
+                  <Text type="secondary" style={{ fontSize: '12px' }}>
+                    Created: {activeReq.created ? new Date(activeReq.created).toLocaleString() : 'N/A'}
+                  </Text>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <EditOutlined style={{ color: '#8c8c8c', fontSize: '14px' }} />
+                  <Text type="secondary" style={{ fontSize: '12px' }}>
+                    Modified: {activeReq.lastModified ? new Date(activeReq.lastModified).toLocaleString() : 'N/A'}
+                  </Text>
+                </div>
+              </div>
+            )}
           </div>
           <Space>
             <Button 

@@ -82,8 +82,8 @@ export const createRiskRatingNode = async (
          Occurrence: $occurrence,
          Detection: $detection,
          RatingComment: $ratingComment,
-         Created: $created,
-         LastModified: $lastModified
+         created: $created,
+         lastModified: $lastModified
        })
        CREATE (failure)-[r:RATED]->(riskRating)
        RETURN riskRating.uuid AS createdRiskRatingUuid`,
@@ -186,7 +186,7 @@ export const updateRiskRatingNode = async (
            riskRating.Occurrence = $occurrence,
            riskRating.Detection = $detection,
            riskRating.RatingComment = $ratingComment,
-           riskRating.LastModified = $lastModified
+           riskRating.lastModified = $lastModified
        RETURN riskRating.uuid AS updatedRiskRatingUuid, riskRating.name AS updatedRiskRatingName`,
       {
         riskRatingUuid,
@@ -295,9 +295,9 @@ export const getRiskRatingNodes = async (
               RRnode.Occurrence AS Occurrence,
               RRnode.Detection AS Detection,
               RRnode.RatingComment AS RatingComment,
-              RRnode.Created AS Created,
-              RRnode.LastModified AS RiskRatingNodeLastModified
-       ORDER BY RRnode.Created ASC`,
+              RRnode.created AS created,
+              RRnode.lastModified AS lastModified
+       ORDER BY RRnode.created ASC`,
       { failureModeUuid }
     );
 
@@ -310,8 +310,8 @@ export const getRiskRatingNodes = async (
       occurrence: record.get('Occurrence'),
       detection: record.get('Detection'),
       ratingComment: record.get('RatingComment') || '',
-      created: record.get('Created'),
-      lastModified: record.get('RiskRatingNodeLastModified'),
+      created: record.get('created'),
+      lastModified: record.get('lastModified'),
     }));
 
     if (progressCallback) progressCallback(100, 'Risk rating nodes retrieved successfully');

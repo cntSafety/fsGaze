@@ -29,28 +29,24 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
     try {        // Import/Update FAILURE MODES
         const failureNodeType = "FAILUREMODE";
         for (const failure of data.failures || []) {
-            if (!failure.uuid || !failure.properties || !failure.properties.name) {
-                logs.push(`[ERROR] Skipping ${failureNodeType} due to missing uuid or name: ${JSON.stringify(failure)}`);
-                continue;
-            }
             const { uuid, properties: rawProperties } = failure;
             const propsToSet = { ...rawProperties };
             delete propsToSet.uuid;       // Handled by MERGE key
-            delete propsToSet.createdAt;  // We set this explicitly
-            delete propsToSet.updatedAt;  // We set this explicitly
+            delete propsToSet.created;  // We set this explicitly
+            delete propsToSet.lastModified;  // We set this explicitly
 
             const result = await tx.run(
                 'MERGE (f:FAILUREMODE {uuid: $uuid}) ' +
-                'ON CREATE SET f = $propsToSet, f.uuid = $uuid, f.createdAt = timestamp(), f.updatedAt = f.createdAt ' +
-                'ON MATCH SET f += $propsToSet, f.updatedAt = CASE WHEN f.createdAt IS NULL THEN f.updatedAt ELSE timestamp() END ' +
-                'RETURN f.name AS name, f.createdAt AS createdAt, f.updatedAt AS updatedAt',
+                'ON CREATE SET f = $propsToSet, f.uuid = $uuid, f.created = timestamp(), f.lastModified = f.created ' +
+                'ON MATCH SET f += $propsToSet, f.lastModified = CASE WHEN f.created IS NULL THEN f.lastModified ELSE timestamp() END ' +
+                'RETURN f.name AS name, f.created AS created, f.lastModified AS lastModified',
                 { uuid, propsToSet }
             );
             const record = result.records[0];
             if (record) {
                 const name = record.get('name');
-                const createdAtRaw = record.get('createdAt');
-                const updatedAtRaw = record.get('updatedAt');
+                const createdAtRaw = record.get('created');
+                const updatedAtRaw = record.get('lastModified');
                 let action = 'processed';
 
                 const createdAtNum = convertNeo4jTimestampToNumber(createdAtRaw);
@@ -82,28 +78,24 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
         // Import/Update CAUSATIONS
         const causationNodeType = "CAUSATION";
         for (const causation of data.causations || []) {
-            if (!causation.uuid || !causation.properties || !causation.properties.name) {
-                logs.push(`[ERROR] Skipping ${causationNodeType} due to missing uuid or name: ${JSON.stringify(causation)}`);
-                continue;
-            }
             const { uuid, properties: rawProperties } = causation;
             const propsToSet = { ...rawProperties };
             delete propsToSet.uuid;
-            delete propsToSet.createdAt;
-            delete propsToSet.updatedAt;
+            delete propsToSet.created;
+            delete propsToSet.lastModified;
 
             const result = await tx.run(
                 'MERGE (c:CAUSATION {uuid: $uuid}) ' +
-                'ON CREATE SET c = $propsToSet, c.uuid = $uuid, c.createdAt = timestamp(), c.updatedAt = c.createdAt ' +
-                'ON MATCH SET c += $propsToSet, c.updatedAt = CASE WHEN c.createdAt IS NULL THEN c.updatedAt ELSE timestamp() END ' +
-                'RETURN c.name AS name, c.createdAt AS createdAt, c.updatedAt AS updatedAt',
+                'ON CREATE SET c = $propsToSet, c.uuid = $uuid, c.created = timestamp(), c.lastModified = c.created ' +
+                'ON MATCH SET c += $propsToSet, c.lastModified = CASE WHEN c.created IS NULL THEN c.lastModified ELSE timestamp() END ' +
+                'RETURN c.name AS name, c.created AS created, c.lastModified AS lastModified',
                 { uuid, propsToSet }
             );
             const record = result.records[0];
             if (record) {
                 const name = record.get('name');
-                const createdAtRaw = record.get('createdAt');
-                const updatedAtRaw = record.get('updatedAt');
+                const createdAtRaw = record.get('created');
+                const updatedAtRaw = record.get('lastModified');
                 let action = 'processed';
 
                 const createdAtNum = convertNeo4jTimestampToNumber(createdAtRaw);
@@ -164,8 +156,8 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 'MATCH (f:FAILUREMODE {uuid: $failureUuid}) ' +
                 'MATCH (src {uuid: $occuranceSourceUuid}) ' +
                 'MERGE (f)-[r:OCCURRENCE]->(src) ' +
-                'ON CREATE SET r.createdAt = timestamp() ' +
-                'ON MATCH SET r.updatedAt = timestamp() ' +
+                'ON CREATE SET r.created = timestamp() ' +
+                'ON MATCH SET r.lastModified = timestamp() ' +
                 'RETURN type(r) AS relType', // We can return something to confirm creation/match
                 { failureUuid: occ.failureUuid, occuranceSourceUuid: occ.occuranceSourceUuid }
             );
@@ -201,8 +193,8 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 'MATCH (cause:FAILUREMODE {uuid: $causeFailureUuid}) ' +
                 'MATCH (c:CAUSATION {uuid: $causationUuid}) ' +
                 'MERGE (cause)<-[r:FIRST]-(c) ' +
-                'ON CREATE SET r.createdAt = timestamp() ' +
-                'ON MATCH SET r.updatedAt = timestamp() ',
+                'ON CREATE SET r.created = timestamp() ' +
+                'ON MATCH SET r.lastModified = timestamp() ',
                 { causeFailureUuid: link.causeFailureUuid, causationUuid: link.causationUuid }
             );
             logs.push(`[SUCCESS] FIRST relationship linked: (FAILUREMODE ${link.causeFailureName || link.causeFailureUuid})-[FIRST]->(CAUSATION ${link.causationName || link.causationUuid}).`);
@@ -212,8 +204,8 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 'MATCH (c:CAUSATION {uuid: $causationUuid}) ' +
                 'MATCH (effect:FAILUREMODE {uuid: $effectFailureUuid}) ' +
                 'MERGE (c)-[r:THEN]->(effect) ' +
-                'ON CREATE SET r.createdAt = timestamp() ' +
-                'ON MATCH SET r.updatedAt = timestamp() ',
+                'ON CREATE SET r.created = timestamp() ' +
+                'ON MATCH SET r.lastModified = timestamp() ',
                 { causationUuid: link.causationUuid, effectFailureUuid: link.effectFailureUuid }
             );
             logs.push(`[SUCCESS] THEN relationship linked: (CAUSATION ${link.causationName || link.causationUuid})-[THEN]->(FAILUREMODE ${link.effectFailureName || link.effectFailureUuid}).`);
@@ -222,28 +214,24 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
         // Import/Update RISK RATINGS
         const riskRatingNodeType = "RISKRATING";
         for (const riskRating of data.riskRatings || []) {
-            if (!riskRating.uuid || !riskRating.properties || !riskRating.properties.name) {
-                logs.push(`[ERROR] Skipping ${riskRatingNodeType} due to missing uuid or name: ${JSON.stringify(riskRating)}`);
-                continue;
-            }
             const { uuid, properties: rawProperties } = riskRating;
             const propsToSet = { ...rawProperties };
             delete propsToSet.uuid;       // Handled by MERGE key
-            delete propsToSet.createdAt;  // We set this explicitly
-            delete propsToSet.updatedAt;  // We set this explicitly
+            delete propsToSet.created;  // We set this explicitly
+            delete propsToSet.lastModified;  // We set this explicitly
 
             const result = await tx.run(
                 'MERGE (r:RISKRATING {uuid: $uuid}) ' +
-                'ON CREATE SET r = $propsToSet, r.uuid = $uuid, r.createdAt = timestamp(), r.updatedAt = r.createdAt ' +
-                'ON MATCH SET r += $propsToSet, r.updatedAt = CASE WHEN r.createdAt IS NULL THEN r.updatedAt ELSE timestamp() END ' +
-                'RETURN r.name AS name, r.createdAt AS createdAt, r.updatedAt AS updatedAt',
+                'ON CREATE SET r = $propsToSet, r.uuid = $uuid, r.created = timestamp(), r.lastModified = r.created ' +
+                'ON MATCH SET r += $propsToSet, r.lastModified = CASE WHEN r.created IS NULL THEN r.lastModified ELSE timestamp() END ' +
+                'RETURN r.name AS name, r.created AS created, r.lastModified AS lastModified',
                 { uuid, propsToSet }
             );
             const record = result.records[0];
             if (record) {
                 const name = record.get('name');
-                const createdAtRaw = record.get('createdAt');
-                const updatedAtRaw = record.get('updatedAt');
+                const createdAtRaw = record.get('created');
+                const updatedAtRaw = record.get('lastModified');
                 let action = 'processed';
 
                 const createdAtNum = convertNeo4jTimestampToNumber(createdAtRaw);
@@ -286,35 +274,34 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 'MATCH (f:FAILUREMODE {uuid: $failureUuid}) ' +
                 'MATCH (r:RISKRATING {uuid: $riskRatingUuid}) ' +
                 'MERGE (f)-[rel:RATED]->(r) ' +
-                'ON CREATE SET rel.createdAt = timestamp() ' +
-                'ON MATCH SET rel.updatedAt = timestamp() ',
+                'ON CREATE SET rel.created = timestamp() ' +
+                'ON MATCH SET rel.lastModified = timestamp() ',
                 { failureUuid: link.failureUuid, riskRatingUuid: link.riskRatingUuid }
             );
-            logs.push(`[SUCCESS] RATED relationship linked: (FAILUREMODE ${link.failureName || link.failureUuid})-[RATED]->(RISKRATING ${link.riskRatingName || link.riskRatingUuid}).`);        }        // Import/Update SAFETY TASKS
+            logs.push(`[SUCCESS] RATED relationship linked: (FAILUREMODE ${link.failureName || link.failureUuid})-[RATED]->(RISKRATING ${link.riskRatingName || link.riskRatingUuid}).`);
+        }
+
+        // Import/Update SAFETY TASKS
         const safetyTaskNodeType = "SAFETYTASKS";
         for (const safetyTask of data.safetyTasks || []) {
-            if (!safetyTask.uuid || !safetyTask.properties || !safetyTask.properties.name) {
-                logs.push(`[ERROR] Skipping ${safetyTaskNodeType} due to missing uuid or name: ${JSON.stringify(safetyTask)}`);
-                continue;
-            }
             const { uuid, properties: rawProperties } = safetyTask;
             const propsToSet = { ...rawProperties };
             delete propsToSet.uuid;       // Handled by MERGE key
-            delete propsToSet.createdAt;  // We set this explicitly
-            delete propsToSet.updatedAt;  // We set this explicitly
+            delete propsToSet.created;  // We set this explicitly
+            delete propsToSet.lastModified;  // We set this explicitly
 
             const result = await tx.run(
                 'MERGE (task:SAFETYTASKS {uuid: $uuid}) ' +
-                'ON CREATE SET task = $propsToSet, task.uuid = $uuid, task.createdAt = timestamp(), task.updatedAt = task.createdAt ' +
-                'ON MATCH SET task += $propsToSet, task.updatedAt = CASE WHEN task.createdAt IS NULL THEN task.updatedAt ELSE timestamp() END ' +
-                'RETURN task.name AS name, task.createdAt AS createdAt, task.updatedAt AS updatedAt',
+                'ON CREATE SET task = $propsToSet, task.uuid = $uuid, task.created = timestamp(), task.lastModified = task.created ' +
+                'ON MATCH SET task += $propsToSet, task.lastModified = CASE WHEN task.created IS NULL THEN task.lastModified ELSE timestamp() END ' +
+                'RETURN task.name AS name, task.created AS created, task.lastModified AS lastModified',
                 { uuid, propsToSet }
             );
             const record = result.records[0];
             if (record) {
                 const name = record.get('name');
-                const createdAtRaw = record.get('createdAt');
-                const updatedAtRaw = record.get('updatedAt');
+                const createdAtRaw = record.get('created');
+                const updatedAtRaw = record.get('lastModified');
                 let action = 'processed';
 
                 const createdAtNum = convertNeo4jTimestampToNumber(createdAtRaw);
@@ -355,8 +342,8 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 'MATCH (n {uuid: $nodeUuid}) ' +
                 'MATCH (task:SAFETYTASKS {uuid: $safetyTaskUuid}) ' +
                 'MERGE (n)-[rel:TASKREF]->(task) ' +
-                'ON CREATE SET rel.createdAt = timestamp() ' +
-                'ON MATCH SET rel.updatedAt = timestamp() ',
+                'ON CREATE SET rel.created = timestamp() ' +
+                'ON MATCH SET rel.lastModified = timestamp() ',
                 { nodeUuid: link.nodeUuid, safetyTaskUuid: link.safetyTaskUuid }            );
             logs.push(`[SUCCESS] TASKREF relationship linked: (${link.nodeName || link.nodeUuid})-[TASKREF]->(SAFETYTASKS ${link.safetyTaskName || link.safetyTaskUuid}).`);
         }
@@ -364,28 +351,24 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
         // Import/Update SAFETY REQUIREMENTS
         const safetyReqNodeType = "SAFETYREQ";
         for (const safetyReq of data.safetyReqs || []) {
-            if (!safetyReq.uuid || !safetyReq.properties || !safetyReq.properties.name) {
-                logs.push(`[ERROR] Skipping ${safetyReqNodeType} due to missing uuid or name: ${JSON.stringify(safetyReq)}`);
-                continue;
-            }
             const { uuid, properties: rawProperties } = safetyReq;
             const propsToSet = { ...rawProperties };
             delete propsToSet.uuid;       // Handled by MERGE key
-            delete propsToSet.createdAt;  // We set this explicitly
-            delete propsToSet.updatedAt;  // We set this explicitly
+            delete propsToSet.created;  // We set this explicitly
+            delete propsToSet.lastModified;  // We set this explicitly
 
             const result = await tx.run(
                 'MERGE (req:SAFETYREQ {uuid: $uuid}) ' +
-                'ON CREATE SET req = $propsToSet, req.uuid = $uuid, req.createdAt = timestamp(), req.updatedAt = req.createdAt ' +
-                'ON MATCH SET req += $propsToSet, req.updatedAt = CASE WHEN req.createdAt IS NULL THEN req.updatedAt ELSE timestamp() END ' +
-                'RETURN req.name AS name, req.createdAt AS createdAt, req.updatedAt AS updatedAt',
+                'ON CREATE SET req = $propsToSet, req.uuid = $uuid, req.created = timestamp(), req.lastModified = req.created ' +
+                'ON MATCH SET req += $propsToSet, req.lastModified = CASE WHEN req.created IS NULL THEN req.lastModified ELSE timestamp() END ' +
+                'RETURN req.name AS name, req.created AS created, req.lastModified AS lastModified',
                 { uuid, propsToSet }
             );
             const record = result.records[0];
             if (record) {
                 const name = record.get('name');
-                const createdAtRaw = record.get('createdAt');
-                const updatedAtRaw = record.get('updatedAt');
+                const createdAtRaw = record.get('created');
+                const updatedAtRaw = record.get('lastModified');
                 let action = 'processed';
 
                 const createdAtNum = convertNeo4jTimestampToNumber(createdAtRaw);
@@ -430,8 +413,8 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 'MATCH (n {uuid: $nodeUuid}) ' +
                 'MATCH (req:SAFETYREQ {uuid: $safetyReqUuid}) ' +
                 'MERGE (n)-[rel:HAS_SAFETY_REQUIREMENT]->(req) ' +
-                'ON CREATE SET rel.createdAt = timestamp() ' +
-                'ON MATCH SET rel.updatedAt = timestamp() ',
+                'ON CREATE SET rel.created = timestamp() ' +
+                'ON MATCH SET rel.lastModified = timestamp() ',
                 { nodeUuid: link.nodeUuid, safetyReqUuid: link.safetyReqUuid }
             );
             logs.push(`[SUCCESS] HAS_SAFETY_REQUIREMENT relationship linked: (${link.nodeName || link.nodeUuid})-[HAS_SAFETY_REQUIREMENT]->(SAFETYREQ ${link.safetyReqName || link.safetyReqUuid}).`);
@@ -440,28 +423,24 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
         // Import/Update SAFETY NOTES
         const safetyNoteNodeType = "SAFETYNOTE";
         for (const safetyNote of data.safetyNotes || []) {
-            if (!safetyNote.uuid || !safetyNote.properties) {
-                logs.push(`[ERROR] Skipping ${safetyNoteNodeType} due to missing uuid or properties: ${JSON.stringify(safetyNote)}`);
-                continue;
-            }
             const { uuid, properties: rawProperties } = safetyNote;
             const propsToSet = { ...rawProperties };
             delete propsToSet.uuid;       // Handled by MERGE key
-            delete propsToSet.createdAt;  // We set this explicitly
-            delete propsToSet.updatedAt;  // We set this explicitly
+            delete propsToSet.created;  // We set this explicitly
+            delete propsToSet.lastModified;  // We set this explicitly
 
             const result = await tx.run(
                 'MERGE (note:SAFETYNOTE {uuid: $uuid}) ' +
-                'ON CREATE SET note = $propsToSet, note.uuid = $uuid, note.createdAt = timestamp(), note.updatedAt = note.createdAt ' +
-                'ON MATCH SET note += $propsToSet, note.updatedAt = CASE WHEN note.createdAt IS NULL THEN note.updatedAt ELSE timestamp() END ' +
-                'RETURN note.note AS noteContent, note.createdAt AS createdAt, note.updatedAt AS updatedAt',
+                'ON CREATE SET note = $propsToSet, note.uuid = $uuid, note.created = timestamp(), note.lastModified = note.created ' +
+                'ON MATCH SET note += $propsToSet, note.lastModified = CASE WHEN note.created IS NULL THEN note.lastModified ELSE timestamp() END ' +
+                'RETURN note.note AS noteContent, note.created AS created, note.lastModified AS lastModified',
                 { uuid, propsToSet }
             );
             const record = result.records[0];
             if (record) {
                 const noteContent = record.get('noteContent');
-                const createdAtRaw = record.get('createdAt');
-                const updatedAtRaw = record.get('updatedAt');
+                const createdAtRaw = record.get('created');
+                const updatedAtRaw = record.get('lastModified');
                 let action = 'processed';
 
                 const createdAtNum = convertNeo4jTimestampToNumber(createdAtRaw);
@@ -507,8 +486,8 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 'MATCH (n {uuid: $nodeUuid}) ' +
                 'MATCH (note:SAFETYNOTE {uuid: $safetyNoteUuid}) ' +
                 'MERGE (n)-[rel:NOTEREF]->(note) ' +
-                'ON CREATE SET rel.createdAt = timestamp() ' +
-                'ON MATCH SET rel.updatedAt = timestamp() ',
+                'ON CREATE SET rel.created = timestamp() ' +
+                'ON MATCH SET rel.lastModified = timestamp() ',
                 { nodeUuid: link.nodeUuid, safetyNoteUuid: link.safetyNoteUuid }
             );
             logs.push(`[SUCCESS] NOTEREF relationship linked: (${nodeLabels} ${link.nodeName || link.nodeUuid})-[NOTEREF]->(SAFETYNOTE ${link.safetyNoteName || link.safetyNoteUuid}).`);

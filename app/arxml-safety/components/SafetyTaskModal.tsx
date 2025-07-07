@@ -296,6 +296,22 @@ const SafetyTaskModal: React.FC<SafetyTaskModalProps> = ({
                 {existingTasks.length} task(s) found
               </Text>
             </div>
+            {activeTask && (
+              <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', marginTop: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <ClockCircleOutlined style={{ color: '#8c8c8c', fontSize: '14px' }} />
+                  <Text type="secondary" style={{ fontSize: '12px' }}>
+                    Created: {activeTask.created ? new Date(activeTask.created).toLocaleString() : 'N/A'}
+                  </Text>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <EditOutlined style={{ color: '#8c8c8c', fontSize: '14px' }} />
+                  <Text type="secondary" style={{ fontSize: '12px' }}>
+                    Modified: {activeTask.lastModified ? new Date(activeTask.lastModified).toLocaleString() : 'N/A'}
+                  </Text>
+                </div>
+              </div>
+            )}
           </div>
           <Space>
             <Button 

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Button, Modal, Input, message, Tooltip, Space, Typography, Card } from 'antd';
-import { EditOutlined, DeleteOutlined, PlusOutlined, FileTextOutlined } from '@ant-design/icons';
+import { EditOutlined, DeleteOutlined, PlusOutlined, FileTextOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import { 
   createSafetyNote, 
   updateSafetyNote, 
@@ -184,6 +184,20 @@ export default function SafetyNoteManager({
                 ]}
               >
                 <Text>{note.note}</Text>
+                <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', marginTop: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <ClockCircleOutlined style={{ color: '#8c8c8c', fontSize: '12px' }} />
+                        <Text type="secondary" style={{ fontSize: '11px' }}>
+                            Created: {note.created ? new Date(note.created).toLocaleString() : 'N/A'}
+                        </Text>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <EditOutlined style={{ color: '#8c8c8c', fontSize: '12px' }} />
+                        <Text type="secondary" style={{ fontSize: '11px' }}>
+                            Modified: {note.lastModified ? new Date(note.lastModified).toLocaleString() : 'N/A'}
+                        </Text>
+                    </div>
+                </div>
               </Card>
             ))}
           </div>

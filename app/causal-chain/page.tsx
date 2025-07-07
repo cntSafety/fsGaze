@@ -40,6 +40,8 @@ interface FailureMode {
     elementId: string;
     qualifiedName: string;
     effects: Effect[]; // Changed from string[] to Effect[] to match DetailView
+    created?: string;
+    lastModified?: string;
 }
 
 interface PartUsage {
@@ -66,7 +68,10 @@ interface GraphNode {
     partInfo?: { // Only for failureMode nodes
         id: string;
         name: string;
-    };    // Properties for D3 simulation if needed by GraphView's Node type
+    };
+    created?: string;
+    lastModified?: string;
+    // Properties for D3 simulation if needed by GraphView's Node type
     fx?: number;
     fy?: number;
     vx?: number;
@@ -135,7 +140,9 @@ const FailureChain: React.FC = () => {
                          collect({
                             name: ou.name, 
                             elementId: ou.elementId, 
-                            qualifiedName: ou.qualifiedName
+                            qualifiedName: ou.qualifiedName,
+                            created: ou.created,
+                            lastModified: ou.lastModified
                          }) AS failureModes
                     RETURN 
                         pu.declaredName as partName, 
@@ -237,7 +244,9 @@ const FailureChain: React.FC = () => {
                             name: fm.name || 'Unnamed Failure Mode',
                             elementId: fm.elementId || 'No ID',
                             qualifiedName: fm.qualifiedName || 'No qualified name',
-                            effects: effectsMap[fm.elementId] || []
+                            effects: effectsMap[fm.elementId] || [],
+                            created: fm.created,
+                            lastModified: fm.lastModified
                         }));
 
                         return { part, failureModes };
@@ -319,7 +328,9 @@ const FailureChain: React.FC = () => {
                     partInfo: {
                         id: item.part.elementId,
                         name: item.part.name
-                    }
+                    },
+                    created: failureMode.created,
+                    lastModified: failureMode.lastModified
                 };
 
                 nodes.push(failureNode);

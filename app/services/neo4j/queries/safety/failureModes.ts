@@ -69,8 +69,8 @@ export const createFailureModeNode = async (
          name: $failureModeName,
          description: $failureModeDescription,
          asil: $asil,
-         Created: $created,
-         LastModified: $lastModified
+         created: $created,
+         lastModified: $lastModified
        })
        CREATE (failureMode)-[r:OCCURRENCE]->(element)
        RETURN failureMode.uuid AS createdFailureModeUuid, failureMode.name AS createdFailureModeName`,
@@ -159,17 +159,17 @@ export const updateFailureModeNode = async (
     const updateResult = await session.run(
       `MATCH (failure:FAILUREMODE) 
        WHERE failure.uuid = $failureModeUuid
-       SET failure.name = $failureModeName,
-           failure.description = $failureModeDescription,
-           failure.asil = $asil,
-           failure.updatedAt = $updatedAt
-       RETURN failure.uuid AS updatedFailureUuid, failure.name AS updatedFailureName`,
+       SET fm.name = $name,
+           fm.description = $description,
+           fm.asil = $asil,
+           fm.lastModified = $timestamp
+       RETURN fm.uuid AS updatedFailureModeUuid, fm.name AS updatedFailureModeName`,
       {
         failureModeUuid,
         failureModeName,
         failureModeDescription,
         asil,
-        updatedAt: currentTimestamp
+        timestamp: currentTimestamp
       }
     );
 
@@ -432,12 +432,12 @@ export const getFailuresAndCountsForComponents = async (
         fm.name AS failureName,
         fm.description AS failureDescription,
         fm.asil AS asil,
-        fm.Created AS Created,
+        fm.created AS created,
         count(DISTINCT rr) AS riskRatingCount,
         count(DISTINCT t) AS safetyTaskCount,
         count(DISTINCT req) AS safetyReqCount,
         count(DISTINCT n) AS safetyNoteCount
-      ORDER BY swc.name, fm.Created ASC
+      ORDER BY swc.name, fm.created ASC
     `;
 
     const result = await session.run(query, { componentUuids });
@@ -448,7 +448,7 @@ export const getFailuresAndCountsForComponents = async (
       failureName: record.get('failureName'),
       failureDescription: record.get('failureDescription'),
       asil: record.get('asil'),
-      Created: record.get('Created'),
+      created: record.get('created'),
       riskRatingCount: record.get('riskRatingCount').low,
       safetyTaskCount: record.get('safetyTaskCount').low,
       safetyReqCount: record.get('safetyReqCount').low,
@@ -483,12 +483,12 @@ export const getFailuresAndCountsForComponent = async (
         fm.name AS failureName,
         fm.description AS failureDescription,
         fm.asil AS asil,
-        fm.Created AS Created,
+        fm.created AS created,
         count(DISTINCT rr) AS riskRatingCount,
         count(DISTINCT t) AS safetyTaskCount,
         count(DISTINCT req) AS safetyReqCount,
         count(DISTINCT n) AS safetyNoteCount
-      ORDER BY fm.Created ASC
+      ORDER BY fm.created ASC
     `;
 
     const result = await session.run(query, { componentUuid });

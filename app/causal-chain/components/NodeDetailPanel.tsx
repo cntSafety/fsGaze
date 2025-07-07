@@ -8,6 +8,8 @@ interface NodeData {
         name?: string; // Made name optional here
     };
     effects?: string[];
+    created?: string;
+    lastModified?: string;
 }
 
 interface NodeDetailPanelProps {
@@ -28,6 +30,18 @@ const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({ node, onClose }) => {
                 <span className="text-sm font-bold text-gray-600 dark:text-gray-300">Part:</span>
                 <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{node.partInfo?.name || 'Unknown'}</span>
             </div>
+            {node.created && (
+                <div className="mt-2">
+                    <span className="text-sm font-bold text-gray-600 dark:text-gray-300">Created:</span>
+                    <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{new Date(node.created).toLocaleString()}</span>
+                </div>
+            )}
+            {node.lastModified && (
+                <div className="mt-2">
+                    <span className="text-sm font-bold text-gray-600 dark:text-gray-300">Last Modified:</span>
+                    <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{new Date(node.lastModified).toLocaleString()}</span>
+                </div>
+            )}
             {node.effects && node.effects.length > 0 && (
                 <div className="mt-2">
                     <span className="text-sm font-bold text-gray-600 dark:text-gray-300">Effects:</span>
