@@ -114,36 +114,49 @@ export const getAssemblyContextForRPort = async (rPortUuid: string): Promise<Que
   try {
     const result = await session.run<AssemblyContextInfo>(
       `
-      MATCH (rPortNode:R_PORT_PROTOTYPE {uuid: $rPortUuid})
-      //find the swConnector for this R_PORT
-      MATCH (rPortNode)<-[:\`TARGET-R-PORT-REF\`]-(swConnector:ASSEMBLY_SW_CONNECTOR)
-      //find the SW_COMPONENT_PROTOTYPEs which are connected to the swConnector
+       MATCH (rPortNode:R_PORT_PROTOTYPE {uuid: $rPortUuid})
+
+      // Use OPTIONAL MATCH for both direct and delegated paths to find the assembly connector
+      OPTIONAL MATCH (rPortNode)<-[:\`TARGET-R-PORT-REF\`]-(directAssemblyConnector:ASSEMBLY_SW_CONNECTOR)
+      OPTIONAL MATCH (rPortNode)<-[:\`TARGET-R-PORT-REF\`]-(delegationConnector:DELEGATION_SW_CONNECTOR)-[:\`OUTER-PORT-REF\`]->(outerRPort:R_PORT_PROTOTYPE)
+      OPTIONAL MATCH (outerRPort)<-[:\`TARGET-R-PORT-REF\`]-(delegatedAssemblyConnector:ASSEMBLY_SW_CONNECTOR)
+      
+      // Unify the found connector into a single variable
+      WITH rPortNode, COALESCE(directAssemblyConnector, delegatedAssemblyConnector) AS swConnector
+      WHERE swConnector IS NOT NULL
+      
+      // Now proceed with the original logic using the unified 'swConnector'
+      // Find the connected component prototype
       MATCH (swConnector)-[:\`CONTEXT-COMPONENT-REF\`]->(swCompPro)
       WHERE swCompPro:SW_COMPONENT_PROTOTYPE OR swCompPro:VirtualArxmlRefTarget
-      //find the APPLICATION_SW_COMPONENT_TYPE which is connected for filtering out
-      MATCH (containingSwc) -[:CONTAINS]->(rPortNode)
+      
+      // Find the component that contains the *original* rPortNode to filter it out
+      MATCH (containingSwc)-[:CONTAINS]->(rPortNode)
       WHERE (containingSwc:APPLICATION_SW_COMPONENT_TYPE OR containingSwc:COMPOSITION_SW_COMPONENT_TYPE OR containingSwc:SERVICE_SW_COMPONENT_TYPE)
         AND swCompPro.name <> containingSwc.name
       
-      // Get the connected P_PORT and its failure modes with ASIL information
+      // Get the connected P_PORT (the provider) and its failure modes
       OPTIONAL MATCH (swConnector)-[:\`TARGET-P-PORT-REF\`]->(pPortNode:P_PORT_PROTOTYPE)
       OPTIONAL MATCH (pPortNode)<-[:OCCURRENCE]-(FM:FAILUREMODE)
-       //new --> get also the SW Component Type from prototype compoent to enable uuid based navigation
+      
+      // Get the type of the connected component prototype
       OPTIONAL MATCH (swCompPro)-[:\`TYPE-TREF\`]->(swCompClass)
+      WHERE (swCompClass:APPLICATION_SW_COMPONENT_TYPE OR swCompClass:COMPOSITION_SW_COMPONENT_TYPE OR swCompClass:SERVICE_SW_COMPONENT_TYPE)
+      
       RETURN DISTINCT
-       swConnector.name as assemblySWConnectorName,
-       swConnector.uuid as assemblySWConnectorUUID,
-       swCompPro.name as swComponentName,
-       swCompPro.uuid as swComponentUUID,
-       labels(swCompPro)[0] as swComponentType,
-       pPortNode.uuid as providerPortUUID,
-       pPortNode.name as providerPortName,
-       FM.name as failureModeName,
-       FM.uuid as failureModeUUID,
-       FM.asil as failureModeASIL,
-       swCompClass.name as swComponentClassName,
-       swCompClass.uuid as swComponentClassUUID,
-       labels(swCompClass)[0] as swComponentClassType
+        swConnector.name as assemblySWConnectorName,
+        swConnector.uuid as assemblySWConnectorUUID,
+        swCompPro.name as swComponentName,
+        swCompPro.uuid as swComponentUUID,
+        labels(swCompPro)[0] as swComponentType,
+        pPortNode.uuid as providerPortUUID,
+        pPortNode.name as providerPortName,
+        FM.name as failureModeName,
+        FM.uuid as failureModeUUID,
+        FM.asil as failureModeASIL,
+        swCompClass.name as swComponentClassName,
+        swCompClass.uuid as swComponentClassUUID,
+        labels(swCompClass)[0] as swComponentClassType
       `,
       { rPortUuid }
     );
