@@ -48,7 +48,8 @@ export const useReceiverPortFailures = (
           swComponentName: `${port.name} (${port.type})`,
           failureName: 'No failureModes defined',
           failureDescription: '-',
-          asil: '-'
+          asil: '-',
+          isPlaceholder: true
         });
       }
     }
@@ -75,7 +76,7 @@ export const useReceiverPortFailures = (
       setIsSavingPort(true);
       
       let result;
-      if (record.isNewRow || record.failureName === 'No failureModes defined') {
+      if (record.isNewRow || record.isPlaceholder) {
         // Create new failure for port
         result = await createFailureModeNode(
           record.swComponentUuid!, // This is the port UUID for port records
@@ -99,7 +100,7 @@ export const useReceiverPortFailures = (
       }
 
       if (result.success) {
-        const action = (record.isNewRow || record.failureName === 'No failureModes defined') ? 'added' : 'updated';
+        const action = (record.isNewRow || record.isPlaceholder) ? 'added' : 'updated';
         message.success(`Port failure mode ${action} successfully!`);
         setEditingPortKey('');
         
@@ -185,7 +186,7 @@ export const useReceiverPortFailures = (
       
       // Check if the port currently shows "No failureModes defined"
       const noFailuresIndex = newData.findIndex(row => 
-        row.swComponentUuid === portUuid && row.failureName === 'No failureModes defined'
+        row.swComponentUuid === portUuid && row.isPlaceholder
       );
       
       if (noFailuresIndex !== -1) {

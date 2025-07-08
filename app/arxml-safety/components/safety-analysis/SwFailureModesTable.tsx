@@ -138,10 +138,22 @@ export default function SwFailureModesTable({
       dataIndex: 'failureDescription',
       editable: true,
       searchable: true,
-      ellipsis: true,
+      width: 300,
       minWidth: 200,
       multiLine: true, // Enable multi-line editing for description field
-      render: (text: unknown) => String(text || '-'),
+      render: (text: unknown) => (
+        <div 
+          style={{
+            maxWidth: 300,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis'
+          }}
+          title={String(text || '')}
+        >
+          {String(text || '-')}
+        </div>
+      ),
     },
     {
       key: 'asil',

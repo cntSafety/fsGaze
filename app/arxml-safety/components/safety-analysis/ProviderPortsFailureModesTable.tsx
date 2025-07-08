@@ -119,7 +119,12 @@ export default function ProviderPortsFailureModesTable({
       searchable: true,
       minWidth: 150,
       multiLine: true, // Enable multi-line editing for failure name field
-      render: (text: unknown) => <strong>{String(text || '-')}</strong>,
+      render: (text: unknown, record: SafetyTableRow) => {
+        if (record.isPlaceholder) {
+          return <span style={{ color: '#9ca3af' }}>{String(text || '-')}</span>;
+        }
+        return <strong>{String(text || '-')}</strong>;
+      },
     },
     {
       key: 'failureDescription',
@@ -127,10 +132,22 @@ export default function ProviderPortsFailureModesTable({
       dataIndex: 'failureDescription',
       editable: true,
       searchable: true,
-      ellipsis: true,
+      width: 300,
       minWidth: 200,
       multiLine: true, // Enable multi-line editing for description field
-      render: (text: unknown) => String(text || '-'),
+      render: (text: unknown) => (
+        <div 
+          style={{
+            maxWidth: 300,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis'
+          }}
+          title={String(text || '')}
+        >
+          {String(text || '-')}
+        </div>
+      ),
     },
     {
       key: 'asil',

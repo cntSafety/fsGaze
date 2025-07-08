@@ -118,14 +118,14 @@ export const BaseFailureModeTable: React.FC<BaseFailureModeTableProps> =
                         padding: '40px',
                         borderRadius: '8px'
                       }}>
-                        <Typography.Text type="secondary" style={{ fontSize: '16px' }}>
+                        <Typography.Text type="secondary" style={{ fontSize: '16px', color: '#9ca3af' }}>
                           {emptyStateConfig.primaryMessage}
                         </Typography.Text>
                         <br />
                         {emptyStateConfig.secondaryMessage && (
                            <>
                              <br />
-                             <Typography.Text type="secondary">
+                             <Typography.Text type="secondary" style={{ color: '#9ca3af' }}>
                                {emptyStateConfig.secondaryMessage}
                              </Typography.Text>
                            </>

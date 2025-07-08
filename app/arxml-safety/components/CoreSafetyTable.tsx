@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Table, Form, Input, Select, Button, Space, Tooltip, Dropdown, Modal, Popconfirm, message, Badge } from 'antd';
+import { Table, Form, Input, Select, Button, Space, Tooltip, Dropdown, Modal, Popconfirm, message, Badge, Typography } from 'antd';
 import { SearchOutlined, DeleteOutlined, EditOutlined, PlusOutlined, LinkOutlined, DashboardOutlined, MoreOutlined, ExclamationCircleOutlined, FileTextOutlined, CheckSquareOutlined, EditFilled, SnippetsOutlined } from '@ant-design/icons';
 import type { TableProps, ColumnType } from 'antd/es/table';
 import type { FormInstance } from 'antd/es/form';
@@ -61,6 +61,7 @@ export interface SafetyTableRow {
   safetyTaskCount?: number;
   safetyReqCount?: number;
   safetyNoteCount?: number;
+  isPlaceholder?: boolean;
 }
 
 export interface SafetyTableColumn {
@@ -928,6 +929,15 @@ export default function CoreSafetyTable({
               }
             },
           };
+        }}
+        locale={{
+          emptyText: (
+            <div style={{ padding: '20px' }}>
+              <Typography.Text type="secondary" style={{ fontSize: '16px', color: '#9ca3af' }}>
+                No failure modes defined
+              </Typography.Text>
+            </div>
+          )
         }}
       />
       
