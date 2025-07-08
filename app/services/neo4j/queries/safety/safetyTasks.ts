@@ -17,6 +17,10 @@ export interface SafetyTaskData {
   responsible: string;
   reference: string;
   taskType: SafetyTaskType;
+  relatedFailureModeName?: string;
+  relatedFailureModeUuid?: string;
+  relatedComponentName?: string;
+  relatedComponentUuid?: string;
 }
 
 export interface CreateSafetyTaskInput {
@@ -505,7 +509,9 @@ export const getAllSafetyTasks = async (
       
       query += ` WHERE task.status = $status`;
       params.status = status;
-    }    query += ` RETURN task.uuid AS uuid, 
+    }
+    query += ` OPTIONAL MATCH (task)<-[:TASKREF]-(failureMode:FAILUREMODE)-[:OCCURRENCE]->(component)
+               RETURN task.uuid AS uuid, 
                       task.name AS name,
                       task.description AS description,
                       task.status AS status,
@@ -513,7 +519,11 @@ export const getAllSafetyTasks = async (
                       task.reference AS reference,
                       task.taskType AS taskType,
                       task.created AS created, 
-                      task.lastModified AS lastModified
+                      task.lastModified AS lastModified,
+                      failureMode.name AS relatedFailureModeName,
+                      failureMode.uuid AS relatedFailureModeUuid,
+                      component.name AS relatedComponentName,
+                      component.uuid AS relatedComponentUuid
                ORDER BY task.created DESC`;
 
     const result = await session.run(query, params);
@@ -528,6 +538,10 @@ export const getAllSafetyTasks = async (
       taskType: record.get('taskType') as SafetyTaskType,
       created: record.get('created'),
       lastModified: record.get('lastModified'),
+      relatedFailureModeName: record.get('relatedFailureModeName'),
+      relatedFailureModeUuid: record.get('relatedFailureModeUuid'),
+      relatedComponentName: record.get('relatedComponentName'),
+      relatedComponentUuid: record.get('relatedComponentUuid'),
     }));
 
     return {
