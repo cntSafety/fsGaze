@@ -23,6 +23,14 @@ import { useSafetyReqManager } from './components/safety-analysis/hooks/useSafet
 import { CascadeDeleteModal } from '../components/CascadeDeleteModal';
 import Link from 'next/link';
 import SafetyNoteManager from './components/safety-analysis/SafetyNoteManager';
+import { getAsilColor } from '../components/asilColors';
+import { Tag } from 'antd';
+
+// Temporary local type to overcome editing issues with CoreSafetyTable.tsx
+interface LocalSafetyTableRow extends SafetyTableRow {
+  componentType?: string;
+  numberOfFailureModes?: number;
+}
 
 const { Option } = Select;
 const { Text } = Typography;
@@ -118,8 +126,6 @@ export default function ArxmlSafetyAnalysisTable() {
   const [tableData, setTableData] = useState<SafetyTableRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingKey, setEditingKey] = useState('');  const [isAddingFailure, setIsAddingFailure] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(50);
     // Risk rating modal state
   const [isRiskRatingModalVisible, setIsRiskRatingModalVisible] = useState(false);
   const [selectedFailureForRiskRating, setSelectedFailureForRiskRating] = useState<SafetyTableRow | null>(null);
@@ -149,43 +155,69 @@ export default function ArxmlSafetyAnalysisTable() {
       const failuresResult = await getFailuresAndCountsForComponents(componentUuids);
 
       if (failuresResult.success && failuresResult.data) {
-        const failureRows = failuresResult.data.map(f => ({
-          key: `${f.swComponentUuid}-${f.failureUuid}`,
-          swComponentUuid: f.swComponentUuid,
-          swComponentName: f.swComponentName,
-          failureName: f.failureName || '',
-          failureDescription: f.failureDescription || '',
-          asil: f.asil || PLACEHOLDER_VALUES.DEFAULT_ASIL,
-          failureUuid: f.failureUuid,
-          riskRatingCount: f.riskRatingCount,
-          safetyTaskCount: f.safetyTaskCount,
-          safetyReqCount: f.safetyReqCount,
-          safetyNoteCount: f.safetyNoteCount,
-        }));
+        const componentMap = new Map(allComponents.map(c => [c.uuid, c]));
+        const failuresByComponent = failuresResult.data.reduce((acc, failure) => {
+          const componentUuid = failure.swComponentUuid;
+          if (!acc[componentUuid]) {
+            const component = componentMap.get(componentUuid);
+            acc[componentUuid] = {
+              swComponentUuid: componentUuid,
+              swComponentName: failure.swComponentName,
+              componentType: component?.componentType,
+              failures: [],
+            };
+          }
+          acc[componentUuid].failures.push(failure);
+          return acc;
+        }, {} as Record<string, { swComponentUuid: string, swComponentName: string, componentType?: string, failures: any[] }>);
 
-        const componentsWithFailures = new Set(failureRows.map(f => f.swComponentUuid));
+        const asilOrder: { [key: string]: number } = { 'QM': 0, 'A': 1, 'B': 2, 'C': 3, 'D': 4, 'TBC': -1 };
+        const getHighestAsil = (failures: any[]): string => {
+          if (!failures || failures.length === 0) return 'N/A';
+
+          return failures.reduce((highest, current) => {
+            const currentAsil = current.asil || 'TBC';
+            const highestAsil = highest || 'TBC';
+            if ((asilOrder[currentAsil] ?? -1) > (asilOrder[highestAsil] ?? -1)) {
+              return currentAsil;
+            }
+            return highest;
+          }, 'TBC');
+        };
+
+        const aggregatedData = Object.values(failuresByComponent).map((compData: any) => {
+          const highestAsil = getHighestAsil(compData.failures);
+          return {
+            key: compData.swComponentUuid,
+            swComponentUuid: compData.swComponentUuid,
+            swComponentName: compData.swComponentName,
+            componentType: compData.componentType,
+            numberOfFailureModes: compData.failures.length,
+            asil: highestAsil,
+            failureName: '', // Placeholder to satisfy SafetyTableRow
+            failureDescription: '', // Placeholder to satisfy SafetyTableRow
+          };
+        });
+
+        const componentsWithFailures = new Set(Object.keys(failuresByComponent));
         const componentsWithoutFailures = allComponents.filter(c => !componentsWithFailures.has(c.uuid));
 
         const placeholderRows = componentsWithoutFailures.map(c => ({
           key: `${c.uuid}-empty`,
           swComponentUuid: c.uuid,
           swComponentName: c.name,
-          failureName: PLACEHOLDER_VALUES.NO_FAILURES,
-          failureDescription: PLACEHOLDER_VALUES.NO_DESCRIPTION,
-          asil: PLACEHOLDER_VALUES.NO_DESCRIPTION,
+          componentType: c.componentType,
+          numberOfFailureModes: 0,
+          asil: 'N/A',
+          failureName: PLACEHOLDER_VALUES.NO_FAILURES, // To align with SafetyTableRow
+          failureDescription: '',
         }));
 
-        const combinedData = [...failureRows, ...placeholderRows].sort((a, b) => {
-          if (a.swComponentName && b.swComponentName && a.swComponentName !== b.swComponentName) {
-            return a.swComponentName.localeCompare(b.swComponentName);
-          }
-          if (a.failureName === PLACEHOLDER_VALUES.NO_FAILURES) return 1;
-          if (b.failureName === PLACEHOLDER_VALUES.NO_FAILURES) return -1;
-          // Note: The primary sort is now handled by the database query
-          return 0;
+        const combinedData = [...aggregatedData, ...placeholderRows].sort((a, b) => {
+          return a.swComponentName.localeCompare(b.swComponentName);
         });
         
-        setTableData(combinedData);
+        setTableData(combinedData as SafetyTableRow[]);
       } else {
         message.error(failuresResult.message || MESSAGES.ERROR.LOAD_FAILED);
       }
@@ -537,22 +569,6 @@ export default function ArxmlSafetyAnalysisTable() {
       ),
       onFilter: (value: any, record: SafetyTableRow) =>
         record.swComponentName?.toLowerCase().includes(value.toLowerCase()) ?? false,
-      onCell: (record: SafetyTableRow, index?: number) => {
-        const isFirstRowForComponent = index === 0 || tableData[index! - 1]?.swComponentUuid !== record.swComponentUuid;
-        if (!isFirstRowForComponent) {
-          return { rowSpan: 0 };
-        }
-
-        let rowSpan = 1;
-        for (let i = index! + 1; i < tableData.length; i++) {
-          if (tableData[i].swComponentUuid === record.swComponentUuid) {
-            rowSpan++;
-          } else {
-            break;
-          }
-        }
-        return { rowSpan };
-      },
       render: (text: string, record: SafetyTableRow) => (
         <Link href={`/arxml-safety/${record.swComponentUuid}`} passHref>
           <span style={{ fontWeight: 'bold', cursor: 'pointer' }} className="ant-typography ant-typography-link">
@@ -562,28 +578,60 @@ export default function ArxmlSafetyAnalysisTable() {
       ),
     },
     {
-      title: 'ASIL',
+      title: 'Component Type',
+      dataIndex: 'componentType',
+      key: 'componentType',
+      width: 250,
+      filterDropdown: (props: FilterDropdownProps) => (
+        <SearchFilter {...props} dataIndex="componentType" />
+      ),
+      filterIcon: (filtered: boolean) => (
+        <SearchOutlined style={{ color: filtered ? '#1890ff' : undefined }} />
+      ),
+      onFilter: (value: any, record: LocalSafetyTableRow) =>
+        record.componentType?.toLowerCase().includes(value.toLowerCase()) ?? false,
+      sorter: (a: LocalSafetyTableRow, b: LocalSafetyTableRow) => (a.componentType || '').localeCompare(b.componentType || ''),
+      render: (type: string) => {
+        if (!type) return '-';
+        // Shorten the type for display
+        const displayType = type.replace(/_/g, ' ').replace('SW COMPONENT TYPE', '');
+        let color = 'default';
+        if (type.includes('COMPOSITION')) {
+          color = 'gray';
+        } else if (type.includes('APPLICATION')) {
+          color = 'blue';
+        }
+        return <Tag color={color}>{displayType.trim()}</Tag>;
+      },
+    },
+    {
+      title: 'Number of Functional FM',
+      dataIndex: 'numberOfFailureModes',
+      key: 'numberOfFailureModes',
+      width: 200,
+      sorter: (a: any, b: any) => a.numberOfFailureModes - b.numberOfFailureModes,
+    },
+    {
+      title: 'ASIL Max',
       dataIndex: 'asil',
       key: 'asil',
-      width: 80,
-      onCell: (record: SafetyTableRow) => {
-        if (record.failureName === PLACEHOLDER_VALUES.NO_FAILURES) {
-          return { colSpan: 1 }; // Keep the cell for placeholder text
-        }
-        return {
-          record,
-          inputType: 'select',
-          dataIndex: 'asil',
-          title: 'ASIL',
-          editing: isEditing(record),
-          selectOptions: ASIL_OPTIONS,
-        };
+      width: 120,
+      sorter: (a: LocalSafetyTableRow, b: LocalSafetyTableRow) => {
+        const asilOrder: { [key: string]: number } = { 'QM': 0, 'A': 1, 'B': 2, 'C': 3, 'D': 4, 'N/A': -1, 'TBC': -1 };
+        const aOrder = asilOrder[a.asil as keyof typeof asilOrder] ?? -1;
+        const bOrder = asilOrder[b.asil as keyof typeof asilOrder] ?? -1;
+        return aOrder - bOrder;
       },
-      render: (text: string) => (
-        <span style={{ color: text === PLACEHOLDER_VALUES.NO_DESCRIPTION ? '#999' : 'inherit' }}>
-          {text}
-        </span>
-      ),
+      render: (text: string) => {
+        if (text === 'N/A') {
+          return <span style={{ color: '#999' }}>{text}</span>;
+        }
+        return (
+          <Tag color={getAsilColor(text)}>
+            {text.toUpperCase()}
+          </Tag>
+        )
+      },
     },
   ];
 
@@ -600,24 +648,8 @@ export default function ArxmlSafetyAnalysisTable() {
           dataSource={tableData}
           columns={columns}
           rowClassName="editable-row"
-          pagination={{
-            current: currentPage,
-            pageSize: pageSize,
-            showSizeChanger: true,
-            showQuickJumper: true,
-            showTotal: (total: number, range: [number, number]) => `${range[0]}-${range[1]} of ${total} items`,
-            pageSizeOptions: ['10', '20', '50', '100'],
-            onChange: (page, size) => {
-              if (editingKey !== '') {
-                cancel();
-              }
-              setCurrentPage(page);
-              if (size !== pageSize) {
-                setPageSize(size);
-              }
-            },
-            position: ['bottomCenter'],
-          }}        loading={loading}
+          pagination={false}
+          loading={loading}
           scroll={{ x: 'max-content' }}
           size="small"
         />

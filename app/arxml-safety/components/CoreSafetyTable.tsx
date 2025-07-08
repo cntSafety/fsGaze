@@ -53,8 +53,8 @@ export interface SafetyTableRow {
   swComponentUuid?: string;
   swComponentName?: string;
   failureName: string;
-  failureDescription: string;
-  asil: string;
+  failureDescription?: string;
+  asil?: string;
   isNewRow?: boolean;
   failureUuid?: string;
   riskRatingCount?: number;
@@ -62,6 +62,8 @@ export interface SafetyTableRow {
   safetyReqCount?: number;
   safetyNoteCount?: number;
   isPlaceholder?: boolean;
+  componentType?: string;
+  [key: string]: any;
 }
 
 export interface SafetyTableColumn {
