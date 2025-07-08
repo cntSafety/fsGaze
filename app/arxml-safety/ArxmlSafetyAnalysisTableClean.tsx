@@ -659,6 +659,7 @@ export default function ArxmlSafetyAnalysisTable() {
           open={isRiskRatingModalVisible}
           onCancel={handleRiskRatingCancel}
           onSave={handleRiskRatingSave}
+          failureUuid={selectedFailureForRiskRating?.failureUuid || ''}
           failureName={selectedFailureForRiskRating?.failureName || ''}
           loading={isAddingFailure}
         />      {/* Safety Task Modal */}

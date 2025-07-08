@@ -22,6 +22,7 @@ interface RiskRatingModalProps {
   onOk?: (values: { severity: number; occurrence: number; detection: number; ratingComment?: string }) => Promise<void>;
   onCreateNew?: () => void; // New callback for creating additional risk ratings
   onDelete?: () => Promise<void>; // New callback for deleting risk ratings
+  failureUuid: string;
   failureName: string;
   failureDescription?: string; // New prop for failure description
   loading?: boolean;
@@ -55,6 +56,7 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
   onSave,  onOk,
   onCreateNew,
   onDelete,
+  failureUuid,
   failureName,
   failureDescription,
   loading = false,
@@ -296,7 +298,7 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
               ),
               children: (
                 <InlineSafetyTasks
-                  riskRatingUuid={activeRiskRating?.uuid}
+                  failureUuid={failureUuid}
                   failureName={failureName}
                   compact={true}
                 />

@@ -37,7 +37,7 @@ const { TextArea } = Input;
 const { Text } = Typography;
 
 interface InlineSafetyTasksProps {
-  riskRatingUuid?: string; // The risk rating node UUID to link tasks to
+  failureUuid?: string; // The failure mode UUID to link tasks to
   failureName: string;
   compact?: boolean; // For even more compact display
 }
@@ -63,7 +63,7 @@ const STATUS_OPTIONS: { label: string; value: SafetyTaskStatus }[] = [
 ];
 
 export const InlineSafetyTasks: React.FC<InlineSafetyTasksProps> = ({
-  riskRatingUuid,
+  failureUuid,
   failureName,
   compact = false
 }) => {
@@ -72,19 +72,19 @@ export const InlineSafetyTasks: React.FC<InlineSafetyTasksProps> = ({
   const [editingTask, setEditingTask] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
 
-  // Load tasks when risk rating UUID changes
+  // Load tasks when failure UUID changes
   useEffect(() => {
-    if (riskRatingUuid) {
+    if (failureUuid) {
       loadTasks();
     }
-  }, [riskRatingUuid]);
+  }, [failureUuid]);
 
   const loadTasks = async () => {
-    if (!riskRatingUuid) return;
+    if (!failureUuid) return;
     
     setLoading(true);
     try {
-      const result = await getSafetyTasksForNode(riskRatingUuid);
+      const result = await getSafetyTasksForNode(failureUuid);
       if (result.success && result.data) {
         setTasks(result.data);
       } else {
@@ -99,14 +99,14 @@ export const InlineSafetyTasks: React.FC<InlineSafetyTasksProps> = ({
   };
 
   const handleCreateTask = async (values: CreateSafetyTaskInput) => {
-    if (!riskRatingUuid) {
-      message.error('No risk rating selected');
+    if (!failureUuid) {
+      message.error('No failure selected');
       return;
     }
 
     setLoading(true);
     try {
-      const result = await createSafetyTask(riskRatingUuid, values);
+      const result = await createSafetyTask(failureUuid, values);
       if (result.success) {
         message.success('Safety task created successfully');
         setShowCreateForm(false);
@@ -442,7 +442,7 @@ export const InlineSafetyTasks: React.FC<InlineSafetyTasksProps> = ({
     );
   };
 
-  if (!riskRatingUuid) {
+  if (!failureUuid) {
     return (
       <div style={{ textAlign: 'center', padding: '20px' }}>
         <CheckSquareOutlined style={{ fontSize: '24px', color: '#d9d9d9' }} />
@@ -455,7 +455,7 @@ export const InlineSafetyTasks: React.FC<InlineSafetyTasksProps> = ({
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Text strong>Safety Tasks for Risk Rating</Text>
+        <Text strong>Safety Tasks for Failure Mode</Text>
         <Button
           type="primary"
           size="small"

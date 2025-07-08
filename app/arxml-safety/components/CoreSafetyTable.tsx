@@ -313,12 +313,12 @@ export default function CoreSafetyTable({
     setSelectedFailureForRiskRating(null);
   };
 
-  const handleRiskRatingSave = async (severity: number, occurrence: number, detection: number) => {
+  const handleRiskRatingSave = async (values: { severity: number; occurrence: number; detection: number; ratingComment?: string }) => {
     if (!selectedFailureForRiskRating?.failureUuid || !onRiskRating) return;
     
     try {
       setIsRiskRatingSaving(true);
-      await onRiskRating(selectedFailureForRiskRating.failureUuid, severity, occurrence, detection);
+      await onRiskRating(selectedFailureForRiskRating.failureUuid, values.severity, values.occurrence, values.detection);
       setIsRiskRatingModalVisible(false);
       setSelectedFailureForRiskRating(null);
     } catch (error) {
@@ -474,7 +474,7 @@ export default function CoreSafetyTable({
             {asil}
           </span>
         );
-      };
+    }
     }
 
     // Special rendering for failure name column - make it clickable
@@ -983,8 +983,12 @@ export default function CoreSafetyTable({
       <RiskRatingModal
         open={isRiskRatingModalVisible}
         onCancel={handleRiskRatingCancel}
-        onSave={handleRiskRatingSave}
-        failureName={selectedFailureForRiskRating?.failureName || ''}        loading={isRiskRatingSaving}
+        onOk={handleRiskRatingSave}
+        failureUuid={selectedFailureForRiskRating?.failureUuid || ''}
+        failureName={selectedFailureForRiskRating?.failureName || ''}
+        failureDescription={selectedFailureForRiskRating?.failureDescription}
+        loading={isRiskRatingSaving}
+        mode="edit" // The old modal was effectively always in edit mode
       />
       
       {/* Delete Confirmation Modal - Removed: Now handled by parent components */}
