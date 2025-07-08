@@ -98,8 +98,8 @@ export default function SwFailureModesTable({
         setFailureToDelete({
           failureUuid: record.failureUuid,
           failureName: record.failureName,
-          failureDescription: record.failureDescription,
-          asil: record.asil,
+          failureDescription: record.failureDescription ?? null,
+          asil: record.asil ?? null,
           relationshipType: 'HAS_FAILURE'
         });
         setIsDeleteModalVisible(true);

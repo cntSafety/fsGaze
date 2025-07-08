@@ -86,8 +86,8 @@ export default function ProviderPortsFailureModesTable({
         setFailureToDelete({
           failureUuid: record.failureUuid,
           failureName: record.failureName,
-          failureDescription: record.failureDescription,
-          asil: record.asil,
+          failureDescription: record.failureDescription ?? null,
+          asil: record.asil ?? null,
           failureType: null,
           relationshipType: 'HAS_FAILURE'
         });
@@ -280,4 +280,4 @@ export default function ProviderPortsFailureModesTable({
     />
     </div>
   );
-}
+};

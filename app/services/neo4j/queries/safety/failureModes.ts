@@ -138,9 +138,9 @@ export const updateFailureModeNode = async (
     
     // First, verify that the failure mode node exists
     const existingFailureResult = await session.run(
-      `MATCH (failure:FAILUREMODE) 
-       WHERE failure.uuid = $failureModeUuid 
-       RETURN failure.name AS currentName, failure.description AS currentDescription, failure.asil AS currentAsil`,
+      `MATCH (failureMode:FAILUREMODE) 
+       WHERE failureMode.uuid = $failureModeUuid 
+       RETURN failureMode.name AS currentName, failureMode.description AS currentDescription, failureMode.asil AS currentAsil`,
       { failureModeUuid }
     );
 
@@ -157,13 +157,13 @@ export const updateFailureModeNode = async (
     
     // Update the failure mode node properties
     const updateResult = await session.run(
-      `MATCH (failure:FAILUREMODE) 
-       WHERE failure.uuid = $failureModeUuid
-       SET fm.name = $name,
-           fm.description = $description,
-           fm.asil = $asil,
-           fm.lastModified = $timestamp
-       RETURN fm.uuid AS updatedFailureModeUuid, fm.name AS updatedFailureModeName`,
+      `MATCH (failureMode:FAILUREMODE) 
+       WHERE failureMode.uuid = $failureModeUuid
+       SET failureMode.name = $failureModeName,
+           failureMode.description = $failureModeDescription,
+           failureMode.asil = $asil,
+           failureMode.lastModified = $timestamp
+       RETURN failureMode.uuid AS updatedFailureModeUuid, failureMode.name AS updatedFailureModeName`,
       {
         failureModeUuid,
         failureModeName,
@@ -179,7 +179,7 @@ export const updateFailureModeNode = async (
       throw new Error('No records returned from UPDATE query');
     }
 
-    const updatedFailureName = updateResult.records[0].get('updatedFailureName');
+    const updatedFailureName = updateResult.records[0].get('updatedFailureModeName');
 
     if (progressCallback) progressCallback(100, 'Failure node updated successfully');
 
@@ -228,9 +228,9 @@ export const deleteFailureModeNode = async (
     if (progressCallback) progressCallback(10, 'Validating failure mode node');
     
     // First, verify that the failure mode node exists
-    const existingFailureResult = await session.run(      `MATCH (failure:FAILUREMODE) 
-       WHERE failure.uuid = $failureModeUuid 
-       RETURN failure.name AS failureModeName`,
+    const existingFailureResult = await session.run(      `MATCH (failureMode:FAILUREMODE) 
+       WHERE failureMode.uuid = $failureModeUuid 
+       RETURN failureMode.name AS failureModeName`,
       { failureModeUuid }
     );
 
@@ -247,10 +247,10 @@ export const deleteFailureModeNode = async (
     
     // Delete the failure mode node and all its relationships
     const deleteResult = await session.run(
-      `MATCH (failure:FAILUREMODE) 
-       WHERE failure.uuid = $failureModeUuid
-       DETACH DELETE failure
-       RETURN count(failure) AS deletedCount`,
+      `MATCH (failureMode:FAILUREMODE) 
+       WHERE failureMode.uuid = $failureModeUuid
+       DETACH DELETE failureMode
+       RETURN count(failureMode) AS deletedCount`,
       { failureModeUuid }
     );
 
@@ -297,17 +297,17 @@ export const getFailuresForPorts = async (portUuid: string): Promise<{
   const session = driver.session();
   
   try {    const query = `
-      MATCH (port)-[r]-(failure:FAILUREMODE)
+      MATCH (port)-[r]-(failureMode:FAILUREMODE)
       WHERE port.uuid = $portUuid
       AND (port:P_PORT_PROTOTYPE OR port:R_PORT_PROTOTYPE)
       RETURN 
-        failure.uuid AS failureModeUuid,
-        failure.name AS failureModeName,
-        failure.description AS failureModeDescription,
-        failure.asil AS asil,
-        labels(failure) AS failureLabels,
+        failureMode.uuid AS failureModeUuid,
+        failureMode.name AS failureModeName,
+        failureMode.description AS failureModeDescription,
+        failureMode.asil AS asil,
+        labels(failureMode) AS failureLabels,
         type(r) AS relationshipType
-      ORDER BY failure.Created ASC`;
+      ORDER BY failureMode.Created ASC`;
     
     const result = await session.run(query, { portUuid });
 
@@ -363,16 +363,16 @@ export const getFailuresForSwComponents = async (swComponentUuid: string): Promi
   const session = driver.session();
   
   try {    const query = `
-      MATCH (swComponent)-[r]-(failure:FAILUREMODE)
+      MATCH (swComponent)-[r]-(failureMode:FAILUREMODE)
       WHERE swComponent.uuid = $swComponentUuid 
       AND (swComponent:APPLICATION_SW_COMPONENT_TYPE OR swComponent:COMPOSITION_SW_COMPONENT_TYPE)
       RETURN 
-        failure.uuid AS failureModeUuid,
-        failure.name AS failureModeName,
-        failure.description AS failureModeDescription,
-        failure.asil AS asil,
+        failureMode.uuid AS failureModeUuid,
+        failureMode.name AS failureModeName,
+        failureMode.description AS failureModeDescription,
+        failureMode.asil AS asil,
         type(r) AS relationshipType
-      ORDER BY failure.Created ASC`;
+      ORDER BY failureMode.Created ASC`;
     
     const result = await session.run(query, { swComponentUuid });
 
@@ -418,26 +418,26 @@ export const getFailuresAndCountsForComponents = async (
       MATCH (swc)
       WHERE swc.uuid IN $componentUuids
       AND (swc:APPLICATION_SW_COMPONENT_TYPE OR swc:COMPOSITION_SW_COMPONENT_TYPE)
-      OPTIONAL MATCH (swc)<-[:OCCURRENCE]-(fm:FAILUREMODE)
-      WITH swc, fm
-      WHERE fm IS NOT NULL
-      OPTIONAL MATCH (fm)-[:RATED]->(rr:RISKRATING)
-      OPTIONAL MATCH (fm)-[:TASKREF]->(t:SAFETYTASKS)
-      OPTIONAL MATCH (fm)-[:HAS_SAFETY_REQUIREMENT]->(req:SAFETYREQ)
-      OPTIONAL MATCH (fm)-[:NOTEREF]->(n:SAFETYNOTE)
+      OPTIONAL MATCH (swc)<-[:OCCURRENCE]-(failureMode:FAILUREMODE)
+      WITH swc, failureMode
+      WHERE failureMode IS NOT NULL
+      OPTIONAL MATCH (failureMode)-[:RATED]->(rr:RISKRATING)
+      OPTIONAL MATCH (failureMode)-[:TASKREF]->(t:SAFETYTASKS)
+      OPTIONAL MATCH (failureMode)-[:HAS_SAFETY_REQUIREMENT]->(req:SAFETYREQ)
+      OPTIONAL MATCH (failureMode)-[:NOTEREF]->(n:SAFETYNOTE)
       RETURN
         swc.uuid AS swComponentUuid,
         swc.name AS swComponentName,
-        fm.uuid AS failureUuid,
-        fm.name AS failureName,
-        fm.description AS failureDescription,
-        fm.asil AS asil,
-        fm.created AS created,
+        failureMode.uuid AS failureUuid,
+        failureMode.name AS failureName,
+        failureMode.description AS failureDescription,
+        failureMode.asil AS asil,
+        failureMode.created AS created,
         count(DISTINCT rr) AS riskRatingCount,
         count(DISTINCT t) AS safetyTaskCount,
         count(DISTINCT req) AS safetyReqCount,
         count(DISTINCT n) AS safetyNoteCount
-      ORDER BY swc.name, fm.created ASC
+      ORDER BY swc.name, failureMode.created ASC
     `;
 
     const result = await session.run(query, { componentUuids });
@@ -472,23 +472,23 @@ export const getFailuresAndCountsForComponent = async (
     const query = `
       MATCH (swc {uuid: $componentUuid})
       WHERE (swc:APPLICATION_SW_COMPONENT_TYPE OR swc:COMPOSITION_SW_COMPONENT_TYPE)
-      MATCH (swc)<-[:OCCURRENCE]-(fm:FAILUREMODE)
-      WITH fm
-      OPTIONAL MATCH (fm)-[:RATED]->(rr:RISKRATING)
-      OPTIONAL MATCH (fm)-[:TASKREF]->(t:SAFETYTASKS)
-      OPTIONAL MATCH (fm)-[:HAS_SAFETY_REQUIREMENT]->(req:SAFETYREQ)
-      OPTIONAL MATCH (fm)-[:NOTEREF]->(n:SAFETYNOTE)
+      MATCH (swc)<-[:OCCURRENCE]-(failureMode:FAILUREMODE)
+      WITH failureMode
+      OPTIONAL MATCH (failureMode)-[:RATED]->(rr:RISKRATING)
+      OPTIONAL MATCH (failureMode)-[:TASKREF]->(t:SAFETYTASKS)
+      OPTIONAL MATCH (failureMode)-[:HAS_SAFETY_REQUIREMENT]->(req:SAFETYREQ)
+      OPTIONAL MATCH (failureMode)-[:NOTEREF]->(n:SAFETYNOTE)
       RETURN
-        fm.uuid AS failureUuid,
-        fm.name AS failureName,
-        fm.description AS failureDescription,
-        fm.asil AS asil,
-        fm.created AS created,
+        failureMode.uuid AS failureUuid,
+        failureMode.name AS failureName,
+        failureMode.description AS failureDescription,
+        failureMode.asil AS asil,
+        failureMode.created AS created,
         count(DISTINCT rr) AS riskRatingCount,
         count(DISTINCT t) AS safetyTaskCount,
         count(DISTINCT req) AS safetyReqCount,
         count(DISTINCT n) AS safetyNoteCount
-      ORDER BY fm.created ASC
+      ORDER BY failureMode.created ASC
     `;
 
     const result = await session.run(query, { componentUuid });
@@ -522,26 +522,26 @@ export const getFailuresAndCountsForPorts = async (
   const session = driver.session();
   try {
     const query = `
-      MATCH (p)<-[:OCCURRENCE]-(fm:FAILUREMODE)
+      MATCH (p)<-[:OCCURRENCE]-(failureMode:FAILUREMODE)
       WHERE p.uuid IN $portUuids
       AND (p:P_PORT_PROTOTYPE OR p:R_PORT_PROTOTYPE)
-      WITH p, fm
-      OPTIONAL MATCH (fm)-[:RATED]->(rr:RISKRATING)
-      OPTIONAL MATCH (fm)-[:TASKREF]->(t:SAFETYTASKS)
-      OPTIONAL MATCH (fm)-[:HAS_SAFETY_REQUIREMENT]->(req:SAFETYREQ)
-      OPTIONAL MATCH (fm)-[:NOTEREF]->(n:SAFETYNOTE)
+      WITH p, failureMode
+      OPTIONAL MATCH (failureMode)-[:RATED]->(rr:RISKRATING)
+      OPTIONAL MATCH (failureMode)-[:TASKREF]->(t:SAFETYTASKS)
+      OPTIONAL MATCH (failureMode)-[:HAS_SAFETY_REQUIREMENT]->(req:SAFETYREQ)
+      OPTIONAL MATCH (failureMode)-[:NOTEREF]->(n:SAFETYNOTE)
       RETURN
         p.uuid as portUuid,
-        fm.uuid AS failureUuid,
-        fm.name AS failureName,
-        fm.description AS failureDescription,
-        fm.asil AS asil,
+        failureMode.uuid AS failureUuid,
+        failureMode.name AS failureName,
+        failureMode.description AS failureDescription,
+        failureMode.asil AS asil,
         count(DISTINCT rr) AS riskRatingCount,
         count(DISTINCT t) AS safetyTaskCount,
         count(DISTINCT req) AS safetyReqCount,
         count(DISTINCT n) AS safetyNoteCount,
         p.name as portName,
-        fm.Created as Created
+        failureMode.Created as Created
       ORDER BY portName, Created ASC
     `;
 
