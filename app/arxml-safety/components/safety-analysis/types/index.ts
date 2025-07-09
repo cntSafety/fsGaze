@@ -4,7 +4,7 @@ export interface SwComponent {
   description?: string;
   arxmlPath?: string;
   componentType?: string;
-  failures: { uuid: string; name: string }[];
+  failures?: { uuid: string; name: string }[];
 }
 
 export interface Failure {

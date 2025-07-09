@@ -1,8 +1,8 @@
-import React from 'react';
-import { Button, Typography } from 'antd';
+import React, { useState, useEffect } from 'react';
+import { Button, Typography, Form } from 'antd';
 import { PlusOutlined, CodeOutlined } from '@ant-design/icons';
 import { SafetyTableColumn, SafetyTableRow } from '../CoreSafetyTable';
-import { useSwFailureModes } from './hooks/useSwFailureModes';
+import { useComponentFailures } from './hooks/useComponentFailures';
 import { SwComponent, Failure } from './types';
 import { BaseFailureModeTable } from './BaseFailureModeTable';
 import { CascadeDeleteModal } from '../CascadeDeleteModal';
@@ -14,101 +14,164 @@ const { Title } = Typography;
 interface SwFailureModesTableProps {
   swComponentUuid: string;
   swComponent: SwComponent;
-  failures: Failure[];
-  setFailures: (failures: Failure[]) => void;
-  // Add linking props
+  // Props for cross-component causation linking (unchanged)
   onFailureSelect?: (failure: { uuid: string; name: string }) => void;
   selectedFailures?: {
     first: { uuid: string; name: string } | null;
     second: { uuid: string; name: string } | null;
   };
-  refreshData?: () => Promise<void>;
-  // Add causation linking props for modal
   getFailureSelectionState?: (failureUuid: string) => 'first' | 'second' | null;
   handleFailureSelection?: (failureUuid: string, failureName: string, sourceType: 'component' | 'provider-port' | 'receiver-port', componentUuid?: string, componentName?: string) => void | Promise<void>;
   isCauseSelected?: boolean;
-  loading?: boolean;
 }
 
 export default function SwFailureModesTable({
   swComponentUuid,
   swComponent,
-  failures,
-  setFailures,
   onFailureSelect,
   selectedFailures,
-  refreshData,
   getFailureSelectionState,
   handleFailureSelection,
   isCauseSelected,
-  loading,
 }: SwFailureModesTableProps) {
+  const [form] = Form.useForm();
   const {
-    form,
-    tableData,
-    editingKey,
-    isSaving,
-    currentPage,
-    setCurrentPage,
-    pageSize,
-    setPageSize,
-    handleEdit,
-    handleSave,
-    handleCancel,
-    handleDelete,
-    handleAddFailure,
-    isDeleteModalVisible,
-    setIsDeleteModalVisible,
-    failureToDelete,
-    setFailureToDelete
-  } = useSwFailureModes(swComponentUuid, swComponent, failures, setFailures, refreshData);
+    failures,
+    loading: isDataLoading,
+    addFailure,
+    updateFailure,
+    deleteFailure,
+    refetch,
+  } = useComponentFailures(swComponentUuid);
 
-  const [deletePreview, setDeletePreview] = React.useState<DeletionPreview | null>(null);
+  const [tableData, setTableData] = useState<SafetyTableRow[]>([]);
+  const [editingKey, setEditingKey] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
+  const [failureToDelete, setFailureToDelete] = useState<Failure | null>(null);
+  const [deletePreview, setDeletePreview] = useState<DeletionPreview | null>(null);
 
-  // Override the handleDelete from the hook to implement modal logic
-  const handleDeleteWithModal = async (record: SafetyTableRow) => {
-    console.log('🎯 SwFailureModesTable: Delete requested for', record.failureName);
+  useEffect(() => {
+    if (!swComponent) return;
+
+    if (failures.length === 0) {
+      setTableData([]);
+    } else {
+      const tableRows: SafetyTableRow[] = failures.map(failure => ({
+        key: failure.failureUuid,
+        swComponentUuid: swComponentUuid,
+        swComponentName: swComponent.name,
+        failureName: failure.failureName || '',
+        failureDescription: failure.failureDescription || '',
+        asil: failure.asil || 'TBC',
+        failureUuid: failure.failureUuid,
+        riskRatingCount: failure.riskRatingCount,
+        safetyTaskCount: failure.safetyTaskCount,
+        safetyReqCount: failure.safetyReqCount,
+        safetyNoteCount: failure.safetyNoteCount,
+      }));
+      setTableData(tableRows);
+    }
+  }, [failures, swComponent, swComponentUuid]);
+
+  const handleEdit = (record: SafetyTableRow) => {
+    form.setFieldsValue({
+      failureName: record.failureName,
+      failureDescription: record.failureDescription,
+      asil: record.asil,
+    });
+    setEditingKey(record.key);
+  };
+
+  const handleCancel = () => {
+    const newKey = editingKey;
+    setEditingKey('');
+    // If we were adding a new row, remove it from the table data
+    if(tableData.find(item => item.key === newKey)?.isNewRow) {
+      setTableData(prev => prev.filter(row => row.key !== newKey));
+    }
+  };
+
+  const handleSave = async (key: React.Key) => {
+    try {
+      const row = await form.validateFields();
+      const record = tableData.find(item => key === item.key);
+      if (!record) return;
+
+      setIsSaving(true);
+      
+      let result;
+      if (record.isNewRow) {
+        result = await addFailure(row);
+      } else {
+        if (!record.failureUuid) {
+          message.error('Cannot update failure: No failure UUID found');
+          setIsSaving(false);
+          return;
+        }
+        result = await updateFailure(record.failureUuid, row);
+      }
+
+      if (result.success) {
+        setEditingKey('');
+      }
+    } catch (errInfo) {
+      console.log('Validate Failed:', errInfo);
+      message.error('Please fill in all required fields');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleAddFailure = () => {
+    if (!swComponent) return;
     
+    const newKey = `${swComponentUuid}-new-${Date.now()}`;
+    form.setFieldsValue({ failureName: '', failureDescription: '', asil: 'TBC' });
+    setEditingKey(newKey);
+    
+    const newRow: SafetyTableRow = {
+      key: newKey,
+      swComponentUuid,
+      swComponentName: swComponent.name,
+      failureName: '',
+      failureDescription: '',
+      asil: 'TBC',
+      isNewRow: true
+    };
+    
+    setTableData(prev => [newRow, ...prev]);
+    setCurrentPage(1);
+  };
+  
+  const handleDeleteWithModal = async (record: SafetyTableRow) => {
     if (!record.failureUuid) {
       message.error('Cannot delete failure: No failure UUID found');
       return;
     }
 
     try {
-      console.log('🔍 SwFailureModesTable: Making preview API call for UUID:', record.failureUuid);
-      
-      // Fetch preview data first
       const previewResponse = await fetch('/api/safety/delete', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'preview',
-          nodeUuid: record.failureUuid,
-          nodeType: 'FAILUREMODE'
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'preview', nodeUuid: record.failureUuid, nodeType: 'FAILUREMODE' }),
       });
       
       const previewResult = await previewResponse.json();
-      console.log('🔍 SwFailureModesTable: Preview result:', previewResult.success ? 'SUCCESS' : 'FAILED');
       
       if (previewResult.success && previewResult.data) {
         setDeletePreview(previewResult.data);
-        setFailureToDelete({
-          failureUuid: record.failureUuid,
-          failureName: record.failureName,
-          failureDescription: record.failureDescription ?? null,
-          asil: record.asil ?? null,
-          relationshipType: 'HAS_FAILURE'
-        });
-        setIsDeleteModalVisible(true);
+        const failure = failures.find(f => f.failureUuid === record.failureUuid);
+        if (failure) {
+          setFailureToDelete(failure);
+          setIsDeleteModalVisible(true);
+        }
       } else {
-        console.error('❌ SwFailureModesTable: Preview failed:', previewResult.message);
         message.error(`Failed to preview deletion: ${previewResult.message}`);
       }
     } catch (error) {
-      console.error('❌ SwFailureModesTable: Error previewing deletion:', error);
       message.error('Failed to preview deletion');
     }
   };
@@ -128,7 +191,7 @@ export default function SwFailureModesTable({
       dataIndex: 'failureName',
       editable: true,
       searchable: true,
-      multiLine: true, // Enable multi-line editing for failure name field
+      multiLine: true,
       render: (text: unknown) => <strong>{String(text || '-')}</strong>,
     },
     {
@@ -138,7 +201,7 @@ export default function SwFailureModesTable({
       editable: true,
       searchable: true,
       width: 300,
-      multiLine: true, // Enable multi-line editing for description field
+      multiLine: true,
       render: (text: unknown) => (
         <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
           {String(text || '-')}
@@ -177,7 +240,7 @@ export default function SwFailureModesTable({
             <Button 
               type="primary" 
               icon={<PlusOutlined />} 
-              onClick={() => handleAddFailure()}
+              onClick={handleAddFailure}
               size="small"
             >
               Add Failure Mode
@@ -186,7 +249,7 @@ export default function SwFailureModesTable({
         }
         dataSource={tableData}
         columns={columns}
-        loading={isSaving || loading}
+        loading={isSaving || isDataLoading}
         editingKey={editingKey}
         onEdit={handleEdit}
         onSave={handleSave}
@@ -211,16 +274,9 @@ export default function SwFailureModesTable({
               handleCancel();
             }
             setCurrentPage(page);
-            if (size !== pageSize) {
+            if (size && size !== pageSize) {
               setPageSize(size);
             }
-          },
-          onShowSizeChange: (current, size) => {
-            if (editingKey !== '') {
-              handleCancel();
-            }
-            setCurrentPage(1);
-            setPageSize(size);
           },
         }}
         emptyStateConfig={{
@@ -230,7 +286,7 @@ export default function SwFailureModesTable({
         getFailureSelectionState={getFailureSelectionState}
         handleFailureSelection={handleFailureSelection}
         isCauseSelected={isCauseSelected}
-        refreshData={refreshData}
+        refreshData={refetch}
       />
       <CascadeDeleteModal
         open={isDeleteModalVisible && !!deletePreview}
@@ -240,52 +296,30 @@ export default function SwFailureModesTable({
           setFailureToDelete(null);
         }}
         onConfirm={async () => {
-          console.log('🗑️ SwFailureModesTable: Delete confirmed for', failureToDelete?.failureName);
           if (failureToDelete?.failureUuid) {
             try {
-              console.log('🌐 SwFailureModesTable: Calling delete API');
-              // Call the backend API to actually delete the data
               const response = await fetch('/api/safety/delete', {
                 method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  action: 'execute',
-                  nodeUuid: failureToDelete.failureUuid,
-                  nodeType: 'FAILUREMODE'
-                }),
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'execute', nodeUuid: failureToDelete.failureUuid }),
               });
-              
               const result = await response.json();
-              console.log('🌐 SwFailureModesTable: Delete API response', result);
-              
               if (result.success) {
-                console.log('🔄 SwFailureModesTable: Calling refreshData');
-                // Refresh parent data instead of just updating local state
-                if (refreshData) {
-                  await refreshData();
-                  console.log('✅ SwFailureModesTable: refreshData completed');
-                } else {
-                  console.warn('⚠️ SwFailureModesTable: refreshData function not available');
-                }
-                message.success('Failure mode deleted successfully');
+                message.success('Failure mode and related items deleted successfully.');
+                deleteFailure(failureToDelete.failureUuid);
               } else {
-                message.error(`Failed to delete failure mode: ${result.message}`);
-                return; // Don't close modal or update state if deletion failed
+                message.error(`Deletion failed: ${result.message}`);
               }
             } catch (error) {
-              console.error('❌ SwFailureModesTable: Error deleting failure mode:', error);
-              message.error('Failed to delete failure mode');
-              return; // Don't close modal or update state if deletion failed
+              message.error('An error occurred during deletion.');
+            } finally {
+              setIsDeleteModalVisible(false);
+              setDeletePreview(null);
+              setFailureToDelete(null);
             }
           }
-          setIsDeleteModalVisible(false);
-          setDeletePreview(null);
-          setFailureToDelete(null);
         }}
         previewData={deletePreview}
-        loading={false}
       />
     </div>
   );
