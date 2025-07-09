@@ -117,6 +117,7 @@ export default function ProviderPortsFailureModesTable({
       dataIndex: 'failureName',
       editable: true,
       searchable: true,
+      width: 150,
       minWidth: 150,
       multiLine: true, // Enable multi-line editing for failure name field
       render: (text: unknown, record: SafetyTableRow) => {
@@ -133,18 +134,9 @@ export default function ProviderPortsFailureModesTable({
       editable: true,
       searchable: true,
       width: 300,
-      minWidth: 200,
       multiLine: true, // Enable multi-line editing for description field
       render: (text: unknown) => (
-        <div 
-          style={{
-            maxWidth: 300,
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis'
-          }}
-          title={String(text || '')}
-        >
+        <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
           {String(text || '-')}
         </div>
       ),
@@ -171,14 +163,6 @@ export default function ProviderPortsFailureModesTable({
     <div style={{ 
       fontSize: '14px' // Base font size for the table
     }}>
-      <style dangerouslySetInnerHTML={{
-        __html: `
-          .ant-table-tbody tr td:first-child {
-            font-size: 13px !important;
-            font-weight: normal !important;
-          }
-        `
-      }} />
       <BaseFailureModeTable
       title={`Provider Ports Failure Modes for ${swComponent.name}`}
       dataSource={portTableData}

@@ -128,7 +128,6 @@ export default function SwFailureModesTable({
       dataIndex: 'failureName',
       editable: true,
       searchable: true,
-      minWidth: 150,
       multiLine: true, // Enable multi-line editing for failure name field
       render: (text: unknown) => <strong>{String(text || '-')}</strong>,
     },
@@ -139,18 +138,9 @@ export default function SwFailureModesTable({
       editable: true,
       searchable: true,
       width: 300,
-      minWidth: 200,
       multiLine: true, // Enable multi-line editing for description field
       render: (text: unknown) => (
-        <div 
-          style={{
-            maxWidth: 300,
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis'
-          }}
-          title={String(text || '')}
-        >
+        <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
           {String(text || '-')}
         </div>
       ),

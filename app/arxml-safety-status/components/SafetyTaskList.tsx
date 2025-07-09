@@ -1,10 +1,13 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { Table, Tag, Spin, Alert, Modal } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import React, { useEffect, useState, useRef } from 'react';
+import { Table, Tag, Spin, Alert, Input, Button, Space } from 'antd';
+import type { ColumnsType, ColumnType } from 'antd/es/table';
 import { getAllSafetyTasks, SafetyTaskData, SafetyTaskStatus } from '@/app/services/neo4j/queries/safety/safetyTasks';
 import Link from 'next/link';
+import { SearchOutlined } from '@ant-design/icons';
+import type { InputRef } from 'antd';
+import type { FilterConfirmProps } from 'antd/es/table/interface';
 
 const statusColors: { [key in SafetyTaskStatus]: string } = {
   open: 'blue',
@@ -17,8 +20,9 @@ const SafetyTaskList: React.FC = () => {
   const [tasks, setTasks] = useState<SafetyTaskData[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [isModalVisible, setIsModalVisible] = useState(false);
-  const [selectedTask, setSelectedTask] = useState<SafetyTaskData | null>(null);
+  const [searchText, setSearchText] = useState('');
+  const [searchedColumn, setSearchedColumn] = useState('');
+  const searchInput = useRef<InputRef>(null);
 
   useEffect(() => {
     const fetchTasks = async () => {
@@ -40,17 +44,65 @@ const SafetyTaskList: React.FC = () => {
     fetchTasks();
   }, []);
 
-  const handleRowClick = (record: SafetyTaskData) => {
-    if (record.relatedFailureModeName) {
-      setSelectedTask(record);
-      setIsModalVisible(true);
-    }
+  const handleSearch = (
+    selectedKeys: string[],
+    confirm: (param?: FilterConfirmProps) => void,
+    dataIndex: keyof SafetyTaskData,
+  ) => {
+    confirm();
+    setSearchText(selectedKeys[0]);
+    setSearchedColumn(dataIndex as string);
   };
 
-  const handleCancel = () => {
-    setIsModalVisible(false);
-    setSelectedTask(null);
+  const handleReset = (clearFilters: () => void) => {
+    clearFilters();
+    setSearchText('');
   };
+
+  const getColumnSearchProps = (dataIndex: keyof SafetyTaskData): ColumnType<SafetyTaskData> => ({
+    filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
+      <div style={{ padding: 8 }} onKeyDown={(e) => e.stopPropagation()}>
+        <Input
+          ref={searchInput}
+          placeholder={`Search ${dataIndex}`}
+          value={selectedKeys[0]}
+          onChange={(e) => setSelectedKeys(e.target.value ? [e.target.value] : [])}
+          onPressEnter={() => handleSearch(selectedKeys as string[], confirm, dataIndex)}
+          style={{ marginBottom: 8, display: 'block' }}
+        />
+        <Space>
+          <Button
+            type="primary"
+            onClick={() => handleSearch(selectedKeys as string[], confirm, dataIndex)}
+            icon={<SearchOutlined />}
+            size="small"
+            style={{ width: 90 }}
+          >
+            Search
+          </Button>
+          <Button
+            onClick={() => clearFilters && handleReset(clearFilters)}
+            size="small"
+            style={{ width: 90 }}
+          >
+            Reset
+          </Button>
+        </Space>
+      </div>
+    ),
+    filterIcon: (filtered: boolean) => (
+      <SearchOutlined style={{ color: filtered ? '#1890ff' : undefined }} />
+    ),
+    onFilter: (value, record) =>
+      record[dataIndex]
+        ? record[dataIndex]!.toString().toLowerCase().includes((value as string).toLowerCase())
+        : false,
+    onFilterDropdownOpenChange: (visible) => {
+      if (visible) {
+        setTimeout(() => searchInput.current?.select(), 100);
+      }
+    },
+  });
 
   const columns: ColumnsType<SafetyTaskData> = [
     {
@@ -58,13 +110,17 @@ const SafetyTaskList: React.FC = () => {
       dataIndex: 'name',
       key: 'name',
       sorter: (a, b) => a.name.localeCompare(b.name),
-      ellipsis: true,
+      width: 300,
+      ...getColumnSearchProps('name'),
+      render: (text) => <strong style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{text}</strong>,
     },
     {
         title: 'Description',
         dataIndex: 'description',
         key: 'description',
-        ellipsis: true,
+        width: 700,
+        ...getColumnSearchProps('description'),
+        render: (text) => <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{text}</div>,
     },
     {
       title: 'Status',
@@ -98,6 +154,7 @@ const SafetyTaskList: React.FC = () => {
       title: 'Related Component',
       dataIndex: 'relatedComponentName',
       key: 'relatedComponentName',
+      ...getColumnSearchProps('relatedComponentName'),
       render: (text, record) => {
         if (record.relatedComponentUuid && record.relatedComponentName) {
           return (
@@ -110,15 +167,24 @@ const SafetyTaskList: React.FC = () => {
       },
     },
     {
+      title: 'Related FM',
+      dataIndex: 'relatedFailureModeName',
+      key: 'relatedFailureModeName',
+      ...getColumnSearchProps('relatedFailureModeName'),
+      render: (text) => text || 'N/A',
+    },
+    {
       title: 'Responsible',
       dataIndex: 'responsible',
       key: 'responsible',
       sorter: (a, b) => a.responsible.localeCompare(b.responsible),
+      ...getColumnSearchProps('responsible'),
     },
     {
         title: 'Reference',
         dataIndex: 'reference',
         key: 'reference',
+        ...getColumnSearchProps('reference'),
     },
     {
       title: 'Created',
@@ -153,25 +219,10 @@ const SafetyTaskList: React.FC = () => {
       rowKey="uuid"
       scroll={{ x: 'max-content' }}
       size="small"
-      onRow={(record) => {
-        return {
-          onClick: () => handleRowClick(record),
-        };
-      }}
+      pagination={false}
     />
-    {selectedTask && (
-        <Modal
-          title="Related Failure Mode Details"
-          open={isModalVisible}
-          onCancel={handleCancel}
-          footer={null}
-        >
-          <p><strong>Name:</strong> {selectedTask.relatedFailureModeName}</p>
-          <p><strong>UUID:</strong> {selectedTask.relatedFailureModeUuid}</p>
-        </Modal>
-      )}
     </>
   );
 };
 
-export default SafetyTaskList; 
+export default SafetyTaskList;
