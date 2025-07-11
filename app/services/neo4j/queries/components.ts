@@ -25,6 +25,9 @@ export const getApplicationSwComponents = async () => {
        UNION
        MATCH (n:SERVICE_SW_COMPONENT_TYPE) 
        RETURN n.name AS name, n.uuid AS uuid, n.arxmlPath AS arxmlPath, labels(n)[0] AS componentType
+       UNION
+       MATCH (n:ECU_ABSTRACTION_SW_COMPONENT_TYPE) 
+       RETURN n.name AS name, n.uuid AS uuid, n.arxmlPath AS arxmlPath, labels(n)[0] AS componentType
        ORDER BY name`
     );
     return {
@@ -482,7 +485,7 @@ export const getScopedComponentConnectionsAndPartners = async (swcProtoUuid: str
             CASE
                 WHEN resolvedPartnerType IS NOT NULL THEN resolvedPartnerType
                 WHEN partnerProto IS NOT NULL AND
-                     (partnerProto:APPLICATION_SW_COMPONENT_TYPE OR partnerProto:COMPOSITION_SW_COMPONENT_TYPE OR partnerProto:SERVICE_SW_COMPONENT_TYPE)
+                     (partnerProto:APPLICATION_SW_COMPONENT_TYPE OR partnerProto:COMPOSITION_SW_COMPONENT_TYPE OR partnerProto:SERVICE_SW_COMPONENT_TYPE OR partnerProto:ECU_ABSTRACTION_SW_COMPONENT_TYPE)
                      THEN partnerProto
                 ELSE null
             END AS ActualPartnerNode
@@ -598,7 +601,7 @@ export const getInfoForAppSWComp = async (uuid: string) => {
   try {
     const result = await session.run(
       `MATCH (n)
-       WHERE n.uuid = $uuid AND (n:APPLICATION_SW_COMPONENT_TYPE OR n:COMPOSITION_SW_COMPONENT_TYPE OR n:SERVICE_SW_COMPONENT_TYPE)
+       WHERE n.uuid = $uuid AND (n:APPLICATION_SW_COMPONENT_TYPE OR n:COMPOSITION_SW_COMPONENT_TYPE OR n:SERVICE_SW_COMPONENT_TYPE OR n:ECU_ABSTRACTION_SW_COMPONENT_TYPE)
        RETURN n.name AS name, n.uuid AS uuid, n.arxmlPath AS arxmlPath, labels(n)[0] AS componentType, n.description AS description`,
       { uuid }
     );
@@ -643,7 +646,7 @@ export const getComponentByName = async (componentName: string) => {
   try {
     const result = await session.run(
       `MATCH (swc {name: $componentName})
-       WHERE swc:APPLICATION_SW_COMPONENT_TYPE OR swc:COMPOSITION_SW_COMPONENT_TYPE OR swc:SERVICE_SW_COMPONENT_TYPE
+       WHERE swc:APPLICATION_SW_COMPONENT_TYPE OR swc:COMPOSITION_SW_COMPONENT_TYPE OR swc:SERVICE_SW_COMPONENT_TYPE OR swc:ECU_ABSTRACTION_SW_COMPONENT_TYPE
        RETURN swc.uuid as swcUuid, swc.name as swcName, swc.arxmlPath as swcArxmlPath, labels(swc)[0] AS swcType`,
       { componentName }
     );

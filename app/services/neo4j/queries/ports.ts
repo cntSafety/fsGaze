@@ -55,16 +55,16 @@ export const getAssemblyContextForPPort = async (pPortUuid: string): Promise<Que
       //find the SW_COMPONENT_PROTOTYPEs which are connected to the swConnector
       MATCH (swConnector)-[:\`CONTEXT-COMPONENT-REF\`]->(swCompPro)
       WHERE swCompPro:SW_COMPONENT_PROTOTYPE OR swCompPro:VirtualArxmlRefTarget
-      //find the APPLICATION_SW_COMPONENT_TYPE etc which is connected for filtering out
+      //find the APPLICATION_SW_COMPONENT_TYPE etc which is connected for filtering out the prototype with the same name as the containingSWC to avoid retruning the prototype of the component owning the port
       MATCH (containingSwc) -[:CONTAINS]->(pPortNode)
-      WHERE (containingSwc:APPLICATION_SW_COMPONENT_TYPE OR containingSwc:COMPOSITION_SW_COMPONENT_TYPE OR containingSwc:SERVICE_SW_COMPONENT_TYPE)
+      WHERE (containingSwc:APPLICATION_SW_COMPONENT_TYPE OR containingSwc:COMPOSITION_SW_COMPONENT_TYPE OR containingSwc:SERVICE_SW_COMPONENT_TYPE OR containingSwc:ECU_ABSTRACTION_SW_COMPONENT_TYPE )
         AND swCompPro.name <> containingSwc.name
       // Get the connected R_PORT and its failure modes with ASIL information
       OPTIONAL MATCH (swConnector)-[:\`TARGET-R-PORT-REF\`]->(rPortNode)
       OPTIONAL MATCH (rPortNode)<-[:OCCURRENCE]-(FM:FAILUREMODE)
       //new --> get also the SW Component Type from prototype compoent to enable uuid based navigation
       OPTIONAL MATCH (swCompPro)-[:\`TYPE-TREF\`]->(swCompClass)
-      WHERE (swCompClass:APPLICATION_SW_COMPONENT_TYPE OR swCompClass:COMPOSITION_SW_COMPONENT_TYPE OR swCompClass:SERVICE_SW_COMPONENT_TYPE)
+      WHERE (swCompClass:APPLICATION_SW_COMPONENT_TYPE OR swCompClass:COMPOSITION_SW_COMPONENT_TYPE OR swCompClass:SERVICE_SW_COMPONENT_TYPE  OR containingSwc:ECU_ABSTRACTION_SW_COMPONENT_TYPE)
       //If the swCompPro type is COMPOSITION_SW_COMPONENT_TYPE lets find the DELEGATION_SW_CONNECTOR and with that find the component and port within that composition
       OPTIONAL MATCH (rPortNode)<-[:\`OUTER-PORT-REF\`]-(delegationSWCon:DELEGATION_SW_CONNECTOR)  
       OPTIONAL MATCH (delegationSWCon)-[:\`TARGET-R-PORT-REF\`]->(rPortNodeWithinComp)
