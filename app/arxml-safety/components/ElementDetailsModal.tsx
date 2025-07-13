@@ -248,158 +248,147 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
             <LinkOutlined /> Assembly & Communication Context
           </Title>
           
-          {isLoadingContext ? (
-            <Flex vertical align="center" justify="center" style={{ padding: token.paddingLG }}>
-              <Spin />
-              <Text style={{ marginTop: token.marginSM }}>Loading assembly context...</Text>
-            </Flex>
-          ) : contextError ? (
-            <Alert
-              message="Error Loading Context"
-              description={contextError}
-              type="warning"
-            />
-          ) : assemblyContext.length > 0 || communicationPartners.length > 0 || srInterfaceConnections.length > 0 || srInterfaceConnectionsR.length > 0 ? (
-            <Space direction="vertical" style={{ width: '100%' }}>
-              
-              {/* Assembly Context Connections */}
+          {isLoadingContext && <Spin tip="Loading context..." />}
+          {contextError && <Alert message={contextError} type="error" showIcon />}
+          
+          {!isLoadingContext && !contextError && (
+            <>
               {assemblyContext.length > 0 && (
-                <Card 
-                  type="inner"
-                  title={`🔗 Assembly Connector Connections (${assemblyContext.length})`}
-                >
-                  <Space direction="vertical" style={{ width: '100%' }}>
-                    {assemblyContext.map((context, index) => ( 
-                      <Card key={`assembly-${index}`} size="small">
-                        <Descriptions column={1} size="small" labelStyle={{ width: '120px' }}>
-                          <Descriptions.Item label="Connected to">
-                            {context.swComponentClassUUID ? (
-                              <Link href={`/arxml-safety/${context.swComponentClassUUID}`} legacyBehavior>
-                                <a>
-                                  <Tag color={getAsilColor(context.failureModeASIL || '') || 'cyan'}>
-                                    {context.swComponentName || 'Unknown Component'}
-                                  </Tag>
-                                </a>
-                              </Link>
-                            ) : (
-                              <Tag color={getAsilColor(context.failureModeASIL || '') || 'cyan'}>
-                                {context.swComponentName || 'Unknown Component'}
-                              </Tag>
-                            )}
-                          </Descriptions.Item>
-                          {context.providerPortName && (
-                            <Descriptions.Item label="Provider Port">
-                              <Text code>{context.providerPortName}</Text>
-                            </Descriptions.Item>
-                          )}
-                          {context.receiverPortName && (
-                            <Descriptions.Item label="Receiver Port">
-                              <Text code>{context.receiverPortName}</Text>
-                            </Descriptions.Item>
-                          )}
-                          {context.failureModeName && (
-                            <Descriptions.Item label="Failure Mode">
-                              <Space>
-                                <Tag color="red">{context.failureModeName}</Tag>
-                                {context.failureModeASIL && (
-                                  <Tag color={getAsilColor(context.failureModeASIL || '')}>
-                                    ASIL: {context.failureModeASIL}
-                                  </Tag>
-                                )}
-                                {context.failureModeUUID && getFailureSelectionState && handleFailureSelection && (() => {
-                                  const selectionState = getFailureSelectionState(context.failureModeUUID);
-                                  const buttonText =
-                                    selectionState === 'first' ? 'Selected as Cause' :
-                                    selectionState === 'second' ? 'Selected as Effect' :
-                                    isCauseSelected ? 'Set as Effect' : 'Set as Cause';
-
-                                  return (
-                                    <Button
-                                      icon={<LinkOutlined />}
-                                      size="small"
-                                      type={selectionState ? 'primary' : 'default'}
-                                      onClick={() => handleFailureSelection(
-                                        context.failureModeUUID!, 
-                                        context.failureModeName!, 
-                                        context.providerPortUUID ? 'provider-port' : 'receiver-port',
-                                        context.swComponentUUID!,
-                                        context.swComponentName!
-                                      )}
-                                    >
-                                      {buttonText}
-                                    </Button>
-                                  );
-                                })()}
-                              </Space>
-                            </Descriptions.Item>
-                          )}
-                        </Descriptions>
-                        
-                        {/* Render delegated context within a composition */}
-                        {context.swComponentWithinCompName && (
-                          <Card 
-                            type="inner" 
-                            size="small" 
-                            title="Delegated Context (within Composition)" 
-                            style={{ marginTop: token.marginSM, borderColor: token.colorPrimaryBorder }}
-                          >
-                            <Descriptions column={1} size="small" labelStyle={{ width: '120px' }}>
-                              <Descriptions.Item label="Component">
-                                {context.swComponentWithinCompUUID ? (
-                                  <Link href={`/arxml-safety/${context.swComponentWithinCompUUID}`} legacyBehavior>
-                                    <a><Tag color="purple">{context.swComponentWithinCompName}</Tag></a>
-                                  </Link>
-                                ) : (
-                                  <Tag color="purple">{context.swComponentWithinCompName}</Tag>
-                                )}
-                              </Descriptions.Item>
-                              {context.receiverPortWithinCompositionUUIDName && (
-                                <Descriptions.Item label="Receiver Port">
-                                  <Text code>{context.receiverPortWithinCompositionUUIDName}</Text>
-                                </Descriptions.Item>
-                              )}
-                              {context.failureModeNameWithinCompositionRPort && (
-                                <Descriptions.Item label="Failure Mode">
-                                  <Space>
-                                    <Tag color="red">{context.failureModeNameWithinCompositionRPort}</Tag>
-                                    {context.failureModeASILWithinCompositionRPort && (
-                                      <Tag color={getAsilColor(context.failureModeASILWithinCompositionRPort)}>
-                                        ASIL: {context.failureModeASILWithinCompositionRPort}
-                                      </Tag>
-                                    )}
-                                    {context.failureModeUUIDWithinCompositionRPort && getFailureSelectionState && handleFailureSelection && (() => {
-                                      const selectionState = getFailureSelectionState(context.failureModeUUIDWithinCompositionRPort);
-                                      const buttonText =
-                                        selectionState === 'first' ? 'Selected as Cause' :
-                                        selectionState === 'second' ? 'Selected as Effect' :
-                                        isCauseSelected ? 'Set as Effect' : 'Set as Cause';
-
-                                      return (
-                                        <Button
-                                          icon={<LinkOutlined />}
-                                          size="small"
-                                          type={selectionState ? 'primary' : 'default'}
-                                          onClick={() => handleFailureSelection(
-                                            context.failureModeUUIDWithinCompositionRPort!,
-                                            context.failureModeNameWithinCompositionRPort!,
-                                            'receiver-port',
-                                            context.swComponentWithinCompUUID!,
-                                            context.swComponentWithinCompName!
-                                          )}
-                                        >
-                                          {buttonText}
-                                        </Button>
-                                      );
-                                    })()}
-                                  </Space>
-                                </Descriptions.Item>
-                              )}
-                            </Descriptions>
-                          </Card>
-                        )}
-                      </Card>
-                    ))}
-                  </Space>
+                <Card type="inner" title="Assembly Connections" size="small">
+                  <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                    <Space direction="vertical" style={{ width: '100%' }}>
+                      {assemblyContext.map((context, index) => (
+                       <Card key={`assembly-${index}`} size="small" style={{ marginBottom: '8px' }}>
+                         <Descriptions column={1} size="small" labelStyle={{ width: '120px' }}>
+                           <Descriptions.Item label="Connected to">
+                             {(context.swComponentClassUUIDWithinComp || context.swComponentClassUUID) ? (
+                               <Link href={`/arxml-safety/${context.swComponentClassUUIDWithinComp || context.swComponentClassUUID}`} legacyBehavior>
+                                 <a>
+                                   <Tag color={getAsilColor(context.failureModeASILWithinComp || context.failureModeASIL || '') || 'cyan'}>
+                                     {context.swComponentClassNameWithinComp || context.swComponentName || 'Unknown Component'}
+                                   </Tag>
+                                 </a>
+                               </Link>
+                             ) : (
+                               <Tag color={getAsilColor(context.failureModeASILWithinComp || context.failureModeASIL || '') || 'cyan'}>
+                                 {context.swComponentClassNameWithinComp || context.swComponentName || 'Unknown Component'}
+                               </Tag>
+                             )}
+                           </Descriptions.Item>
+                           {(context.providerPortName || context.providerPortNameWithinComp) && (
+                             <Descriptions.Item label="Provider Port">
+                               <Text code>{context.providerPortNameWithinComp || context.providerPortName}</Text>
+                             </Descriptions.Item>
+                           )}
+                           {context.receiverPortName && (
+                             <Descriptions.Item label="Receiver Port">
+                               <Text code>{context.receiverPortName}</Text>
+                             </Descriptions.Item>
+                           )}
+                           {(context.failureModeName || context.failureModeNameWithinComp) && (
+                             <Descriptions.Item label="Failure Mode">
+                               <Space>
+                                 <Tag color="red">{context.failureModeNameWithinComp || context.failureModeName}</Tag>
+                                 {(context.failureModeASIL || context.failureModeASILWithinComp) && (
+                                   <Tag color={getAsilColor(context.failureModeASILWithinComp || context.failureModeASIL || '')}>
+                                     ASIL: {context.failureModeASILWithinComp || context.failureModeASIL}
+                                   </Tag>
+                                 )}
+                                 {(context.failureModeUUID || context.failureModeUUIDWithinComp) && getFailureSelectionState && handleFailureSelection && (() => {
+                                   const selectionState = getFailureSelectionState(context.failureModeUUIDWithinComp || context.failureModeUUID!);
+                                   const buttonText =
+                                     selectionState === 'first' ? 'Selected as Cause' :
+                                     selectionState === 'second' ? 'Selected as Effect' :
+                                     isCauseSelected ? 'Set as Effect' : 'Set as Cause';
+ 
+                                   return (
+                                     <Button
+                                       icon={<LinkOutlined />}
+                                       size="small"
+                                       type={selectionState ? 'primary' : 'default'}
+                                       onClick={() => handleFailureSelection(
+                                         context.failureModeUUIDWithinComp || context.failureModeUUID!, 
+                                         context.failureModeNameWithinComp || context.failureModeName!, 
+                                         (context.providerPortUUID || context.providerPortUUIDWithinComp) ? 'provider-port' : 'receiver-port',
+                                         context.swComponentClassUUIDWithinComp || context.swComponentUUID!,
+                                         context.swComponentClassNameWithinComp || context.swComponentName!
+                                       )}
+                                     >
+                                       {buttonText}
+                                     </Button>
+                                   );
+                                 })()}
+                               </Space>
+                             </Descriptions.Item>
+                           )}
+                         </Descriptions>
+                         
+                         {/* Render delegated context for P-Port queries (R-Port in composition) */}
+                         {context.swComponentWithinCompName && (
+                           <Card 
+                             type="inner" 
+                             size="small" 
+                             title="Delegated Context (within Composition)" 
+                             style={{ marginTop: token.marginSM, borderColor: token.colorPrimaryBorder }}
+                           >
+                             <Descriptions column={1} size="small" labelStyle={{ width: '120px' }}>
+                               <Descriptions.Item label="Component">
+                                 {context.swComponentWithinCompUUID ? (
+                                   <Link href={`/arxml-safety/${context.swComponentWithinCompUUID}`} legacyBehavior>
+                                     <a><Tag color="purple">{context.swComponentWithinCompName}</Tag></a>
+                                   </Link>
+                                 ) : (
+                                   <Tag color="purple">{context.swComponentWithinCompName}</Tag>
+                                 )}
+                               </Descriptions.Item>
+                               {context.receiverPortWithinCompositionUUIDName && (
+                                 <Descriptions.Item label="Receiver Port">
+                                   <Text code>{context.receiverPortWithinCompositionUUIDName}</Text>
+                                 </Descriptions.Item>
+                               )}
+                               {context.failureModeNameWithinCompositionRPort && (
+                                 <Descriptions.Item label="Failure Mode">
+                                   <Space>
+                                     <Tag color="red">{context.failureModeNameWithinCompositionRPort}</Tag>
+                                     {context.failureModeASILWithinCompositionRPort && (
+                                       <Tag color={getAsilColor(context.failureModeASILWithinCompositionRPort)}>
+                                         ASIL: {context.failureModeASILWithinCompositionRPort}
+                                       </Tag>
+                                     )}
+                                     {context.failureModeUUIDWithinCompositionRPort && getFailureSelectionState && handleFailureSelection && (() => {
+                                       const selectionState = getFailureSelectionState(context.failureModeUUIDWithinCompositionRPort);
+                                       const buttonText =
+                                         selectionState === 'first' ? 'Selected as Cause' :
+                                         selectionState === 'second' ? 'Selected as Effect' :
+                                         isCauseSelected ? 'Set as Effect' : 'Set as Cause';
+ 
+                                       return (
+                                         <Button
+                                           icon={<LinkOutlined />}
+                                           size="small"
+                                           type={selectionState ? 'primary' : 'default'}
+                                           onClick={() => handleFailureSelection(
+                                             context.failureModeUUIDWithinCompositionRPort!,
+                                             context.failureModeNameWithinCompositionRPort!,
+                                             'receiver-port',
+                                             context.swComponentWithinCompUUID!,
+                                             context.swComponentWithinCompName!
+                                           )}
+                                         >
+                                           {buttonText}
+                                         </Button>
+                                       );
+                                     })()}
+                                   </Space>
+                                 </Descriptions.Item>
+                               )}
+                             </Descriptions>
+                           </Card>
+                         )}
+                       </Card>
+                      ))}
+                    </Space>
+                  </div>
                 </Card>
               )}
               
@@ -485,7 +474,7 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
               {srInterfaceConnectionsR.length > 0 && (
                 <Card
                   type="inner"
-                  title={`📡 Connections via SENDER_RECEIVER_INTERFACE (${srInterfaceConnectionsR.length})`}
+                  title={`📡 Shared SENDER_RECEIVER_INTERFACE definitions (${srInterfaceConnectionsR.length})`}
                 >
                   <Space direction="vertical" style={{ width: '100%' }}>
                     {srInterfaceConnectionsR.map((conn, index) => (
@@ -586,13 +575,7 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
                   </Space>
                 </Card>
               )}
-            </Space>
-          ) : (
-            <Alert
-              message="No connections or communication partners found"
-              description="This port may not be connected to other components, or it might be using a different connection pattern."
-              type="info"
-            />
+            </>
           )}
         </div>
       )}

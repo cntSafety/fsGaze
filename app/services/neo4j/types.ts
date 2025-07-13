@@ -86,6 +86,14 @@ export interface AssemblyContextInfo {
   failureModeNameWithinCompositionRPort?: string | null;
   failureModeUUIDWithinCompositionRPort?: string | null;
   failureModeASILWithinCompositionRPort?: string | null;
+  providerPortUUIDWithinComp?: string | null;
+  providerPortNameWithinComp?: string | null;
+  swComponentClassNameWithinComp?: string | null;
+  swComponentClassUUIDWithinComp?: string | null;
+  swComponentClassTypeWithinComp?: string | null;
+  failureModeNameWithinComp?: string | null;
+  failureModeUUIDWithinComp?: string | null;
+  failureModeASILWithinComp?: string | null;
 }
 
 // Port and interface interfaces

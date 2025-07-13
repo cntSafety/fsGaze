@@ -139,6 +139,14 @@ export const getAssemblyContextForRPort = async (rPortUuid: string): Promise<Que
       OPTIONAL MATCH (swConnector)-[:\`TARGET-P-PORT-REF\`]->(pPortNode:P_PORT_PROTOTYPE)
       OPTIONAL MATCH (pPortNode)<-[:OCCURRENCE]-(FM:FAILUREMODE)
       
+      //check if the pPort has also a OUTER-PORT-REF that means it is also part of a composition and we need the DELEGATION_SW_CONNECTOR
+       OPTIONAL MATCH (pPortNode)<-[:\`OUTER-PORT-REF\`]->(delegationSWConnectorAtPartner:DELEGATION_SW_CONNECTOR)
+       OPTIONAL MATCH (delegationSWConnectorAtPartner)-[:\`CONTEXT-COMPONENT-REF\`]->(swCompProWithinComposition)
+      OPTIONAL MATCH (swCompProWithinComposition)-[:\`TYPE-TREF\`]->(swCompClassWithinComposition)
+      // Get the connected P_PORT (the provider) and its failure modes
+      OPTIONAL MATCH (delegationSWConnectorAtPartner)-[:\`TARGET-P-PORT-REF\`]->(pPortNodeWithinComposition:P_PORT_PROTOTYPE)
+      OPTIONAL MATCH (pPortNodeWithinComposition)<-[:OCCURRENCE]-(FMWithinComposition:FAILUREMODE)
+
       // Get the type of the connected component prototype
       OPTIONAL MATCH (swCompPro)-[:\`TYPE-TREF\`]->(swCompClass)
       WHERE (swCompClass:APPLICATION_SW_COMPONENT_TYPE OR swCompClass:COMPOSITION_SW_COMPONENT_TYPE OR swCompClass:SERVICE_SW_COMPONENT_TYPE)
@@ -156,7 +164,15 @@ export const getAssemblyContextForRPort = async (rPortUuid: string): Promise<Que
         FM.asil as failureModeASIL,
         swCompClass.name as swComponentClassName,
         swCompClass.uuid as swComponentClassUUID,
-        labels(swCompClass)[0] as swComponentClassType
+        labels(swCompClass)[0] as swComponentClassType,
+        pPortNodeWithinComposition.uuid as providerPortUUIDWithinComp,
+        pPortNodeWithinComposition.name as providerPortNameWithinComp,
+        swCompClassWithinComposition.name as swComponentClassNameWithinComp,
+        swCompClassWithinComposition.uuid as swComponentClassUUIDWithinComp,
+        labels(swCompClassWithinComposition)[0] as swComponentClassTypeWithinComp,
+        FMWithinComposition.name as failureModeNameWithinComp,
+        FMWithinComposition.uuid as failureModeUUIDWithinComp,
+        FMWithinComposition.asil as failureModeASILWithinComp
       `,
       { rPortUuid }
     );
