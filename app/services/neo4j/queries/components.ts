@@ -682,3 +682,41 @@ export const getComponentByName = async (componentName: string) => {
     await session.close();
   }
 };
+
+/**
+ * Retrieves all Application SW Component Types that are part of a given Composition SW Component Type.
+ * @param compositionUuid The UUID of the COMPOSITION_SW_COMPONENT_TYPE.
+ * @returns A promise that resolves to an object containing the success status and the list of application components.
+ */
+export const getAppForComposition = async (compositionUuid: string) => {
+  const session = driver.session();
+  try {
+    const result = await session.run(
+      `MATCH (composition:COMPOSITION_SW_COMPONENT_TYPE {uuid: $compositionUuid})
+       MATCH (composition)-[:CONTAINS]->(swcProto:SW_COMPONENT_PROTOTYPE)
+       MATCH (swcProto)-[:\`TYPE-TREF\`]->(app:APPLICATION_SW_COMPONENT_TYPE)
+       RETURN distinct app.name AS AppName, app.uuid AS AppUUID`,
+      { compositionUuid }
+    );
+    
+    const applications = result.records.map(record => ({
+      name: record.get('AppName'),
+      uuid: record.get('AppUUID'),
+    }));
+
+    return {
+      success: true,
+      data: applications,
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return {
+      success: false,
+      message: `Error fetching application components for composition with UUID "${compositionUuid}".`,
+      error: errorMessage,
+      data: [],
+    };
+  } finally {
+    await session.close();
+  }
+};

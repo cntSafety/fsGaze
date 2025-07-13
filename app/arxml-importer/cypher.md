@@ -157,3 +157,7 @@ OPTIONAL MATCH (partnerPPort)<-[:CONTAINS]-(PPartner)
 //find the swc protos of component in context and the partner
 //OPTIONAL MATCH (partnerPPort)-[:`CONTEXT-COMPONENT-REF`]->(swcProtos)
 RETURN swcProtoInScope, swcAppInScope, swcAppInScopePPorts, swcAppInScopeRPorts, swConnectorRPorts, swConnectorPPorts, partnerPPort, partnerRPort, RPartner, PPartner
+
+MATCH path = (startNode)<-[*1..2]->(endNode)
+WHERE startNode.uuid = '1234...' AND endNode.uuid = '456'
+RETURN path
