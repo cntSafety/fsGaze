@@ -39,6 +39,21 @@ export interface SRInterfaceConnectionInfoRPort {
 }
 
 /**
+ * Defines the structure for information about a partner port found via connection traversal.
+ */
+export interface PartnerPortInfo {
+  partnerPortName: string;
+  partnerPortUUID: string;
+  partnerPortType: string;
+  partnerPortOwner: string;
+  partnerPortOwnerUUID: string;
+  partnerPortOwnerType: string[];
+  failureModeName: string | null;
+  failureModeUUID: string | null;
+  failureModeASIL: string | null;
+}
+
+/**
  * Retrieves the assembly context for a given P-PORT-PROTOTYPE.
  * This includes the connected R-PORT-PROTOTYPE, its containing SW_COMPONENT_PROTOTYPE,
  * and any associated Failure Modes with their ASIL ratings.
@@ -622,6 +637,42 @@ export const getSRInterfaceBasedConforRPort = async (rPortUuid: string): Promise
              labels(swCompClass)[0] as swComponentClassType
       `,
       { rPortUuid }
+    );
+    return result;
+  } finally {
+    await session.close();
+  }
+};
+
+/**
+ * Finds the partner port for a given port by traversing assembly and delegation connectors.
+ *
+ * @param portUuid The UUID of the starting port (P_PORT_PROTOTYPE or R_PORT_PROTOTYPE).
+ * @returns A Promise that resolves to the raw Neo4j QueryResult containing partner port info.
+ */
+export const getPartnerPort = async (portUuid: string): Promise<QueryResult<PartnerPortInfo>> => {
+  const session = driver.session();
+  try {
+    const result = await session.run<PartnerPortInfo>(
+      `
+      MATCH (portA {uuid: $portUuid}) 
+      MATCH path = shortestPath((portA)-[:\`TARGET-P-PORT-REF\`|\`TARGET-R-PORT-REF\`|\`OUTER-PORT-REF\`*0..6]-(portB))
+      WHERE portB <> portA
+      AND (portB:P_PORT_PROTOTYPE OR portB:R_PORT_PROTOTYPE)
+      AND ALL(n IN nodes(path) WHERE n:P_PORT_PROTOTYPE OR n:R_PORT_PROTOTYPE OR n:ASSEMBLY_SW_CONNECTOR OR n:DELEGATION_SW_CONNECTOR)
+      OPTIONAL MATCH (portB)<-[:CONTAINS]-(PortBcontainedBy)
+      OPTIONAL MATCH (portB)<-[:OCCURRENCE]-(FM:FAILUREMODE)
+      RETURN DISTINCT portB.name as partnerPortName, 
+             portB.uuid as partnerPortUUID, 
+             labels(portB)[0] as partnerPortType, 
+             PortBcontainedBy.name as partnerPortOwner, 
+             PortBcontainedBy.uuid as partnerPortOwnerUUID, 
+             labels(PortBcontainedBy) as partnerPortOwnerType,
+             FM.name as failureModeName,
+             FM.uuid as failureModeUUID,
+             FM.asil as failureModeASIL
+      `,
+      { portUuid }
     );
     return result;
   } finally {
