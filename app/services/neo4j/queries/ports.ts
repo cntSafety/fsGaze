@@ -659,6 +659,7 @@ export const getPartnerPort = async (portUuid: string): Promise<QueryResult<Part
       MATCH path = shortestPath((portA)-[:\`TARGET-P-PORT-REF\`|\`TARGET-R-PORT-REF\`|\`OUTER-PORT-REF\`*0..6]-(portB))
       WHERE portB <> portA
       AND (portB:P_PORT_PROTOTYPE OR portB:R_PORT_PROTOTYPE)
+      AND labels(portA)[0] <> labels(portB)[0]
       AND ALL(n IN nodes(path) WHERE n:P_PORT_PROTOTYPE OR n:R_PORT_PROTOTYPE OR n:ASSEMBLY_SW_CONNECTOR OR n:DELEGATION_SW_CONNECTOR)
       OPTIONAL MATCH (portB)<-[:CONTAINS]-(PortBcontainedBy)
       OPTIONAL MATCH (portB)<-[:OCCURRENCE]-(FM:FAILUREMODE)

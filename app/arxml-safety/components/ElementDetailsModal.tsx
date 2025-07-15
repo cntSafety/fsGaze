@@ -52,6 +52,7 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
   const [srInterfaceConnectionsR, setSrInterfaceConnectionsR] = useState<SRInterfaceConnectionInfoRPort[]>([]);
   const [partnerPorts, setPartnerPorts] = useState<PartnerPortInfo[]>([]);
   const [showSrInterfaces, setShowSrInterfaces] = useState(false);
+  const [showCompositions, setShowCompositions] = useState(false);
   const [communicationPartners, setCommunicationPartners] = useState<Array<{
     partnerName: string;
     partnerUUID: string;
@@ -69,6 +70,7 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
       setSrInterfaceConnectionsR([]);
       setPartnerPorts([]);
       setShowSrInterfaces(false);
+      setShowCompositions(false);
       setContextError(null);
       return;
     }
@@ -280,137 +282,207 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
               
               {/* Partner Port Connections */}
               {partnerPorts.length > 0 && (() => {
-                const compositionPorts = partnerPorts.filter(p => p.partnerPortOwnerType.includes('COMPOSITION_SW_COMPONENT_TYPE'));
-                const otherPorts = partnerPorts.filter(p => !p.partnerPortOwnerType.includes('COMPOSITION_SW_COMPONENT_TYPE'));
+                const renderPortCard = (partner: PartnerPortInfo, index: number, keyPrefix: string) => (
+                  <Card key={`${keyPrefix}-${index}`} size="small">
+                    <Descriptions column={1} size="small" labelStyle={{ width: '120px' }}>
+                      <Descriptions.Item label="Partner Port">
+                        <Flex vertical align="flex-start">
+                          <Text code>{partner.partnerPortName}</Text>
+                          <Tag>{partner.partnerPortType}</Tag>
+                        </Flex>
+                      </Descriptions.Item>
+                      <Descriptions.Item label="Owned by">
+                        <Flex vertical align="flex-start">
+                          {partner.partnerPortOwnerUUID ? (
+                            <Link href={`/arxml-safety/${partner.partnerPortOwnerUUID}`} legacyBehavior>
+                              <a><Tag color="purple">{partner.partnerPortOwner}</Tag></a>
+                            </Link>
+                          ) : (
+                            <Tag color="purple">{partner.partnerPortOwner || 'N/A'}</Tag>
+                          )}
+                          {partner.partnerPortOwnerType && <Text type="secondary">({partner.partnerPortOwnerType.join(', ')})</Text>}
+                        </Flex>
+                      </Descriptions.Item>
+                      {partner.failureModeName && (
+                        <Descriptions.Item label="Failure Mode">
+                          <Space>
+                            <Tag color="red">{partner.failureModeName}</Tag>
+                            {partner.failureModeASIL && (
+                              <Tag color={getAsilColor(partner.failureModeASIL)}>
+                                ASIL: {partner.failureModeASIL}
+                              </Tag>
+                            )}
+                            {partner.failureModeUUID && getFailureSelectionState && handleFailureSelection && (() => {
+                              const selectionState = getFailureSelectionState(partner.failureModeUUID!);
+                              const buttonText =
+                                selectionState === 'first' ? 'Selected as Cause' :
+                                selectionState === 'second' ? 'Selected as Effect' :
+                                isCauseSelected ? 'Set as Effect' : 'Set as Cause';
+                              return (
+                                <Button
+                                  icon={<LinkOutlined />}
+                                  size="small"
+                                  type={selectionState ? 'primary' : 'default'}
+                                  onClick={() => handleFailureSelection(
+                                    partner.failureModeUUID!,
+                                    partner.failureModeName!,
+                                    partner.partnerPortType === 'P_PORT_PROTOTYPE' ? 'provider-port' : 'receiver-port',
+                                    partner.partnerPortOwnerUUID,
+                                    partner.partnerPortOwner
+                                  )}
+                                >
+                                  {buttonText}
+                                </Button>
+                              );
+                            })()}
+                          </Space>
+                        </Descriptions.Item>
+                      )}
+                    </Descriptions>
+                  </Card>
+                );
+
+                // Data-driven grouping based on actual component relationships
+                const groupPortsByOwnerHierarchy = (ports: PartnerPortInfo[]) => {
+                  // Group all ports by their owner UUID and type
+                  const ownerGroups = new Map<string, {
+                    owner: {
+                      name: string;
+                      uuid: string;
+                      type: string[];
+                    };
+                    ports: PartnerPortInfo[];
+                  }>();
+
+                  ports.forEach(port => {
+                    const ownerUUID = port.partnerPortOwnerUUID;
+                    if (!ownerUUID) return;
+
+                    if (!ownerGroups.has(ownerUUID)) {
+                      ownerGroups.set(ownerUUID, {
+                        owner: {
+                          name: port.partnerPortOwner || 'Unknown',
+                          uuid: ownerUUID,
+                          type: port.partnerPortOwnerType || []
+                        },
+                        ports: []
+                      });
+                    }
+                    ownerGroups.get(ownerUUID)!.ports.push(port);
+                  });
+
+                  // Separate compositions from applications and others
+                  const compositions: Array<{owner: {name: string; uuid: string; type: string[]}, ports: PartnerPortInfo[]}> = [];
+                  const applications: Array<{owner: {name: string; uuid: string; type: string[]}, ports: PartnerPortInfo[]}> = [];
+                  const others: Array<{owner: {name: string; uuid: string; type: string[]}, ports: PartnerPortInfo[]}> = [];
+
+                  ownerGroups.forEach((group) => {
+                    if (group.owner.type.includes('COMPOSITION_SW_COMPONENT_TYPE')) {
+                      compositions.push(group);
+                    } else if (group.owner.type.includes('APPLICATION_SW_COMPONENT_TYPE')) {
+                      applications.push(group);
+                    } else {
+                      others.push(group);
+                    }
+                  });
+
+                  return { compositions, applications, others };
+                };
+
+                const { compositions, applications, others } = groupPortsByOwnerHierarchy(partnerPorts);
 
                 return (
                   <Card type="inner" title="Partner Port(s)" size="small" style={{ marginTop: token.marginSM }}>
                     <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
                       <Space direction="vertical" style={{ width: '100%' }}>
-                        {compositionPorts.map((partner, index) => (
-                          <Card key={`partner-comp-${index}`} size="small">
-                            <Descriptions column={1} size="small" labelStyle={{ width: '120px' }}>
-                              <Descriptions.Item label="Partner Port">
-                                <Flex vertical align="flex-start">
-                                  <Text code>{partner.partnerPortName}</Text>
-                                  <Tag>{partner.partnerPortType}</Tag>
-                                </Flex>
-                              </Descriptions.Item>
-                              <Descriptions.Item label="Owned by">
-                                <Flex vertical align="flex-start">
-                                  {partner.partnerPortOwnerUUID ? (
-                                    <Link href={`/arxml-safety/${partner.partnerPortOwnerUUID}`} legacyBehavior>
-                                      <a><Tag color="purple">{partner.partnerPortOwner}</Tag></a>
-                                    </Link>
-                                  ) : (
-                                    <Tag color="purple">{partner.partnerPortOwner || 'N/A'}</Tag>
-                                  )}
-                                  {partner.partnerPortOwnerType && <Text type="secondary">({partner.partnerPortOwnerType.join(', ')})</Text>}
-                                </Flex>
-                              </Descriptions.Item>
-                              {partner.failureModeName && (
-                                <Descriptions.Item label="Failure Mode">
-                                  <Space>
-                                    <Tag color="red">{partner.failureModeName}</Tag>
-                                    {partner.failureModeASIL && (
-                                      <Tag color={getAsilColor(partner.failureModeASIL)}>
-                                        ASIL: {partner.failureModeASIL}
-                                      </Tag>
-                                    )}
-                                    {partner.failureModeUUID && getFailureSelectionState && handleFailureSelection && (() => {
-                                      const selectionState = getFailureSelectionState(partner.failureModeUUID!);
-                                      const buttonText =
-                                        selectionState === 'first' ? 'Selected as Cause' :
-                                        selectionState === 'second' ? 'Selected as Effect' :
-                                        isCauseSelected ? 'Set as Effect' : 'Set as Cause';
-                                      return (
-                                        <Button
-                                          icon={<LinkOutlined />}
-                                          size="small"
-                                          type={selectionState ? 'primary' : 'default'}
-                                          onClick={() => handleFailureSelection(
-                                            partner.failureModeUUID!,
-                                            partner.failureModeName!,
-                                            partner.partnerPortType === 'P_PORT_PROTOTYPE' ? 'provider-port' : 'receiver-port',
-                                            partner.partnerPortOwnerUUID,
-                                            partner.partnerPortOwner
-                                          )}
-                                        >
-                                          {buttonText}
-                                        </Button>
-                                      );
-                                    })()}
-                                  </Space>
-                                </Descriptions.Item>
-                              )}
-                            </Descriptions>
-                          </Card>
-                        ))}
-                        {otherPorts.length > 0 && (
-                          <div style={{ paddingLeft: token.paddingLG, borderLeft: `2px solid ${token.colorBorder}` }}>
-                            <Space direction="vertical" style={{ width: '100%' }}>
-                              {otherPorts.map((partner, index) => (
-                                <Card key={`partner-other-${index}`} size="small">
-                                  <Descriptions column={1} size="small" labelStyle={{ width: '120px' }}>
-                                    <Descriptions.Item label="Partner Port">
-                                      <Flex vertical align="flex-start">
-                                        <Text code>{partner.partnerPortName}</Text>
-                                        <Tag>{partner.partnerPortType}</Tag>
-                                      </Flex>
-                                    </Descriptions.Item>
-                                    <Descriptions.Item label="Owned by">
-                                      <Flex vertical align="flex-start">
-                                        {partner.partnerPortOwnerUUID ? (
-                                          <Link href={`/arxml-safety/${partner.partnerPortOwnerUUID}`} legacyBehavior>
-                                            <a><Tag color="purple">{partner.partnerPortOwner}</Tag></a>
-                                          </Link>
-                                        ) : (
-                                          <Tag color="purple">{partner.partnerPortOwner || 'N/A'}</Tag>
-                                        )}
-                                        {partner.partnerPortOwnerType && <Text type="secondary">({partner.partnerPortOwnerType.join(', ')})</Text>}
-                                      </Flex>
-                                    </Descriptions.Item>
-                                    {partner.failureModeName && (
-                                      <Descriptions.Item label="Failure Mode">
-                                        <Space>
-                                          <Tag color="red">{partner.failureModeName}</Tag>
-                                          {partner.failureModeASIL && (
-                                            <Tag color={getAsilColor(partner.failureModeASIL)}>
-                                              ASIL: {partner.failureModeASIL}
-                                            </Tag>
-                                          )}
-                                          {partner.failureModeUUID && getFailureSelectionState && handleFailureSelection && (() => {
-                                            const selectionState = getFailureSelectionState(partner.failureModeUUID!);
-                                            const buttonText =
-                                              selectionState === 'first' ? 'Selected as Cause' :
-                                              selectionState === 'second' ? 'Selected as Effect' :
-                                              isCauseSelected ? 'Set as Effect' : 'Set as Cause';
-                                            return (
-                                              <Button
-                                                icon={<LinkOutlined />}
-                                                size="small"
-                                                type={selectionState ? 'primary' : 'default'}
-                                                onClick={() => handleFailureSelection(
-                                                  partner.failureModeUUID!,
-                                                  partner.failureModeName!,
-                                                  partner.partnerPortType === 'P_PORT_PROTOTYPE' ? 'provider-port' : 'receiver-port',
-                                                  partner.partnerPortOwnerUUID,
-                                                  partner.partnerPortOwner
-                                                )}
-                                              >
-                                                {buttonText}
-                                              </Button>
-                                            );
-                                          })()}
-                                        </Space>
-                                      </Descriptions.Item>
-                                    )}
-                                  </Descriptions>
-                                </Card>
-                              ))}
-                            </Space>
+                        {/* Toggle for Compositions */}
+                        {compositions.length > 0 && (
+                          <div style={{ marginBottom: token.marginMD }}>
+                            <Button onClick={() => setShowCompositions(!showCompositions)}>
+                              {showCompositions ? 'Hide' : 'Show'} Compositions ({compositions.length})
+                            </Button>
                           </div>
                         )}
+
+                        {/* Render Composition Components and their ports */}
+                        {showCompositions && compositions.map((compositionGroup, compIndex) => (
+                          <div key={`comp-group-${compositionGroup.owner.uuid}`}>
+                            {/* Composition header/info could go here if needed */}
+                            <div style={{ marginBottom: token.marginXS }}>
+                              <Text strong style={{ color: token.colorPrimary }}>
+                                📦 {compositionGroup.owner.name}
+                              </Text>
+                              <Text type="secondary" style={{ marginLeft: token.marginXS }}>
+                                ({compositionGroup.owner.type.join(', ')})
+                              </Text>
+                            </div>
+                            
+                            {/* Render all ports belonging to this composition */}
+                            <div style={{ 
+                              paddingLeft: token.paddingMD, 
+                              borderLeft: `3px solid ${token.colorPrimary}`,
+                              marginBottom: token.marginMD
+                            }}>
+                              <Space direction="vertical" style={{ width: '100%' }}>
+                                {compositionGroup.ports.map((port, portIndex) => 
+                                  renderPortCard(port, portIndex, `comp-${compositionGroup.owner.uuid}-port`)
+                                )}
+                              </Space>
+                            </div>
+                          </div>
+                        ))}
+
+                        {/* Render Application Components and their ports */}
+                        {applications.map((applicationGroup, appIndex) => (
+                          <div key={`app-group-${applicationGroup.owner.uuid}`}>
+                            <div style={{ marginBottom: token.marginXS }}>
+                              <Text strong style={{ color: token.colorWarning }}>
+                                ⚙️ {applicationGroup.owner.name}
+                              </Text>
+                              <Text type="secondary" style={{ marginLeft: token.marginXS }}>
+                                ({applicationGroup.owner.type.join(', ')})
+                              </Text>
+                            </div>
+                            
+                            <div style={{ 
+                              paddingLeft: token.paddingMD, 
+                              borderLeft: `3px solid ${token.colorWarning}`,
+                              marginBottom: token.marginMD
+                            }}>
+                              <Space direction="vertical" style={{ width: '100%' }}>
+                                {applicationGroup.ports.map((port, portIndex) => 
+                                  renderPortCard(port, portIndex, `app-${applicationGroup.owner.uuid}-port`)
+                                )}
+                              </Space>
+                            </div>
+                          </div>
+                        ))}
+
+                        {/* Render Other Component Types */}
+                        {others.map((otherGroup, otherIndex) => (
+                          <div key={`other-group-${otherGroup.owner.uuid}`}>
+                            <div style={{ marginBottom: token.marginXS }}>
+                              <Text strong style={{ color: token.colorText }}>
+                                🔧 {otherGroup.owner.name}
+                              </Text>
+                              <Text type="secondary" style={{ marginLeft: token.marginXS }}>
+                                ({otherGroup.owner.type.join(', ')})
+                              </Text>
+                            </div>
+                            
+                            <div style={{ 
+                              paddingLeft: token.paddingMD, 
+                              borderLeft: `3px solid ${token.colorBorder}`,
+                              marginBottom: token.marginMD
+                            }}>
+                              <Space direction="vertical" style={{ width: '100%' }}>
+                                {otherGroup.ports.map((port, portIndex) => 
+                                  renderPortCard(port, portIndex, `other-${otherGroup.owner.uuid}-port`)
+                                )}
+                              </Space>
+                            </div>
+                          </div>
+                        ))}
                       </Space>
                     </div>
                   </Card>

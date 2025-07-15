@@ -250,7 +250,7 @@ export default function ArxmlSafetyAnalysisTable() {
         loading={loading}
         scroll={{ x: 'max-content' }}
         size="small"
-        expandedRowKeys={expandedKeys}
+        expandedRowKeys={[...expandedKeys]}
         onExpandedRowsChange={handleExpandedRowsChange}
         expandable={{
           rowExpandable: (record) => !!record.children && record.children.length > 0,
