@@ -18,19 +18,21 @@ const statusColors: { [key in SafetyTaskStatus]: string } = {
   finished: 'green',
 };
 
-interface EditableCellProps extends React.HTMLAttributes<HTMLElement> {
+interface EditableCellProps {
     editing: boolean;
     dataIndex: keyof CreateSafetyTaskInput;
-    title: any;
+    cellTitle: any;
     inputType: 'text' | 'textarea' | 'select';
+    record: SafetyTaskData;
     children: React.ReactNode;
 }
 
-const EditableCell: React.FC<EditableCellProps> = ({
+const EditableCell: React.FC<EditableCellProps & React.HTMLAttributes<HTMLElement>> = ({
     editing,
     dataIndex,
-    title,
+    cellTitle,
     inputType,
+    record,
     children,
     ...restProps
 }) => {
@@ -65,7 +67,7 @@ const EditableCell: React.FC<EditableCellProps> = ({
                 <Form.Item
                     name={dataIndex}
                     style={{ margin: 0 }}
-                    rules={[{ required: true, message: `Please Input ${title}!` }]}
+                    rules={[{ required: true, message: `Please Input ${cellTitle}!` }]}
                 >
                     {getInput()}
                 </Form.Item>
@@ -311,7 +313,7 @@ const SafetyTaskList: React.FC = () => {
     {
         title: 'Actions',
         dataIndex: 'actions',
-        fixed: 'right' as 'right',
+        fixed: 'right',
         width: 150,
         render: (_: any, record: SafetyTaskData) => {
             const editable = isEditing(record);
@@ -341,9 +343,9 @@ const SafetyTaskList: React.FC = () => {
             record,
             inputType: col.inputType,
             dataIndex: col.dataIndex,
-            title: col.title,
+            cellTitle: col.title,
             editing: isEditing(record),
-        }),
+        } as any),
     };
   });
 
