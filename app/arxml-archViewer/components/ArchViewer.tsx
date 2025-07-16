@@ -12,7 +12,10 @@ import ReactFlow, {
     Node,
     Edge,
     NodeMouseHandler,
-    EdgeMouseHandler
+    EdgeMouseHandler,
+    Handle,
+    Position,
+    NodeTypes
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import ELK from 'elkjs/lib/elk.bundled.js';
@@ -37,6 +40,32 @@ const getAsilColorWithOpacity = (asil: string, opacity: number = 0.6) => {
         'N/A': `rgba(200, 200, 200, ${opacity})`,  // Light Grey
     };
     return colorMap[asil] || `rgba(200, 200, 200, ${opacity})`;
+};
+
+const CustomNode = ({ data }: { data: { label: string } }) => {
+    return (
+        <div style={{ padding: '10px' }}>
+            <Handle
+                type="target"
+                position={Position.Left}
+                id="receivers"
+                style={{ top: '50%', background: '#555' }}
+                isConnectable={true}
+            />
+            {data.label}
+            <Handle
+                type="source"
+                position={Position.Right}
+                id="providers"
+                style={{ top: '50%', background: '#555' }}
+                isConnectable={true}
+            />
+        </div>
+    );
+};
+
+const nodeTypes: NodeTypes = {
+    custom: CustomNode,
 };
 
 const getTextColorForBackground = (rgba: string) => {
@@ -74,13 +103,10 @@ const elkLayout = async (nodes: Node[], edges: Edge[]): Promise<{nodes: Node[], 
     const elkGraph = {
         id: "root",
         layoutOptions: {
-            "elk.algorithm": "force",
-            "org.eclipse.elk.force.iterations": "200",
-            "org.eclipse.elk.force.repulsion": "5.0",
-            "org.eclipse.elk.force.attraction": "0.1",
-            "org.eclipse.elk.force.springLength": "100",
-            "org.eclipse.elk.force.quality": "0.8",
-            "org.eclipse.elk.force.gravity": "0.1"
+            "elk.algorithm": "layered",
+            "elk.direction": "RIGHT",
+            "elk.spacing.nodeNode": "80",
+            "org.eclipse.elk.layered.spacing.nodeNodeBetweenLayers": "80",
         },
         children: nodes.map(node => ({
             id: node.id,
@@ -290,6 +316,7 @@ const ArchViewer = () => {
             const backgroundColor = getAsilColorWithOpacity(c.asil);
             return {
                 id: c.uuid,
+                type: 'custom',
                 data: { label: c.name, component: c },
                 position: { x: 0, y: 0 },
                 style: {
@@ -297,7 +324,6 @@ const ArchViewer = () => {
                     color: getTextColorForBackground(backgroundColor),
                     border: '1px solid #555',
                     borderRadius: 4,
-                    padding: 10
                 }
             }
         });
@@ -313,7 +339,7 @@ const ArchViewer = () => {
             selectedComponentUuids.has(targetComponentUuid) &&
             sourceComponentUuid !== targetComponentUuid) {
             
-            const edgeId = [sourceComponentUuid, targetComponentUuid].sort().join('-');
+            const edgeId = `${sourceComponentUuid}->${targetComponentUuid}`;
             
             if (!edgesMap.has(edgeId)) {
                 edgesMap.set(edgeId, { source: sourceComponentUuid, target: targetComponentUuid, connections: [] });
@@ -334,6 +360,8 @@ const ArchViewer = () => {
             id: edgeId,
             source: edgeData.source,
             target: edgeData.target,
+            sourceHandle: 'providers',
+            targetHandle: 'receivers',
             animated: true,
             data: {
                 connections: edgeData.connections
@@ -505,6 +533,7 @@ const ArchViewer = () => {
                     onNodeContextMenu={onNodeContextMenu}
                     fitView
                     minZoom={0.1}
+                    nodeTypes={nodeTypes}
                 >
                     <Controls />
                     <Background />
