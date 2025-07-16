@@ -43,8 +43,6 @@ export default function ReceiverPortsFailureModesTable({
   const [tableData, setTableData] = useState<SafetyTableRow[]>([]);
   const [editingKey, setEditingKey] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [failureToDelete, setFailureToDelete] = useState<(PortFailure & { portUuid: string }) | null>(null);
   const [deletePreview, setDeletePreview] = useState<DeletionPreview | null>(null);
@@ -273,19 +271,7 @@ export default function ReceiverPortsFailureModesTable({
         onFailureSelect={onFailureSelect}
         selectedFailures={selectedFailures}
         scroll={{ x: 'max-content' }}
-        pagination={{
-          current: currentPage,
-          pageSize: pageSize,
-          showSizeChanger: true,
-          showQuickJumper: true,
-          showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} port failure modes`,
-          pageSizeOptions: ['10', '20', '50', '100'],
-          onChange: (page, size) => {
-            if (editingKey !== '') handleCancel();
-            setCurrentPage(page);
-            if (size && size !== pageSize) setPageSize(size);
-          },
-        }}
+        pagination={false}
         emptyStateConfig={{
             primaryMessage: receiverPorts.length === 0 
                 ? 'No receiver ports found for this component'
@@ -312,7 +298,11 @@ export default function ReceiverPortsFailureModesTable({
               const response = await fetch('/api/safety/delete', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'execute', nodeUuid: failureToDelete.failureUuid }),
+                body: JSON.stringify({
+                  action: 'execute',
+                  nodeUuid: failureToDelete.failureUuid,
+                  nodeType: 'FAILUREMODE',
+                }),
               });
               const result = await response.json();
               if (result.success) {
