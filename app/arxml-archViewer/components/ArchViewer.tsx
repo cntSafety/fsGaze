@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { TreeSelect, Spin, Typography, Row, Col, Card, Button, Space } from 'antd';
-import { CheckSquareOutlined, ClearOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
+import { CheckSquareOutlined, ClearOutlined, MenuFoldOutlined, MenuUnfoldOutlined, UsergroupAddOutlined, LinkOutlined } from '@ant-design/icons';
 import ReactFlow, {
     Controls,
     Background,
@@ -16,6 +16,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import ELK from 'elkjs/lib/elk.bundled.js';
+import Link from 'next/link';
 
 import { getApplicationSwComponents } from '@/app/services/neo4j/queries/components';
 import { getProviderPortsForSWComponent, getReceiverPortsForSWComponent, getPartnerPort } from '@/app/services/neo4j/queries/ports';
@@ -162,6 +163,7 @@ const ArchViewer = () => {
   const [modalConnections, setModalConnections] = useState<PortConnection[]>([]);
   const [modalSourceComponent, setModalSourceComponent] = useState<SWComponent | undefined>();
   const [modalTargetComponent, setModalTargetComponent] = useState<SWComponent | undefined>();
+  const [contextMenu, setContextMenu] = useState<{ id: string; top: number; left: number; } | null>(null);
 
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -365,6 +367,30 @@ const ArchViewer = () => {
       handleSelectionChange([]);
   }
 
+  const handleShowPartners = useCallback(() => {
+    if (!contextMenu) return;
+
+    const { id: componentId } = contextMenu;
+
+    const partnerUuids = new Set<string>();
+    connections.forEach((targetPortUuid, sourcePortUuid) => {
+        const sourceComponentUuid = portToComponentMap.get(sourcePortUuid);
+        const targetComponentUuid = portToComponentMap.get(targetPortUuid);
+
+        if (sourceComponentUuid === componentId && targetComponentUuid) {
+            partnerUuids.add(targetComponentUuid);
+        } else if (targetComponentUuid === componentId && sourceComponentUuid) {
+            partnerUuids.add(sourceComponentUuid);
+        }
+    });
+    
+    const newSelectedValues = Array.from(new Set([...selectedValues, ...Array.from(partnerUuids)]));
+    
+    handleSelectionChange(newSelectedValues);
+
+    setContextMenu(null);
+  }, [contextMenu, connections, portToComponentMap, selectedValues, handleSelectionChange]);
+
   const onNodeClick: NodeMouseHandler = useCallback((event, node) => {
       const component = allComponents.find(c => c.uuid === node.id);
       if(component) {
@@ -396,6 +422,15 @@ const ArchViewer = () => {
 
   }, [allComponents, edges, setNodes, setEdges]);
 
+  const onNodeContextMenu: NodeMouseHandler = useCallback((event, node) => {
+    event.preventDefault();
+    setContextMenu({
+        id: node.id,
+        top: event.clientY,
+        left: event.clientX,
+    });
+  }, []);
+
   const onEdgeClick: EdgeMouseHandler = useCallback((event, edge) => {
       if (edge.data?.connections) {
         setModalConnections(edge.data.connections);
@@ -420,6 +455,7 @@ const ArchViewer = () => {
       }))
     );
     setSelectedItem(null);
+    setContextMenu(null);
   }, [setNodes, setEdges]);
 
 
@@ -475,7 +511,9 @@ const ArchViewer = () => {
                     onNodeClick={onNodeClick}
                     onEdgeClick={onEdgeClick}
                     onPaneClick={onPaneClick}
+                    onNodeContextMenu={onNodeContextMenu}
                     fitView
+                    minZoom={0.1}
                 >
                     <Controls />
                     <Background />
@@ -489,6 +527,41 @@ const ArchViewer = () => {
             sourceComponent={modalSourceComponent}
             targetComponent={modalTargetComponent}
         />
+        {contextMenu && (
+            <div
+                style={{
+                    position: 'absolute',
+                    top: contextMenu.top,
+                    left: contextMenu.left,
+                    zIndex: 1000,
+                    background: 'white',
+                    border: '1px solid #ddd',
+                    boxShadow: '0 2px 5px rgba(0,0,0,0.15)',
+                    borderRadius: '4px',
+                    display: 'flex',
+                    flexDirection: 'column'
+                }}
+            >
+                <Button
+                    type="text"
+                    icon={<UsergroupAddOutlined />}
+                    onClick={handleShowPartners}
+                >
+                    Show Partners
+                </Button>
+                <Link href={contextMenu ? `/arxml-safety/${contextMenu.id}` : '#'} legacyBehavior>
+                    <a onClick={() => setContextMenu(null)} style={{ textDecoration: 'none' }}>
+                        <Button
+                            type="text"
+                            icon={<LinkOutlined />}
+                            style={{width: '100%', textAlign: 'left'}}
+                        >
+                            Go to component
+                        </Button>
+                    </a>
+                </Link>
+            </div>
+        )}
     </Row>
   );
 };
