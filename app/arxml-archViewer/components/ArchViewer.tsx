@@ -20,6 +20,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import ELK from 'elkjs/lib/elk.bundled.js';
 import Link from 'next/link';
+import { getAsilColor } from '@/app/components/asilColors';
 
 import { getApplicationSwComponents } from '@/app/services/neo4j/queries/components';
 import { getProviderPortsForSWComponent, getReceiverPortsForSWComponent, getPartnerPort } from '@/app/services/neo4j/queries/ports';
@@ -30,16 +31,11 @@ import { getFailuresAndCountsForComponents } from '@/app/services/neo4j/queries/
 const { Title, Text } = Typography;
 
 const getAsilColorWithOpacity = (asil: string, opacity: number = 0.6) => {
-    const colorMap: { [key: string]: string } = {
-        'D': `rgba(217, 0, 27, ${opacity})`,       // Red
-        'C': `rgba(237, 109, 0, ${opacity})`,      // Orange
-        'B': `rgba(242, 204, 21, ${opacity})`,     // Yellow
-        'A': `rgba(132, 201, 73, ${opacity})`,     // Light Green
-        'QM': `rgba(68, 148, 201, ${opacity})`,     // Blue
-        'TBC': `rgba(128, 128, 128, ${opacity})`,   // Grey
-        'N/A': `rgba(200, 200, 200, ${opacity})`,  // Light Grey
-    };
-    return colorMap[asil] || `rgba(200, 200, 200, ${opacity})`;
+    const baseColor = getAsilColor(asil);
+    if (baseColor.startsWith('rgb(')) {
+        return `rgba(${baseColor.substring(4, baseColor.length - 1)}, ${opacity})`;
+    }
+    return baseColor; // Fallback for any other color format
 };
 
 const CustomNode = ({ data }: { data: { label: string } }) => {
@@ -331,6 +327,16 @@ const ArchViewer = () => {
     const edgesMap = new Map<string, { source: string; target: string; connections: PortConnection[] }>();
 
     connections.forEach((targetPortUuid, sourcePortUuid) => {
+        const sourcePort = allPorts.find(p => p.uuid === sourcePortUuid);
+        const targetPort = allPorts.find(p => p.uuid === targetPortUuid);
+
+        if (!sourcePort || !targetPort) return;
+        
+        // Ensure we only draw edges from Provider to Receiver to avoid duplicates
+        if (sourcePort.type !== 'P_PORT_PROTOTYPE' || targetPort.type !== 'R_PORT_PROTOTYPE') {
+            return;
+        }
+
         const sourceComponentUuid = portToComponentMap.get(sourcePortUuid);
         const targetComponentUuid = portToComponentMap.get(targetPortUuid);
 
@@ -345,12 +351,7 @@ const ArchViewer = () => {
                 edgesMap.set(edgeId, { source: sourceComponentUuid, target: targetComponentUuid, connections: [] });
             }
 
-            const sourcePort = allPorts.find(p => p.uuid === sourcePortUuid);
-            const targetPort = allPorts.find(p => p.uuid === targetPortUuid);
-
-            if (sourcePort && targetPort) {
-                edgesMap.get(edgeId)!.connections.push({ sourcePort, targetPort });
-            }
+            edgesMap.get(edgeId)!.connections.push({ sourcePort, targetPort });
         }
     });
 
@@ -433,8 +434,11 @@ const ArchViewer = () => {
             const isConnected = e.source === node.id || e.target === node.id;
             return {
                 ...e,
-                style: { opacity: isConnected ? 1 : 0.3, transition: 'opacity 0.2s' },
-                animated: isConnected
+                style: {
+                    ...e.style,
+                    opacity: isConnected ? 1 : 0.3,
+                    transition: 'opacity 0.2s',
+                }
             }
         })
       );
@@ -451,12 +455,46 @@ const ArchViewer = () => {
   }, []);
 
   const onEdgeClick: EdgeMouseHandler = useCallback((event, edge) => {
-      if (edge.data?.connections) {
-        setModalConnections(edge.data.connections);
-        setModalSourceComponent(allComponents.find(c => c.uuid === edge.source));
-        setModalTargetComponent(allComponents.find(c => c.uuid === edge.target));
-        setIsModalVisible(true);
-      }
+      setEdges(eds =>
+          eds.map(e => {
+              const isSelected = e.id === edge.id;
+              return {
+                  ...e,
+                  animated: isSelected,
+                  style: {
+                      ...e.style,
+                      stroke: isSelected ? '#ff0072' : undefined,
+                      strokeWidth: isSelected ? 2.5 : undefined,
+                      opacity: isSelected ? 1 : 0.5,
+                      transition: 'all 0.2s',
+                  }
+              };
+          })
+      );
+      setNodes(nds =>
+          nds.map(n => {
+              const isConnected = n.id === edge.source || n.id === edge.target;
+              return {
+                  ...n,
+                  style: {
+                      ...n.style,
+                      opacity: isConnected ? 1 : 0.3,
+                      transition: 'opacity 0.2s',
+                  }
+              };
+          })
+      );
+      setSelectedItem(null);
+  }, [setEdges, setNodes]);
+
+  const onEdgeContextMenu: EdgeMouseHandler = useCallback((event, edge) => {
+    event.preventDefault();
+    if (edge.data?.connections) {
+      setModalConnections(edge.data.connections);
+      setModalSourceComponent(allComponents.find(c => c.uuid === edge.source));
+      setModalTargetComponent(allComponents.find(c => c.uuid === edge.target));
+      setIsModalVisible(true);
+    }
   }, [allComponents]);
 
   const onPaneClick = useCallback(() => {
@@ -469,7 +507,13 @@ const ArchViewer = () => {
     setEdges((eds) =>
       eds.map((e) => ({
         ...e,
-        style: { opacity: 1, transition: 'opacity 0.2s' },
+        style: {
+            ...e.style,
+            stroke: undefined,
+            strokeWidth: undefined,
+            opacity: 1,
+            transition: 'all 0.2s'
+        },
         animated: true,
       }))
     );
@@ -531,6 +575,7 @@ const ArchViewer = () => {
                     onEdgeClick={onEdgeClick}
                     onPaneClick={onPaneClick}
                     onNodeContextMenu={onNodeContextMenu}
+                    onEdgeContextMenu={onEdgeContextMenu}
                     fitView
                     minZoom={0.1}
                     nodeTypes={nodeTypes}
