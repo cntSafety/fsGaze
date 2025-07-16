@@ -301,7 +301,11 @@ export default function SwFailureModesTable({
               const response = await fetch('/api/safety/delete', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'execute', nodeUuid: failureToDelete.failureUuid }),
+                body: JSON.stringify({ 
+                  action: 'execute', 
+                  nodeUuid: failureToDelete.failureUuid,
+                  nodeType: 'FAILUREMODE' // Add the missing nodeType
+                }),
               });
               const result = await response.json();
               if (result.success) {

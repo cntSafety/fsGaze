@@ -365,7 +365,7 @@ export const getFailuresForSwComponents = async (swComponentUuid: string): Promi
   try {    const query = `
       MATCH (swComponent)-[r]-(failureMode:FAILUREMODE)
       WHERE swComponent.uuid = $swComponentUuid 
-      AND (swComponent:APPLICATION_SW_COMPONENT_TYPE OR swComponent:COMPOSITION_SW_COMPONENT_TYPE)
+      AND (swComponent:APPLICATION_SW_COMPONENT_TYPE OR swComponent:COMPOSITION_SW_COMPONENT_TYPE OR OR swComponent:ECU_ABSTRACTION_SW_COMPONENT_TYPE)
       RETURN 
         failureMode.uuid AS failureModeUuid,
         failureMode.name AS failureModeName,
@@ -417,7 +417,7 @@ export const getFailuresAndCountsForComponents = async (
     const query = `
       MATCH (swc)
       WHERE swc.uuid IN $componentUuids
-      AND (swc:APPLICATION_SW_COMPONENT_TYPE OR swc:COMPOSITION_SW_COMPONENT_TYPE)
+      AND (swc:APPLICATION_SW_COMPONENT_TYPE OR swc:COMPOSITION_SW_COMPONENT_TYPE OR swc:ECU_ABSTRACTION_SW_COMPONENT_TYPE)
       OPTIONAL MATCH (swc)<-[:OCCURRENCE]-(failureMode:FAILUREMODE)
       WITH swc, failureMode
       WHERE failureMode IS NOT NULL
@@ -471,7 +471,7 @@ export const getFailuresAndCountsForComponent = async (
   try {
     const query = `
       MATCH (swc {uuid: $componentUuid})
-      WHERE (swc:APPLICATION_SW_COMPONENT_TYPE OR swc:COMPOSITION_SW_COMPONENT_TYPE)
+      WHERE (swc:APPLICATION_SW_COMPONENT_TYPE OR swc:COMPOSITION_SW_COMPONENT_TYPE OR swc:ECU_ABSTRACTION_SW_COMPONENT_TYPE)
       MATCH (swc)<-[:OCCURRENCE]-(failureMode:FAILUREMODE)
       WITH failureMode
       OPTIONAL MATCH (failureMode)-[:RATED]->(rr:RISKRATING)
