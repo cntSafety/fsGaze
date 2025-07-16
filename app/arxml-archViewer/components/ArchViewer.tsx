@@ -55,18 +55,6 @@ interface SWComponent {
   asil: string;
 }
 
-interface PartnerPortInfo {
-    partnerPortName: string;
-    partnerPortUUID: string;
-    partnerPortType: string;
-    partnerPortOwner: string;
-    partnerPortOwnerUUID: string;
-    partnerPortOwnerType: string[];
-    failureModeName: string | null;
-    failureModeUUID: string | null;
-    failureModeASIL: string | null;
-}
-
 type DetailViewItem = SWComponent | PortInfo | null;
 
 interface TreeNode {
@@ -86,10 +74,13 @@ const elkLayout = async (nodes: Node[], edges: Edge[]): Promise<{nodes: Node[], 
     const elkGraph = {
         id: "root",
         layoutOptions: {
-            "elk.algorithm": "layered",
-            "elk.direction": "RIGHT",
-            "elk.spacing.nodeNode": "80",
-            "elk.layered.spacing.nodeNodeBetweenLayers": "120",
+            "elk.algorithm": "force",
+            "org.eclipse.elk.force.iterations": "200",
+            "org.eclipse.elk.force.repulsion": "5.0",
+            "org.eclipse.elk.force.attraction": "0.1",
+            "org.eclipse.elk.force.springLength": "100",
+            "org.eclipse.elk.force.quality": "0.8",
+            "org.eclipse.elk.force.gravity": "0.1"
         },
         children: nodes.map(node => ({
             id: node.id,
@@ -572,4 +563,4 @@ const ArchViewerWrapper = () => (
     </ReactFlowProvider>
 )
 
-export default ArchViewerWrapper; 
+export default ArchViewerWrapper;
