@@ -73,7 +73,8 @@ const menuItemsDef: MenuItemDef[] = [
             { label: 'SW Safety', href: '/arxml-safety', isActive: true },
             { label: 'Store / Load', href: '/arxml-safetyDataExchange', isActive: true },
             { label: 'Failure Chain', href: '/arxml-crossFM', isActive: true },
-            { label: 'Safety Tasks', href: '/arxml-safety-status', isActive: true }
+            { label: 'Safety Tasks', href: '/arxml-safety-status', isActive: true },
+            { label: 'Architecture Viewer', href: '/arxml-archViewer', isActive: true }
         ]
     },
     {
