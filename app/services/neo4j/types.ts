@@ -1,6 +1,7 @@
 // Add type definitions
 export interface ArxmlFileContent {
   name: string;
+  path: string;
   content: string;
 }
 
@@ -30,6 +31,36 @@ export interface UnresolvedReference {
   relationshipType: string;
   destinationAttribute: string;
   reason: string;
+}
+
+// ARXML Import Metadata Interfaces
+export interface ArxmlImportInfo {
+  uuid: string;
+  importId: string;           // Unique import session ID
+  importTimestamp: string;    // ISO timestamp
+  importDuration: number;     // Processing time in milliseconds
+  fileCount: number;          // Number of files imported
+  fileNames: string[];        // Array of imported file names
+  fileSizes: number[];        // Array of file sizes in bytes
+  nodeCount: number;          // Total nodes created
+  relationshipCount: number;  // Total relationships created
+  unresolvedReferencesCount: number;
+  importStatus: 'success' | 'partial' | 'failed';
+  errorMessage?: string;      // If import failed
+  userAgent?: string;         // Browser/client info
+  importVersion: string;      // Version of import logic
+}
+
+export interface ArxmlFileInfo {
+  uuid: string;
+  fileName: string;
+  filePath: string;           // Full file path (absolute if available, otherwise relative from selected directory)
+  fileSize: number;           // File size in bytes
+  importTimestamp: string;    // When this file was imported
+  nodeCount: number;          // Nodes created from this file
+  relationshipCount: number;  // Relationships created from this file
+  arxmlVersion?: string;      // ARXML version if detectable
+  checksum?: string;          // File hash for integrity
 }
 
 // Component visualization interfaces
@@ -166,6 +197,7 @@ export interface FullPortConnectionInfo {
 export const SPECIFIC_NODE_LABELS = {
   DATA_ELEMENT_REF_TARGET: "ArxmlDataElementRefTarget", // For target nodes of *-REF elements
   IMPORT_INFO: "ArxmlImportInfo", // For the import metadata node
+  FILE_INFO: "ArxmlFileInfo", // For individual file metadata nodes
   VIRTUAL_REF_NODE_LABEL: "VirtualArxmlRefTarget", // Label for virtually created nodes from unresolved refs
   // Add other specific, non-XML-tag-derived labels here if needed
 };
@@ -173,5 +205,6 @@ export const SPECIFIC_NODE_LABELS = {
 export const RELATIONSHIP_TYPES = {
   CONTAINS: "CONTAINS", // Parent element contains child element
   REFERENCES_DATA_ELEMENT: "REFERENCES_DATA_ELEMENT", // Port/ComSpec refers to a DataElement
+  IMPORT_SESSION: "IMPORT_SESSION", // Links import session to file metadata
   // Add other relationship types as needed
 };

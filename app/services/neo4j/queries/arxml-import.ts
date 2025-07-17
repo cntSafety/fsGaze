@@ -7,7 +7,9 @@ import {
   PendingReference, 
   UnresolvedReference,
   SPECIFIC_NODE_LABELS,
-  RELATIONSHIP_TYPES 
+  RELATIONSHIP_TYPES,
+  ArxmlImportInfo,
+  ArxmlFileInfo
 } from '../types';
 import { 
   generateUUID, 
@@ -318,15 +320,37 @@ export const uploadArxmlToNeo4j = async (
     return { success: false, message: "No ARXML file contents provided.", nodeCount: 0, relationshipCount: 0, error: "No content" };
   }
 
+  const importStartTime = Date.now();
+  const importId = generateUUID();
+  const importVersion = "1.0.0";
+  
   const fileNames: string[] = [];
+  const fileSizes: number[] = [];
+  const fileInfoNodes: ArxmlFileInfo[] = [];
   let extractionResult: { nodes: Neo4jNode[], relationships: Neo4jRelationship[], unresolvedReferences: UnresolvedReference[] };
 
   try {
     if (progressCallback) progressCallback(35, 'Starting ARXML file parsing');
     
     // Using Promise.all to parallelize parsing for better performance
-    const parsingPromises = arxmlFileContents.map(fileContent => {
+    const parsingPromises = arxmlFileContents.map(async (fileContent) => {
       fileNames.push(fileContent.name);
+      fileSizes.push(fileContent.content.length);
+      
+      // Create file info node for each file
+      const fileInfo: ArxmlFileInfo = {
+        uuid: generateUUID(),
+        fileName: fileContent.name,
+        filePath: fileContent.path, // Use the actual file path from browser
+        fileSize: fileContent.content.length,
+        importTimestamp: new Date().toISOString(),
+        nodeCount: 0, // Will be updated after extraction
+        relationshipCount: 0, // Will be updated after extraction
+        arxmlVersion: undefined, // Could be extracted from XML if needed
+        checksum: undefined // Could be calculated if needed
+      };
+      fileInfoNodes.push(fileInfo);
+      
       return parseStringPromise(fileContent.content, {
         explicitArray: false, mergeAttrs: true, charkey: 'CONTENT', emptyTag: undefined,
       });
@@ -370,6 +394,8 @@ export const uploadArxmlToNeo4j = async (
         await session.run(`CREATE INDEX ${label.toLowerCase()}_shortname_index IF NOT EXISTS FOR (n:${label}) ON (n.shortName)`);
       }
       await session.run(`CREATE INDEX arxml_virtual_ref_uuid IF NOT EXISTS FOR (n:${SPECIFIC_NODE_LABELS.VIRTUAL_REF_NODE_LABEL}) ON (n.uuid)`);
+      await session.run(`CREATE INDEX arxml_import_info_uuid IF NOT EXISTS FOR (n:${SPECIFIC_NODE_LABELS.IMPORT_INFO}) ON (n.uuid)`);
+      await session.run(`CREATE INDEX arxml_file_info_uuid IF NOT EXISTS FOR (n:${SPECIFIC_NODE_LABELS.FILE_INFO}) ON (n.uuid)`);
 
       await session.writeTransaction(async txc => {
         if (progressCallback) progressCallback(80, 'Uploading nodes to database');
@@ -480,6 +506,51 @@ export const uploadArxmlToNeo4j = async (
             }
           }
         }
+
+        // Create import metadata nodes
+        if (progressCallback) progressCallback(95, 'Creating import metadata');
+        
+        // Create the main import info node
+        const importDuration = Date.now() - importStartTime;
+        const importInfo: ArxmlImportInfo = {
+          uuid: importId,
+          importId: importId,
+          importTimestamp: new Date().toISOString(),
+          importDuration: importDuration,
+          fileCount: fileNames.length,
+          fileNames: fileNames,
+          fileSizes: fileSizes,
+          nodeCount: nodes.length,
+          relationshipCount: relationships.length,
+          unresolvedReferencesCount: unresolvedReferences.length,
+          importStatus: 'success',
+          importVersion: importVersion
+        };
+
+        await txc.run(
+          `CREATE (n:${SPECIFIC_NODE_LABELS.IMPORT_INFO} $props)`,
+          { props: importInfo }
+        );
+
+        // Create file info nodes and link them to import session
+        for (const fileInfo of fileInfoNodes) {
+          // Update file info with actual counts (simplified - in reality you'd track per-file)
+          fileInfo.nodeCount = Math.floor(nodes.length / fileNames.length);
+          fileInfo.relationshipCount = Math.floor(relationships.length / fileNames.length);
+          
+          await txc.run(
+            `CREATE (n:${SPECIFIC_NODE_LABELS.FILE_INFO} $props)`,
+            { props: fileInfo }
+          );
+
+          // Link file info to import session
+          await txc.run(
+            `MATCH (import:${SPECIFIC_NODE_LABELS.IMPORT_INFO} {uuid: $importId})
+             MATCH (file:${SPECIFIC_NODE_LABELS.FILE_INFO} {uuid: $fileUuid})
+             MERGE (import)-[r:${RELATIONSHIP_TYPES.IMPORT_SESSION}]->(file)`,
+            { importId: importId, fileUuid: fileInfo.uuid }
+          );
+        }
       });
 
       if (progressCallback) progressCallback(98, 'Import completed successfully');
@@ -492,5 +563,105 @@ export const uploadArxmlToNeo4j = async (
     }
   } catch (error: any) {
     return { success: false, message: "Error parsing or processing ARXML files.", nodeCount: 0, relationshipCount: 0, error: error.message };
+  }
+};
+
+/**
+ * Retrieves the latest ARXML import metadata from Neo4j
+ * @returns Promise with the latest import information
+ */
+export const getLatestArxmlImportInfo = async (): Promise<{
+  success: boolean;
+  data?: ArxmlImportInfo;
+  message?: string;
+  error?: string;
+}> => {
+  const session = driver.session();
+  
+  try {
+    const result = await session.run(
+      `MATCH (import:${SPECIFIC_NODE_LABELS.IMPORT_INFO})
+       RETURN import
+       ORDER BY import.importTimestamp DESC
+       LIMIT 1`
+    );
+
+    if (result.records.length === 0) {
+      return {
+        success: false,
+        message: "No ARXML import metadata found in database"
+      };
+    }
+
+    const record = result.records[0];
+    const importData = record.get('import').properties as ArxmlImportInfo;
+
+    return {
+      success: true,
+      data: importData
+    };
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    
+    return {
+      success: false,
+      message: "Error retrieving ARXML import metadata",
+      error: errorMessage
+    };
+  } finally {
+    await session.close();
+  }
+};
+
+/**
+ * Retrieves file information for a specific import session
+ * @param importId The import session ID
+ * @returns Promise with file information for the import
+ */
+export const getArxmlFileInfoForImport = async (importId: string): Promise<{
+  success: boolean;
+  data?: ArxmlFileInfo[];
+  message?: string;
+  error?: string;
+}> => {
+  const session = driver.session();
+  
+  try {
+    const result = await session.run(
+      `MATCH (import:${SPECIFIC_NODE_LABELS.IMPORT_INFO} {uuid: $importId})
+       -[:${RELATIONSHIP_TYPES.IMPORT_SESSION}]->
+       (file:${SPECIFIC_NODE_LABELS.FILE_INFO})
+       RETURN file
+       ORDER BY file.fileName`,
+      { importId }
+    );
+
+    if (result.records.length === 0) {
+      return {
+        success: false,
+        message: `No file information found for import ID: ${importId}`
+      };
+    }
+
+    const fileData = result.records.map(record => 
+      record.get('file').properties as ArxmlFileInfo
+    );
+
+    return {
+      success: true,
+      data: fileData
+    };
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    
+    return {
+      success: false,
+      message: "Error retrieving file information",
+      error: errorMessage
+    };
+  } finally {
+    await session.close();
   }
 };

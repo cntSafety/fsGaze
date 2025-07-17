@@ -58,10 +58,25 @@ const ArxmlImporter: React.FC<ArxmlImporterProps> = () => {
       const entryPath = basePath ? `${basePath}/${entry.name}` : entry.name;
       if (entry.kind === 'file' && entry.name.endsWith('.arxml')) {
         const file = await entry.getFile();
+        
+        // Try to get the absolute path if possible
+        let absolutePath = entryPath;
+        try {
+          // Some browsers support getting the absolute path
+          if (entry.getFilePath) {
+            absolutePath = await entry.getFilePath();
+          } else if (entry.path) {
+            absolutePath = entry.path;
+          }
+        } catch (error) {
+          // Fallback to relative path if absolute path is not available
+          console.log('Absolute path not available, using relative path:', entryPath);
+        }
+        
         arxmlFiles.push({
           id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
           name: entry.name,
-          path: entryPath,
+          path: absolutePath,
           file,
           selected: false,
         });
@@ -181,7 +196,7 @@ const ArxmlImporter: React.FC<ArxmlImporterProps> = () => {
       const filesToUpload = await Promise.all(
         selectedFiles.map(async (file) => {
           const content = await file.file.text();
-          return { name: file.name, content };
+          return { name: file.name, path: file.path, content };
         })
       );
       setExtractionProgress(30); // Files prepared for upload
