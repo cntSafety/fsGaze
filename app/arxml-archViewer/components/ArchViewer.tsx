@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { TreeSelect, Spin, Typography, Row, Col, Card, Button, Space } from 'antd';
 import { CheckSquareOutlined, ClearOutlined, MenuFoldOutlined, MenuUnfoldOutlined, UsergroupAddOutlined, LinkOutlined } from '@ant-design/icons';
 import ReactFlow, {
@@ -177,6 +177,7 @@ const ArchViewer = () => {
   const [modalSourceComponent, setModalSourceComponent] = useState<SWComponent | undefined>();
   const [modalTargetComponent, setModalTargetComponent] = useState<SWComponent | undefined>();
   const [contextMenu, setContextMenu] = useState<{ id: string; top: number; left: number; } | null>(null);
+  const animatedEdgeIdsRef = useRef<string[]>([]);
 
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -378,6 +379,20 @@ const ArchViewer = () => {
 
   }, [allComponents, allPorts, connections, portToComponentMap, setNodes, setEdges]);
 
+  const onNodeDragStart: NodeMouseHandler = useCallback((_event, _node) => {
+    setEdges(currentEdges => {
+        animatedEdgeIdsRef.current = currentEdges.filter(e => e.animated).map(e => e.id);
+        return currentEdges.map(e => ({ ...e, animated: false }));
+    });
+  }, [setEdges]);
+
+  const onNodeDragStop: NodeMouseHandler = useCallback((_event, _node) => {
+      setEdges(currentEdges => {
+          const animatedIds = new Set(animatedEdgeIdsRef.current);
+          return currentEdges.map(e => ({ ...e, animated: animatedIds.has(e.id) }));
+      });
+  }, [setEdges]);
+
   const handleSelectAll = () => {
       const allComponentUuids = allComponents.map(c => c.uuid);
       handleSelectionChange(allComponentUuids);
@@ -576,6 +591,8 @@ const ArchViewer = () => {
                     onPaneClick={onPaneClick}
                     onNodeContextMenu={onNodeContextMenu}
                     onEdgeContextMenu={onEdgeContextMenu}
+                    onNodeDragStart={onNodeDragStart}
+                    onNodeDragStop={onNodeDragStop}
                     fitView
                     minZoom={0.1}
                     nodeTypes={nodeTypes}
