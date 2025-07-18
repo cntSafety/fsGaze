@@ -347,14 +347,12 @@ const SafetyDataExchange: React.FC = () => {
           typeof value.high === 'number'
         ) {
           // This looks like a Neo4j Integer object that was JSON.stringified.
-          // Reconstruct it as a number. Note: This might lose precision for very large numbers,
-          // but it's often sufficient and solves the import error.
-          // A more robust solution for 64-bit integers would require a BigInt library.
           newProps[key] = value.high * Math.pow(2, 32) + value.low;
-        } else if (typeof value === 'object' && value !== null) {
-          // Recursively transform nested objects (though Neo4j properties are typically flat)
+        } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+          // Recursively transform nested objects, making sure not to transform arrays.
           newProps[key] = transformProperties(value);
         } else {
+          // This will now correctly handle primitives AND arrays.
           newProps[key] = value;
         }
       }
