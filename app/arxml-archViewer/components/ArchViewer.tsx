@@ -481,7 +481,7 @@ const ArchViewer = () => {
                       stroke: isSelected ? '#ff0072' : undefined,
                       strokeWidth: isSelected ? 2.5 : undefined,
                       opacity: isSelected ? 1 : 0.5,
-                      transition: 'all 0.2s',
+                      transition: 'stroke 0.2s, stroke-width 0.2s, opacity 0.2s',
                   }
               };
           })
@@ -527,7 +527,7 @@ const ArchViewer = () => {
             stroke: undefined,
             strokeWidth: undefined,
             opacity: 1,
-            transition: 'all 0.2s'
+            transition: 'stroke 0.2s, stroke-width 0.2s, opacity 0.2s'
         },
         animated: true,
       }))
