@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Button, Card, Typography, Space, message, Table, Checkbox, Input, Progress, theme } from 'antd';
 import { FolderOpenOutlined, SearchOutlined, CheckSquareOutlined, BorderOutlined } from '@ant-design/icons';
-import { uploadArxmlToNeo4j } from '../../services/ArxmlToNeoService';
+import { uploadArxmlToNeo4j } from '../../services/ArxmlToNeoService'; 
 
 const { Title, Text } = Typography;
 const { Search } = Input;

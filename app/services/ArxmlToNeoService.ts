@@ -16,7 +16,14 @@
 export * from './neo4j/types';
 export * from './neo4j/config';
 export * from './neo4j/utils';
-export * from './neo4j/queries/arxml-import';
+// We are changing the export for arxml-import to be explicit
+// to help the TS language server resolve the module correctly.
+export { 
+    extractArxmlNodesAndRelationships,
+    uploadArxmlToNeo4j,
+    getLatestArxmlImportInfo,
+    getArxmlFileInfoForImport
+} from './neo4j/queries/arxml-import';
 export * from './neo4j/queries/components';
 export * from './neo4j/queries/ports';
 export * from './neo4j/queries/safety';
