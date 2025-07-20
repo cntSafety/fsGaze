@@ -17,8 +17,6 @@ import ProviderPortsFailureModesTable from './safety-analysis/ProviderPortsFailu
 import ReceiverPortsFailureModesTable from './safety-analysis/ReceiverPortsFailureModesTable';
 import FMFlow from './safety-analysis/FMFlow';
 import SWCAnalysisExport from './SWCAnalysisExport';
-import InterfaceCheck from './InterfaceCheck';
-import ASILFMCheck from './ASILFMCheck';
 import CrossComponentCausationIndicator from './CrossComponentCausationIndicator';
 import { SwSafetyAnalysisProps } from './safety-analysis/types';
 import ElementDetailsModal from './ElementDetailsModal';
@@ -169,20 +167,6 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
           componentUuid={swComponentUuid}
           componentName={swComponent?.name}
         />
-      </div>
-
-      <InterfaceCheck
-        swComponentUuid={swComponentUuid}
-        swComponentName={swComponent?.name}
-        providerPorts={providerPorts}
-        receiverPorts={receiverPorts}
-        portFailures={providerPortFailures}
-        receiverPortFailures={receiverPortFailures}
-      />
-
-      <Divider>ASIL Mismatch Check</Divider>
-      <div style={{ padding: '20px' }}>
-        <ASILFMCheck />
       </div>
 
       <ElementDetailsModal
