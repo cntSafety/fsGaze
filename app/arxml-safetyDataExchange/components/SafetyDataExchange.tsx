@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Button, Space, Typography, Spin, Alert, Card, Upload, Input, Modal, Tabs, Popover } from 'antd';
-import { UploadOutlined, DatabaseOutlined, DownloadOutlined, ExportOutlined, LinkOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { UploadOutlined, DatabaseOutlined, DownloadOutlined, ExportOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { getSafetyGraph } from '@/app/services/neo4j/queries/safety/exportGraph';
 import { importFullGraph } from '@/app/services/neo4j/queries/general';
 import StatusDB, { StatusDBRef } from '@/app/components/statusDB';
@@ -975,29 +975,6 @@ const SafetyDataExchange: React.FC = () => {
             )}
           </Card>
         </Space>
-      ),
-    },
-    {
-      key: 'safety-name-based',
-      label: 'Safety Name Based',
-      children: (
-        <Card title="Name-Based Exchange">
-          <Space direction="vertical" style={{ width: '100%' }}>
-            <div>
-              <Button 
-                type="primary" 
-                icon={<LinkOutlined />} 
-                onClick={() => window.open('/arxml-safetyDataExchange/name-based-exchange', '_blank')}
-              >
-                Open Name-Based Exchange Tool
-              </Button>
-            </div>
-            <Paragraph style={{ margin: 0, fontSize: '14px', color: '#666' }}>
-              Upload JSON files with component safety data and check component names against the database.
-              This tool helps validate component mappings and identify missing components in your safety analysis.
-            </Paragraph>
-          </Space>
-        </Card>
       ),
     },
   ];

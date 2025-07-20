@@ -616,13 +616,9 @@ export default function FMFlow({
     // Hide context menu when clicking on nodes
     hideContextMenu();
     
-    if (onFailureSelect && node.data.failureUuid) {
-      onFailureSelect({
-        uuid: node.data.failureUuid,
-        name: node.data.label,
-      });
-    }
-  }, [onFailureSelect, hideContextMenu]);
+    // Removed onFailureSelect call to prevent automatic causation creation on node click
+    // Causation creation should only happen via drag and drop from handles
+  }, [hideContextMenu]);
 
   const applyLayout = useCallback(() => {
     // Apply Barycenter layout to reduce edge crossings
@@ -646,10 +642,6 @@ export default function FMFlow({
     try {
       // Refresh causation edges without affecting layout
       await refreshCausationEdges();
-      Modal.success({
-        title: 'Data Refreshed',
-        content: 'Failure mode data has been refreshed successfully!',
-      });
     } catch (error) {
       Modal.error({
         title: 'Refresh Failed',
@@ -731,7 +723,7 @@ export default function FMFlow({
           <Text style={{ fontSize: '12px', color: isCreatingCausation ? '#fa8c16' : '#6B7280' }}>
             {isCreatingCausation 
               ? '⏳ Creating causation...' 
-              : '💡 Drag from any failure node to another to create a causation relationship'
+              : '💡 Drag from any failure node to another to create a causation relationship. Right-click on causation arrows to delete them.'
             }
           </Text>
         </div>
