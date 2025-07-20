@@ -47,8 +47,6 @@ export default function SwFailureModesTable({
   const [tableData, setTableData] = useState<SafetyTableRow[]>([]);
   const [editingKey, setEditingKey] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [failureToDelete, setFailureToDelete] = useState<Failure | null>(null);
   const [deletePreview, setDeletePreview] = useState<DeletionPreview | null>(null);
@@ -143,7 +141,6 @@ export default function SwFailureModesTable({
     };
     
     setTableData(prev => [newRow, ...prev]);
-    setCurrentPage(1);
   };
   
   const handleDeleteWithModal = async (record: SafetyTableRow) => {
@@ -262,23 +259,6 @@ export default function SwFailureModesTable({
         scroll={{ x: 'max-content' }}
         onFailureSelect={onFailureSelect}
         selectedFailures={selectedFailures}
-        pagination={{
-          current: currentPage,
-          pageSize: pageSize,
-          showSizeChanger: true,
-          showQuickJumper: true,
-          showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} failure modes`,
-          pageSizeOptions: ['10', '20', '50', '100'],
-          onChange: (page, size) => {
-            if (editingKey !== '') {
-              handleCancel();
-            }
-            setCurrentPage(page);
-            if (size && size !== pageSize) {
-              setPageSize(size);
-            }
-          },
-        }}
         emptyStateConfig={{
           primaryMessage: 'No failure modes defined for this SW component',
           secondaryMessage: `Component: ${swComponent.name}`,

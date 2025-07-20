@@ -16,7 +16,6 @@ import SwFailureModesTable from './safety-analysis/SwFailureModesTable';
 import ProviderPortsFailureModesTable from './safety-analysis/ProviderPortsFailureModesTable';
 import ReceiverPortsFailureModesTable from './safety-analysis/ReceiverPortsFailureModesTable';
 import FMFlow from './safety-analysis/FMFlow';
-import SWCAnalysisExport from './SWCAnalysisExport';
 import CrossComponentCausationIndicator from './CrossComponentCausationIndicator';
 import { SwSafetyAnalysisProps } from './safety-analysis/types';
 import ElementDetailsModal from './ElementDetailsModal';
@@ -159,13 +158,6 @@ export default function SwSafetyAnalysisComponent({ swComponentUuid }: SwSafetyA
           getFailureSelectionState={getFailureSelectionState}
           handleFailureSelection={handleFailureSelection}
           isCauseSelected={isCauseSelected}
-        />
-      </div>
-
-      <div style={{ marginTop: '24px', textAlign: 'center', borderTop: '1px solid #f0f0f0', paddingTop: '16px' }}>
-        <SWCAnalysisExport 
-          componentUuid={swComponentUuid}
-          componentName={swComponent?.name}
         />
       </div>
 
