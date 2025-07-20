@@ -901,6 +901,9 @@ const SafetyDataExchange: React.FC = () => {
       children: (
         <Space direction="vertical" style={{ width: '100%' }}>
           <Card title="Export Safety Analysis Data">
+            <Paragraph style={{ margin: '0 0 16px 0', fontSize: '14px', color: '#666', fontStyle: 'italic' }}>
+              This exports only the safety related part of the graph to a json file. If you want to store the full graph (prefered way) use the "Graph-as-Code" export.
+            </Paragraph>
             <Space>
               <Button onClick={handleExport} loading={isLoading}>
                 Fetch Safety Data from DB
