@@ -365,7 +365,7 @@ export const getFailuresForSwComponents = async (swComponentUuid: string): Promi
   try {    const query = `
       MATCH (swComponent)-[r]-(failureMode:FAILUREMODE)
       WHERE swComponent.uuid = $swComponentUuid 
-      AND (swComponent:APPLICATION_SW_COMPONENT_TYPE OR swComponent:COMPOSITION_SW_COMPONENT_TYPE OR OR swComponent:ECU_ABSTRACTION_SW_COMPONENT_TYPE)
+      AND (swComponent:APPLICATION_SW_COMPONENT_TYPE OR swComponent:COMPOSITION_SW_COMPONENT_TYPE OR swComponent:ECU_ABSTRACTION_SW_COMPONENT_TYPE)
       RETURN 
         failureMode.uuid AS failureModeUuid,
         failureMode.name AS failureModeName,
@@ -571,6 +571,55 @@ export const getFailuresAndCountsForPorts = async (
   } catch (error) {
     console.error('Error fetching failures with counts for ports:', error);
     return { success: false, message: 'Failed to fetch port failures with counts' };
+  } finally {
+    await session.close();
+  }
+};
+
+/**
+ * Get a single failure mode by its UUID
+ * @param failureModeUuid UUID of the failure mode to retrieve
+ */
+export const getFailureModeByUuid = async (
+  failureModeUuid: string
+): Promise<{
+  success: boolean;
+  data?: any;
+  message?: string;
+  error?: string;
+}> => {
+  const session = driver.session();
+  try {
+    const query = `
+      MATCH (failureMode:FAILUREMODE {uuid: $failureModeUuid})
+      RETURN
+        failureMode.uuid AS failureUuid,
+        failureMode.name AS failureName,
+        failureMode.description AS failureDescription,
+        failureMode.asil AS asil,
+        failureMode.created AS created,
+        failureMode.lastModified AS lastModified
+    `;
+    const result = await session.run(query, { failureModeUuid });
+
+    if (result.records.length === 0) {
+      return { success: false, message: 'Failure mode not found' };
+    }
+
+    const record = result.records[0];
+    const data = {
+      failureUuid: record.get('failureUuid'),
+      failureName: record.get('failureName'),
+      failureDescription: record.get('failureDescription'),
+      asil: record.get('asil'),
+      created: record.get('created'),
+      lastModified: record.get('lastModified'),
+    };
+
+    return { success: true, data };
+  } catch (error) {
+    console.error('Error fetching failure mode by UUID:', error);
+    return { success: false, message: 'Failed to fetch failure mode' };
   } finally {
     await session.close();
   }

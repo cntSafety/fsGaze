@@ -422,3 +422,56 @@ export const deleteRiskRatingNode = async (
     await session.close();
   }
 };
+
+/**
+ * Get a single risk rating node by its UUID
+ * @param riskRatingUuid UUID of the risk rating node to retrieve
+ */
+export const getRiskRatingByUuid = async (
+  riskRatingUuid: string
+): Promise<{
+  success: boolean;
+  data?: any;
+  message?: string;
+  error?: string;
+}> => {
+  const session = driver.session();
+  try {
+    const query = `
+      MATCH (rr:RISKRATING {uuid: $riskRatingUuid})
+      RETURN
+        rr.uuid AS uuid,
+        rr.name AS name,
+        rr.Severity AS severity,
+        rr.Occurrence AS occurrence,
+        rr.Detection AS detection,
+        rr.RatingComment AS ratingComment,
+        rr.created AS created,
+        rr.lastModified AS lastModified
+    `;
+    const result = await session.run(query, { riskRatingUuid });
+
+    if (result.records.length === 0) {
+      return { success: false, message: 'Risk rating not found' };
+    }
+
+    const record = result.records[0];
+    const data = {
+      uuid: record.get('uuid'),
+      name: record.get('name'),
+      severity: record.get('severity'),
+      occurrence: record.get('occurrence'),
+      detection: record.get('detection'),
+      ratingComment: record.get('ratingComment'),
+      created: record.get('created'),
+      lastModified: record.get('lastModified'),
+    };
+
+    return { success: true, data };
+  } catch (error) {
+    console.error('Error fetching risk rating by UUID:', error);
+    return { success: false, message: 'Failed to fetch risk rating' };
+  } finally {
+    await session.close();
+  }
+};

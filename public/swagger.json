@@ -1,13 +1,14 @@
 {
   "openapi": "3.0.0",
   "info": {
-    "title": "SG2 API Documentation",
-    "description": "API documentation for SG2 application services",
+    "title": "fsGaze API",
+    "description": "API for analyzing KerML documents and managing safety analysis data.",
     "version": "1.0.0"
   },
   "servers": [
     {
-      "url": "/"
+      "url": "/",
+      "description": "Current server"
     }
   ],
   "paths": {
@@ -49,120 +50,19 @@
         },
         "responses": {
           "200": {
-            "description": "Analysis completed successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "results": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "type": {
-                            "type": "string",
-                            "enum": ["info", "warning", "error"],
-                            "description": "Type of message"
-                          },
-                          "message": {
-                            "type": "string",
-                            "description": "Analysis message"
-                          }
-                        }
-                      }
-                    },
-                    "neo4j": {
-                      "type": "object",
-                      "properties": {
-                        "success": {
-                          "type": "boolean",
-                          "description": "Whether the Neo4j upload was successful"
-                        },
-                        "nodeCount": {
-                          "type": "integer",
-                          "description": "Number of nodes created in Neo4j"
-                        },
-                        "relationshipCount": {
-                          "type": "integer",
-                          "description": "Number of relationships created in Neo4j"
-                        },
-                        "importTimestamp": {
-                          "type": "string",
-                          "format": "date-time",
-                          "description": "When the import happened"
-                        },
-                        "error": {
-                          "type": "string",
-                          "nullable": true,
-                          "description": "Error message if upload failed"
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Analysis completed successfully"
           },
           "400": {
-            "description": "Bad Request - Missing content",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Bad Request"
           },
           "405": {
-            "description": "Method Not Allowed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Method Not Allowed"
           },
           "415": {
-            "description": "Unsupported Media Type",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Unsupported Media Type"
           },
           "500": {
-            "description": "Server Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Server Error"
           }
         }
       }
@@ -173,154 +73,862 @@
         "description": "Identifies actions that should be independent but share common input sources",
         "responses": {
           "200": {
-            "description": "Analysis completed successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "description": "Whether the analysis was successful"
-                    },
-                    "cciResults": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "requirementName": {
-                            "type": "string",
-                            "description": "Name of the requirement"
-                          },
-                          "requirementId": {
-                            "type": "string",
-                            "description": "ID of the requirement"
-                          },
-                          "sphinxneedsID": {
-                            "type": "string",
-                            "nullable": true,
-                            "description": "External reference ID for the requirement"
-                          },
-                          "actions": {
-                            "type": "array",
-                            "description": "Actions that should be independent",
-                            "items": {
-                              "type": "object",
-                              "properties": {
-                                "name": {
-                                  "type": "string",
-                                  "description": "Name of the action"
-                                },
-                                "id": {
-                                  "type": "string",
-                                  "description": "ID of the action"
-                                }
-                              }
-                            }
-                          },
-                          "commonSources": {
-                            "type": "array",
-                            "description": "Common input sources affecting multiple actions",
-                            "items": {
-                              "type": "object",
-                              "properties": {
-                                "name": {
-                                  "type": "string",
-                                  "description": "Name of the source"
-                                },
-                                "pin": {
-                                  "type": "string",
-                                  "nullable": true,
-                                  "description": "Output pin of the source if available"
-                                },
-                                "id": {
-                                  "type": "string",
-                                  "description": "ID of the source"
-                                }
-                              }
-                            }
-                          },
-                          "timestamp": {
-                            "type": "string",
-                            "format": "date-time",
-                            "description": "When the analysis was performed"
-                          },
-                          "ASIL": {
-                            "type": "string",
-                            "description": "Safety integrity level"
-                          }
-                        }
-                      }
-                    },
-                    "affectedActionNames": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      },
-                      "description": "Names of all actions affected by common cause initiators"
-                    },
-                    "sourceActionIds": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      },
-                      "description": "IDs of all actions that are common input sources"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Analysis completed successfully"
           },
           "404": {
-            "description": "No action data found in database",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": false
-                    },
-                    "error": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "No action data found in database"
           },
           "405": {
-            "description": "Method Not Allowed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Method Not Allowed"
           },
           "500": {
-            "description": "Server Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  }
-                }
+            "description": "Server Error"
+          }
+        }
+      }
+    },
+    "/api/safety/failure-modes": {
+      "post": {
+        "tags": ["Failure Modes"],
+        "summary": "Create a new failure mode",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFailureMode"
               }
             }
           }
+        },
+        "responses": {
+          "201": { "description": "Failure mode created" },
+          "400": { "description": "Bad request" }
         }
+      }
+    },
+    "/api/safety/failure-modes/{uuid}": {
+      "get": {
+        "tags": ["Failure Modes"],
+        "summary": "Get a failure mode by UUID",
+        "parameters": [
+          { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Successful retrieval" },
+          "404": { "description": "Not found" }
+        }
+      },
+      "put": {
+        "tags": ["Failure Modes"],
+        "summary": "Update a failure mode",
+        "parameters": [
+          { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateFailureMode"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Update successful" },
+          "400": { "description": "Bad request" }
+        }
+      },
+      "delete": {
+        "tags": ["Failure Modes"],
+        "summary": "Delete a failure mode",
+        "parameters": [
+          { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Deletion successful" },
+          "400": { "description": "Bad request" }
+        }
+      }
+    },
+    "/api/safety/failure-modes/{uuid}/causes": {
+      "get": {
+        "tags": ["Causation"],
+        "summary": "Get causes for a failure mode",
+        "parameters": [
+          { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Successful retrieval" },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/safety/failure-modes/{uuid}/effects": {
+      "get": {
+        "tags": ["Causation"],
+        "summary": "Get effects of a failure mode",
+        "parameters": [
+          { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Successful retrieval" },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/safety/causations": {
+      "post": {
+        "tags": ["Causation"],
+        "summary": "Create a causation link",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCausation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Causation created" },
+          "400": { "description": "Bad request" }
+        }
+      }
+    },
+    "/api/safety/causations/{uuid}": {
+      "delete": {
+        "tags": ["Causation"],
+        "summary": "Delete a causation link",
+        "parameters": [
+          { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Deletion successful" },
+          "400": { "description": "Bad request" }
+        }
+      }
+    },
+    "/api/safety/failure-modes/{uuid}/risk-ratings": {
+      "get": {
+        "tags": ["Risk Ratings"],
+        "summary": "Get risk ratings for a failure mode",
+        "parameters": [
+          { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Successful retrieval" },
+          "404": { "description": "Not found" }
+        }
+      },
+      "post": {
+        "tags": ["Risk Ratings"],
+        "summary": "Create a risk rating for a failure mode",
+        "parameters": [
+          { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRiskRating"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Risk rating created" },
+          "400": { "description": "Bad request" }
+        }
+      }
+    },
+    "/api/safety/risk-ratings/{uuid}": {
+        "get": {
+            "tags": ["Risk Ratings"],
+            "summary": "Get a risk rating by UUID",
+            "parameters": [
+                { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+            ],
+            "responses": {
+                "200": { "description": "Successful retrieval" },
+                "404": { "description": "Not found" }
+            }
+        },
+        "put": {
+            "tags": ["Risk Ratings"],
+            "summary": "Update a risk rating",
+            "parameters": [
+                { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+            ],
+            "requestBody": {
+                "required": true,
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "$ref": "#/components/schemas/CreateRiskRating"
+                        }
+                    }
+                }
+            },
+            "responses": {
+                "200": { "description": "Update successful" },
+                "400": { "description": "Bad request" }
+            }
+        },
+        "delete": {
+            "tags": ["Risk Ratings"],
+            "summary": "Delete a risk rating",
+            "parameters": [
+                { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+            ],
+            "responses": {
+                "200": { "description": "Deletion successful" },
+                "400": { "description": "Bad request" }
+            }
+        }
+    },
+    "/api/safety/failure-modes/{uuid}/safety-requirements": {
+        "get": {
+            "tags": ["Safety Requirements"],
+            "summary": "Get safety requirements for a failure mode",
+            "parameters": [
+                { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+            ],
+            "responses": {
+                "200": { "description": "Successful retrieval" },
+                "404": { "description": "Not found" }
+            }
+        },
+        "post": {
+            "tags": ["Safety Requirements"],
+            "summary": "Create a safety requirement for a failure mode",
+            "parameters": [
+                { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+            ],
+            "requestBody": {
+                "required": true,
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "$ref": "#/components/schemas/CreateSafetyRequirement"
+                        }
+                    }
+                }
+            },
+            "responses": {
+                "201": { "description": "Safety requirement created" },
+                "400": { "description": "Bad request" }
+            }
+        }
+    },
+    "/api/safety/safety-requirements": {
+        "get": {
+            "tags": ["Safety Requirements"],
+            "summary": "Get all safety requirements",
+            "parameters": [
+              {
+                "in": "query",
+                "name": "reqASIL",
+                "schema": { "type": "string" },
+                "description": "Filter by ASIL level"
+              },
+              {
+                "in": "query",
+                "name": "name",
+                "schema": { "type": "string" },
+                "description": "Filter by name (partial match)"
+              },
+              {
+                "in": "query",
+                "name": "reqID",
+                "schema": { "type": "string" },
+                "description": "Filter by requirement ID (partial match)"
+              }
+            ],
+            "responses": {
+                "200": { "description": "Successful retrieval" }
+            }
+        }
+    },
+    "/api/safety/safety-requirements/{uuid}": {
+        "get": {
+            "tags": ["Safety Requirements"],
+            "summary": "Get a safety requirement by UUID",
+            "parameters": [
+                { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+            ],
+            "responses": {
+                "200": { "description": "Successful retrieval" },
+                "404": { "description": "Not found" }
+            }
+        },
+        "put": {
+            "tags": ["Safety Requirements"],
+            "summary": "Update a safety requirement",
+            "parameters": [
+                { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+            ],
+            "requestBody": {
+                "required": true,
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "$ref": "#/components/schemas/UpdateSafetyRequirement"
+                        }
+                    }
+                }
+            },
+            "responses": {
+                "200": { "description": "Update successful" },
+                "400": { "description": "Bad request" }
+            }
+        },
+        "delete": {
+            "tags": ["Safety Requirements"],
+            "summary": "Delete a safety requirement",
+            "parameters": [
+                { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+            ],
+            "responses": {
+                "200": { "description": "Deletion successful" },
+                "400": { "description": "Bad request" }
+            }
+        }
+    },
+    "/api/safety/risk-ratings/{uuid}/tasks": {
+        "get": {
+            "tags": ["Safety Tasks"],
+            "summary": "Get safety tasks for a risk rating",
+            "parameters": [
+                { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+            ],
+            "responses": {
+                "200": { "description": "Successful retrieval" },
+                "404": { "description": "Not found" }
+            }
+        },
+        "post": {
+            "tags": ["Safety Tasks"],
+            "summary": "Create a safety task for a risk rating",
+            "parameters": [
+                { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+            ],
+            "requestBody": {
+                "required": true,
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "$ref": "#/components/schemas/CreateSafetyTask"
+                        }
+                    }
+                }
+            },
+            "responses": {
+                "201": { "description": "Safety task created" },
+                "400": { "description": "Bad request" }
+            }
+        }
+    },
+    "/api/safety/safety-tasks": {
+        "get": {
+            "tags": ["Safety Tasks"],
+            "summary": "Get all safety tasks",
+            "parameters": [
+              {
+                "in": "query",
+                "name": "status",
+                "schema": { 
+                  "type": "string",
+                  "enum": ["open", "started", "in-review", "finished"]
+                },
+                "description": "Filter by task status"
+              }
+            ],
+            "responses": {
+                "200": { "description": "Successful retrieval" }
+            }
+        }
+    },
+    "/api/safety/safety-tasks/{uuid}": {
+        "get": {
+            "tags": ["Safety Tasks"],
+            "summary": "Get a safety task by UUID",
+            "parameters": [
+                { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+            ],
+            "responses": {
+                "200": { "description": "Successful retrieval" },
+                "404": { "description": "Not found" }
+            }
+        },
+        "put": {
+            "tags": ["Safety Tasks"],
+            "summary": "Update a safety task",
+            "parameters": [
+                { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+            ],
+            "requestBody": {
+                "required": true,
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "$ref": "#/components/schemas/CreateSafetyTask"
+                        }
+                    }
+                }
+            },
+            "responses": {
+                "200": { "description": "Update successful" },
+                "400": { "description": "Bad request" }
+            }
+        },
+        "delete": {
+            "tags": ["Safety Tasks"],
+            "summary": "Delete a safety task",
+            "parameters": [
+                { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+            ],
+            "responses": {
+                "200": { "description": "Deletion successful" },
+                "400": { "description": "Bad request" }
+            }
+        }
+    },
+    "/api/safety/safety-tasks/{uuid}/status": {
+        "patch": {
+            "tags": ["Safety Tasks"],
+            "summary": "Update the status of a safety task",
+            "parameters": [
+                { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+            ],
+            "requestBody": {
+                "required": true,
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "$ref": "#/components/schemas/UpdateSafetyTaskStatus"
+                        }
+                    }
+                }
+            },
+            "responses": {
+                "200": { "description": "Update successful" },
+                "400": { "description": "Bad request" }
+            }
+        }
+    },
+    "/api/safety/failure-modes/{uuid}/notes": {
+        "get": {
+            "tags": ["Safety Notes"],
+            "summary": "Get notes for a failure mode",
+            "parameters": [
+                { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+            ],
+            "responses": {
+                "200": { "description": "Successful retrieval" },
+                "404": { "description": "Not found" }
+            }
+        },
+        "post": {
+            "tags": ["Safety Notes"],
+            "summary": "Create a note for a failure mode",
+            "parameters": [
+                { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+            ],
+            "requestBody": {
+                "required": true,
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "$ref": "#/components/schemas/CreateSafetyNote"
+                        }
+                    }
+                }
+            },
+            "responses": {
+                "201": { "description": "Note created" },
+                "400": { "description": "Bad request" }
+            }
+        }
+    },
+    "/api/safety/risk-ratings/{uuid}/notes": {
+        "get": {
+            "tags": ["Safety Notes"],
+            "summary": "Get notes for a risk rating",
+            "parameters": [
+                { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+            ],
+            "responses": {
+                "200": { "description": "Successful retrieval" },
+                "404": { "description": "Not found" }
+            }
+        },
+        "post": {
+            "tags": ["Safety Notes"],
+            "summary": "Create a note for a risk rating",
+            "parameters": [
+                { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+            ],
+            "requestBody": {
+                "required": true,
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "$ref": "#/components/schemas/CreateSafetyNote"
+                        }
+                    }
+                }
+            },
+            "responses": {
+                "201": { "description": "Note created" },
+                "400": { "description": "Bad request" }
+            }
+        }
+    },
+    "/api/safety/safety-requirements/{uuid}/notes": {
+        "get": {
+            "tags": ["Safety Notes"],
+            "summary": "Get notes for a safety requirement",
+            "parameters": [
+                { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+            ],
+            "responses": {
+                "200": { "description": "Successful retrieval" },
+                "404": { "description": "Not found" }
+            }
+        },
+        "post": {
+            "tags": ["Safety Notes"],
+            "summary": "Create a note for a safety requirement",
+            "parameters": [
+                { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+            ],
+            "requestBody": {
+                "required": true,
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "$ref": "#/components/schemas/CreateSafetyNote"
+                        }
+                    }
+                }
+            },
+            "responses": {
+                "201": { "description": "Note created" },
+                "400": { "description": "Bad request" }
+            }
+        }
+    },
+    "/api/safety/safety-tasks/{uuid}/notes": {
+        "get": {
+            "tags": ["Safety Notes"],
+            "summary": "Get notes for a safety task",
+            "parameters": [
+                { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+            ],
+            "responses": {
+                "200": { "description": "Successful retrieval" },
+                "404": { "description": "Not found" }
+            }
+        },
+        "post": {
+            "tags": ["Safety Notes"],
+            "summary": "Create a note for a safety task",
+            "parameters": [
+                { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+            ],
+            "requestBody": {
+                "required": true,
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "$ref": "#/components/schemas/CreateSafetyNote"
+                        }
+                    }
+                }
+            },
+            "responses": {
+                "201": { "description": "Note created" },
+                "400": { "description": "Bad request" }
+            }
+        }
+    },
+    "/api/safety/safety-notes/{uuid}": {
+        "get": {
+            "tags": ["Safety Notes"],
+            "summary": "Get a safety note by UUID",
+            "parameters": [
+                { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+            ],
+            "responses": {
+                "200": { "description": "Successful retrieval" },
+                "404": { "description": "Not found" }
+            }
+        },
+        "put": {
+            "tags": ["Safety Notes"],
+            "summary": "Update a safety note",
+            "parameters": [
+                { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+            ],
+            "requestBody": {
+                "required": true,
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "$ref": "#/components/schemas/CreateSafetyNote"
+                        }
+                    }
+                }
+            },
+            "responses": {
+                "200": { "description": "Update successful" },
+                "400": { "description": "Bad request" }
+            }
+        },
+        "delete": {
+            "tags": ["Safety Notes"],
+            "summary": "Delete a safety note",
+            "parameters": [
+                { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+            ],
+            "responses": {
+                "200": { "description": "Deletion successful" },
+                "400": { "description": "Bad request" }
+            }
+        }
+    },
+    "/api/safety/sw-components/{uuid}/failure-modes": {
+        "get": {
+            "tags": ["Failure Modes"],
+            "summary": "Get failure modes for a software component",
+            "parameters": [
+                { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+            ],
+            "responses": {
+                "200": { "description": "Successful retrieval" },
+                "404": { "description": "Not found" }
+            }
+        }
+    },
+    "/api/safety/ports/{uuid}/failure-modes": {
+        "get": {
+            "tags": ["Failure Modes"],
+            "summary": "Get failure modes for a port",
+            "parameters": [
+                { "in": "path", "name": "uuid", "required": true, "schema": { "type": "string" } }
+            ],
+            "responses": {
+                "200": { "description": "Successful retrieval" },
+                "404": { "description": "Not found" }
+            }
+        }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateFailureMode": {
+        "type": "object",
+        "properties": {
+          "existingElementUuid": { 
+            "type": "string",
+            "description": "UUID of the existing element (SW component or port) to link the failure to",
+            "example": "12345678-1234-5678-9012-123456789012"
+          },
+          "failureModeName": { 
+            "type": "string",
+            "description": "Name of the failure mode",
+            "example": "Communication Loss"
+          },
+          "failureModeDescription": { 
+            "type": "string",
+            "description": "Detailed description of the failure mode",
+            "example": "Loss of communication between components due to network failure"
+          },
+          "asil": { 
+            "type": "string",
+            "description": "ASIL (Automotive Safety Integrity Level) rating",
+            "enum": ["QM", "A", "B", "C", "D"],
+            "example": "C"
+          }
+        },
+        "required": ["existingElementUuid", "failureModeName", "failureModeDescription", "asil"]
+      },
+      "UpdateFailureMode": {
+        "type": "object",
+        "properties": {
+          "failureModeName": { 
+            "type": "string",
+            "description": "Updated name of the failure mode"
+          },
+          "failureModeDescription": { 
+            "type": "string",
+            "description": "Updated description of the failure mode"
+          },
+          "asil": { 
+            "type": "string",
+            "description": "Updated ASIL rating",
+            "enum": ["QM", "A", "B", "C", "D"]
+          }
+        },
+        "required": ["failureModeName", "failureModeDescription", "asil"]
+      },
+      "CreateCausation": {
+        "type": "object",
+        "properties": {
+            "sourceFailureModeUuid": { 
+              "type": "string",
+              "description": "UUID of the failure mode that acts as the cause",
+              "example": "12345678-1234-5678-9012-123456789012"
+            },
+            "targetFailureModeUuid": { 
+              "type": "string",
+              "description": "UUID of the failure mode that acts as the effect",
+              "example": "87654321-4321-8765-2109-876543210987"
+            }
+        },
+        "required": ["sourceFailureModeUuid", "targetFailureModeUuid"]
+      },
+      "CreateRiskRating": {
+          "type": "object",
+          "properties": {
+              "severity": { 
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10,
+                "description": "Severity rating (1-10)",
+                "example": 7
+              },
+              "occurrence": { 
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10,
+                "description": "Occurrence rating (1-10)",
+                "example": 3
+              },
+              "detection": { 
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10,
+                "description": "Detection rating (1-10)",
+                "example": 5
+              },
+              "ratingComment": { 
+                "type": "string",
+                "description": "Optional comment about the risk rating",
+                "example": "Based on historical data and expert judgment"
+              }
+          },
+          "required": ["severity", "occurrence", "detection"]
+      },
+      "CreateSafetyRequirement": {
+          "type": "object",
+          "properties": {
+              "name": { 
+                "type": "string",
+                "description": "Name of the safety requirement",
+                "example": "Emergency Stop Function"
+              },
+              "reqID": { 
+                "type": "string",
+                "description": "Unique identifier for the requirement",
+                "example": "REQ-001"
+              },
+              "reqText": { 
+                "type": "string",
+                "description": "Detailed text of the requirement",
+                "example": "The system shall provide an emergency stop function that can halt all operations within 100ms"
+              },
+              "reqASIL": { 
+                "type": "string",
+                "description": "ASIL level for the requirement",
+                "enum": ["QM", "A", "B", "C", "D"],
+                "example": "D"
+              },
+              "reqLinkedTo": {
+                "type": "string",
+                "description": "Optional reference to external requirement",
+                "example": "ISO-26262-3:2018"
+              }
+          },
+          "required": ["name", "reqID", "reqText", "reqASIL"]
+      },
+      "UpdateSafetyRequirement": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "reqID": { "type": "string" },
+            "reqText": { "type": "string" },
+            "reqASIL": { 
+              "type": "string",
+              "enum": ["QM", "A", "B", "C", "D"]
+            },
+            "reqLinkedTo": { "type": "string" }
+          }
+      },
+      "CreateSafetyTask": {
+          "type": "object",
+          "properties": {
+              "name": { 
+                "type": "string",
+                "description": "Name of the safety task",
+                "example": "Implement watchdog timer"
+              },
+              "description": { 
+                "type": "string",
+                "description": "Detailed description of the task",
+                "example": "Implement a hardware watchdog timer to detect software failures"
+              },
+              "status": { 
+                "type": "string",
+                "enum": ["open", "started", "in-review", "finished"],
+                "description": "Current status of the task",
+                "example": "open"
+              },
+              "responsible": { 
+                "type": "string",
+                "description": "Person or team responsible for the task",
+                "example": "Safety Team"
+              },
+              "reference": { 
+                "type": "string",
+                "description": "Reference or ticket number",
+                "example": "JIRA-1234"
+              },
+              "taskType": { 
+                "type": "string",
+                "enum": ["runtime measures", "dev-time measures", "other"],
+                "description": "Type of safety task",
+                "example": "runtime measures"
+              }
+          },
+          "required": ["name", "description", "status", "responsible", "reference", "taskType"]
+      },
+      "UpdateSafetyTaskStatus": {
+          "type": "object",
+          "properties": {
+              "status": { 
+                "type": "string",
+                "enum": ["open", "started", "in-review", "finished"],
+                "description": "New status for the task",
+                "example": "started"
+              }
+          },
+          "required": ["status"]
+      },
+      "CreateSafetyNote": {
+          "type": "object",
+          "properties": {
+              "note": { 
+                "type": "string",
+                "description": "Content of the safety note",
+                "example": "This failure mode requires special attention during testing phase"
+              }
+          },
+          "required": ["note"]
       }
     }
   }
