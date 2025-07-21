@@ -645,6 +645,87 @@ export const getSRInterfaceBasedConforRPort = async (rPortUuid: string): Promise
 };
 
 /**
+ * Gets all partner port connections for ports belonging to specific components.
+ * This is optimized for the ArchViewer use case where we need all connections for selected components.
+ *
+ * @param componentUuids Array of component UUIDs to get all port connections for.
+ * @returns A Promise that resolves to the raw Neo4j QueryResult containing partner port info for all ports of the specified components.
+ */
+export const getPartnerPortsForComponents = async (componentUuids: string[]): Promise<QueryResult<PartnerPortInfo & { sourcePortUUID: string }>> => {
+  const session = driver.session();
+  try {
+    const result = await session.run<PartnerPortInfo & { sourcePortUUID: string }>(
+      `
+      UNWIND $componentUuids as componentUuid
+      MATCH (component {uuid: componentUuid})-[:CONTAINS]->(portA)
+      WHERE portA:P_PORT_PROTOTYPE OR portA:R_PORT_PROTOTYPE
+      MATCH path = shortestPath((portA)-[:\`TARGET-P-PORT-REF\`|\`TARGET-R-PORT-REF\`|\`OUTER-PORT-REF\`*0..6]-(portB))
+      WHERE portB <> portA
+      AND (portB:P_PORT_PROTOTYPE OR portB:R_PORT_PROTOTYPE)
+      AND labels(portA)[0] <> labels(portB)[0]
+      AND ALL(n IN nodes(path) WHERE n:P_PORT_PROTOTYPE OR n:R_PORT_PROTOTYPE OR n:ASSEMBLY_SW_CONNECTOR OR n:DELEGATION_SW_CONNECTOR)
+      OPTIONAL MATCH (portB)<-[:CONTAINS]-(PortBcontainedBy)
+      OPTIONAL MATCH (portB)<-[:OCCURRENCE]-(FM:FAILUREMODE)
+      RETURN DISTINCT portA.uuid as sourcePortUUID,
+             portB.name as partnerPortName, 
+             portB.uuid as partnerPortUUID, 
+             labels(portB)[0] as partnerPortType, 
+             PortBcontainedBy.name as partnerPortOwner, 
+             PortBcontainedBy.uuid as partnerPortOwnerUUID, 
+             labels(PortBcontainedBy) as partnerPortOwnerType,
+             FM.name as failureModeName,
+             FM.uuid as failureModeUUID,
+             FM.asil as failureModeASIL
+      `,
+      { componentUuids }
+    );
+    return result;
+  } finally {
+    await session.close();
+  }
+};
+
+/**
+ * Finds the partner ports for multiple given ports by traversing assembly and delegation connectors.
+ * This is a batch version of getPartnerPort to reduce database round trips.
+ *
+ * @param portUuids Array of UUIDs of the starting ports (P_PORT_PROTOTYPE or R_PORT_PROTOTYPE).
+ * @returns A Promise that resolves to the raw Neo4j QueryResult containing partner port info for all provided ports.
+ */
+export const getPartnerPortsForMultiplePorts = async (portUuids: string[]): Promise<QueryResult<PartnerPortInfo & { sourcePortUUID: string }>> => {
+  const session = driver.session();
+  try {
+    const result = await session.run<PartnerPortInfo & { sourcePortUUID: string }>(
+      `
+      UNWIND $portUuids as portUuid
+      MATCH (portA {uuid: portUuid}) 
+      MATCH path = shortestPath((portA)-[:\`TARGET-P-PORT-REF\`|\`TARGET-R-PORT-REF\`|\`OUTER-PORT-REF\`*0..6]-(portB))
+      WHERE portB <> portA
+      AND (portB:P_PORT_PROTOTYPE OR portB:R_PORT_PROTOTYPE)
+      AND labels(portA)[0] <> labels(portB)[0]
+      AND ALL(n IN nodes(path) WHERE n:P_PORT_PROTOTYPE OR n:R_PORT_PROTOTYPE OR n:ASSEMBLY_SW_CONNECTOR OR n:DELEGATION_SW_CONNECTOR)
+      OPTIONAL MATCH (portB)<-[:CONTAINS]-(PortBcontainedBy)
+      OPTIONAL MATCH (portB)<-[:OCCURRENCE]-(FM:FAILUREMODE)
+      RETURN DISTINCT portA.uuid as sourcePortUUID,
+             portB.name as partnerPortName, 
+             portB.uuid as partnerPortUUID, 
+             labels(portB)[0] as partnerPortType, 
+             PortBcontainedBy.name as partnerPortOwner, 
+             PortBcontainedBy.uuid as partnerPortOwnerUUID, 
+             labels(PortBcontainedBy) as partnerPortOwnerType,
+             FM.name as failureModeName,
+             FM.uuid as failureModeUUID,
+             FM.asil as failureModeASIL
+      `,
+      { portUuids }
+    );
+    return result;
+  } finally {
+    await session.close();
+  }
+};
+
+/**
  * Finds the partner port for a given port by traversing assembly and delegation connectors.
  *
  * @param portUuid The UUID of the starting port (P_PORT_PROTOTYPE or R_PORT_PROTOTYPE).

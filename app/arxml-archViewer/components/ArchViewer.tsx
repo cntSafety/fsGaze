@@ -2,7 +2,7 @@
 // Arch Viewer supports display of all ports
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { TreeSelect, Spin, Typography, Row, Col, Card, Button, Space } from 'antd';
-import { MenuFoldOutlined, MenuUnfoldOutlined, UsergroupAddOutlined, LinkOutlined } from '@ant-design/icons';
+import { MenuFoldOutlined, MenuUnfoldOutlined, UsergroupAddOutlined, LinkOutlined, DeleteOutlined } from '@ant-design/icons';
 import ReactFlow, {
     Controls,
     Background,
@@ -15,7 +15,8 @@ import ReactFlow, {
     EdgeMouseHandler,
     Handle,
     Position,
-    NodeTypes
+    NodeTypes,
+    useReactFlow
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import ELK from 'elkjs/lib/elk.bundled.js';
@@ -23,7 +24,7 @@ import Link from 'next/link';
 import { getAsilColor } from '@/app/components/asilColors';
 
 import { getApplicationSwComponents } from '@/app/services/neo4j/queries/components';
-import { getProviderPortsForSWComponent, getReceiverPortsForSWComponent, getPartnerPort } from '@/app/services/neo4j/queries/ports';
+import { getProviderPortsForSWComponent, getReceiverPortsForSWComponent, getPartnerPortsForComponents } from '@/app/services/neo4j/queries/ports';
 import { PortInfo } from '@/app/services/neo4j/types';
 import { getFailuresAndCountsForComponents } from '@/app/services/neo4j/queries/safety/failureModes';
 
@@ -189,17 +190,20 @@ const DetailView = ({ item, portToComponentMap, allComponents }: { item: DetailV
     }
 };
 
-const ArchViewer = () => {
+const ArchViewerInner = () => {
   const [loading, setLoading] = useState(true);
+  const [loadingData, setLoadingData] = useState(false);
   const [isPanelVisible, setIsPanelVisible] = useState(true);
   const [allComponents, setAllComponents] = useState<SWComponent[]>([]);
   const [allPorts, setAllPorts] = useState<PortInfo[]>([]);
   const [connections, setConnections] = useState<Map<string, string>>(new Map());
   const [portToComponentMap, setPortToComponentMap] = useState<Map<string, string>>(new Map());
+  const [selectedComponentIds, setSelectedComponentIds] = useState<string[]>([]);
   const [selectedItem, setSelectedItem] = useState<DetailViewItem>(null);
   const [contextMenu, setContextMenu] = useState<{ id: string; top: number; left: number; } | null>(null);
   const animatedEdgeIdsRef = useRef<string[]>([]);
-
+  
+  const { fitView } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
@@ -213,8 +217,8 @@ const ArchViewer = () => {
         }
         
         const allDbComponents = componentsResult.data;
-        const componentUuids = allDbComponents.map((c: any) => c.uuid);
-        const failuresResult = await getFailuresAndCountsForComponents(componentUuids);
+        const allComponentUuids = allDbComponents.map((c: any) => c.uuid);
+        const failuresResult = await getFailuresAndCountsForComponents(allComponentUuids);
 
         const failuresByComponent = new Map<string, FailureData[]>();
         if (failuresResult.success && failuresResult.data) {
@@ -247,55 +251,20 @@ const ArchViewer = () => {
             };
         });
 
+        // Filter out COMPOSITION_SW_COMPONENT_TYPE as they are not needed for visualization
         const filteredComponents = augmentedComponents.filter(
           (c: SWComponent) => c.componentType !== COMPOSITION_SW_COMPONENT_TYPE
         );
         
         setAllComponents(filteredComponents);
-
-        const newConnections = new Map<string, string>();
-        const newPortToComponentMap = new Map<string, string>();
-        const allPortsList: PortInfo[] = [];
-
-        // Fetch ports and connections for all components
-        for (const component of filteredComponents) {
-            const [providerPortsResult, receiverPortsResult] = await Promise.all([
-              getProviderPortsForSWComponent(component.uuid),
-              getReceiverPortsForSWComponent(component.uuid),
-            ]);
-
-            if (!providerPortsResult.success || !receiverPortsResult.success) {
-                console.error(`Failed to fetch ports for ${component.name}`);
-                continue;
-            }
-
-            const componentPorts = [...(providerPortsResult.data || []), ...(receiverPortsResult.data || [])];
-            allPortsList.push(...componentPorts);
-            
-            componentPorts.forEach((port: PortInfo) => {
-                newPortToComponentMap.set(port.uuid, component.uuid);
-            });
-
-            // Fetch partner connections for each port
-            for (const port of componentPorts) {
-              const partnerResult = await getPartnerPort(port.uuid);
-              
-              if (partnerResult && typeof partnerResult === 'object' && 'records' in partnerResult && 
-                  Array.isArray(partnerResult.records) && partnerResult.records.length > 0) {
-                  const record = partnerResult.records[0];
-                  if (record && typeof record.get === 'function') {
-                    const partnerPortUUID = record.get('partnerPortUUID');
-                    if (partnerPortUUID) {
-                      newConnections.set(port.uuid, partnerPortUUID);
-                    }
-                  }
-              }
-            }
-        }
-
-        setConnections(newConnections);
-        setPortToComponentMap(newPortToComponentMap);
-        setAllPorts(allPortsList);
+        
+        // Don't load ports and connections initially - only when user selects components
+        setConnections(new Map());
+        setPortToComponentMap(new Map());
+        setAllPorts([]);
+        
+        // Start with no components selected - user will choose what to visualize
+        setSelectedComponentIds([]);
       } catch (error) {
         console.error('Failed to fetch architecture data:', error);
       } finally {
@@ -306,26 +275,140 @@ const ArchViewer = () => {
     fetchData();
   }, []);
 
-  const createVisualization = useCallback(() => {
-    console.log('Creating visualization...');
-    console.log('Total components:', allComponents.length);
-    console.log('Total ports:', allPorts.length);
-    console.log('Total connections:', connections.size);
+  // Function to load ports and connections for selected components
+  const loadComponentData = useCallback(async (componentIds: string[]) => {
+    if (componentIds.length === 0) {
+      setConnections(new Map());
+      setPortToComponentMap(new Map());
+      setAllPorts([]);
+      return;
+    }
 
-    // Debug: Log all connections to see the pattern
-    console.log('All connections:');
-    Array.from(connections.entries()).slice(0, 10).forEach(([source, target]) => {
-      const sourcePort = allPorts.find(p => p.uuid === source);
-      const targetPort = allPorts.find(p => p.uuid === target);
-      console.log(`${source} (${sourcePort?.type}) -> ${target} (${targetPort?.type})`);
+    try {
+      setLoadingData(true);
+      const selectedComponents = allComponents.filter(c => componentIds.includes(c.uuid));
+
+      const newConnections = new Map<string, string>();
+      const newPortToComponentMap = new Map<string, string>();
+      const allPortsList: PortInfo[] = [];
+
+      // Fetch ports for selected components
+      for (const component of selectedComponents) {
+          const [providerPortsResult, receiverPortsResult] = await Promise.all([
+            getProviderPortsForSWComponent(component.uuid),
+            getReceiverPortsForSWComponent(component.uuid),
+          ]);
+
+          if (!providerPortsResult.success || !receiverPortsResult.success) {
+              console.error(`Failed to fetch ports for ${component.name}`);
+              continue;
+          }
+
+          const componentPorts = [...(providerPortsResult.data || []), ...(receiverPortsResult.data || [])];
+          allPortsList.push(...componentPorts);
+          
+          componentPorts.forEach((port: PortInfo) => {
+              newPortToComponentMap.set(port.uuid, component.uuid);
+          });
+      }
+
+      // Fetch partner connections for selected components
+      const partnerResult = await getPartnerPortsForComponents(componentIds);
+      
+      if (partnerResult && typeof partnerResult === 'object' && 'records' in partnerResult && 
+          Array.isArray(partnerResult.records)) {
+          partnerResult.records.forEach(record => {
+            if (record && typeof record.get === 'function') {
+              const sourcePortUUID = record.get('sourcePortUUID');
+              const partnerPortUUID = record.get('partnerPortUUID');
+              if (sourcePortUUID && partnerPortUUID) {
+                newConnections.set(sourcePortUUID, partnerPortUUID);
+              }
+            }
+          });
+      }
+
+      setConnections(newConnections);
+      setPortToComponentMap(newPortToComponentMap);
+      setAllPorts(allPortsList);
+    } catch (error) {
+      console.error('Failed to load component data:', error);
+    } finally {
+      setLoadingData(false);
+    }
+  }, [allComponents]);
+
+  // Load component data when selection changes
+  useEffect(() => {
+    loadComponentData(selectedComponentIds);
+  }, [selectedComponentIds, loadComponentData]);
+
+  // Create tree data for component selection
+  const treeData = useMemo((): TreeNode[] => {
+    const componentsByType = new Map<string, SWComponent[]>();
+    
+    // Group components by type
+    allComponents.forEach(component => {
+      if (!componentsByType.has(component.componentType)) {
+        componentsByType.set(component.componentType, []);
+      }
+      componentsByType.get(component.componentType)!.push(component);
     });
 
-    // Show ALL components, no filtering
+    // Create tree structure
+    return Array.from(componentsByType.entries()).map(([type, components]) => ({
+      title: `${type} (${components.length})`,
+      value: `type-${type}`,
+      key: `type-${type}`,
+      children: components.map(component => ({
+        title: component.name,
+        value: component.uuid,
+        key: component.uuid
+      }))
+    }));
+  }, [allComponents]);
 
-    // Show ALL components, no filtering
+  const handleSelectAll = useCallback(() => {
+    setSelectedComponentIds(allComponents.map(c => c.uuid));
+  }, [allComponents]);
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedComponentIds([]);
+  }, []);
+
+  const handleTreeSelectionChange = useCallback((selectedValues: string[]) => {
+    // Filter out type nodes (they start with 'type-')
+    const componentIds = selectedValues.filter(value => !value.startsWith('type-'));
+    setSelectedComponentIds(componentIds);
+  }, []);
+
+  const createVisualization = useCallback(() => {
+    // console.log('Creating visualization...');
+    // console.log('Total components:', allComponents.length);
+    // console.log('Selected components:', selectedComponentIds.length);
+    // console.log('Total ports:', allPorts.length);
+    // console.log('Total connections:', connections.size);
+
+    // Filter to only show selected components
+    const selectedComponents: SWComponent[] = allComponents.filter((c: SWComponent) => selectedComponentIds.includes(c.uuid));
+    
+    if (selectedComponents.length === 0) {
+      setNodes([]);
+      setEdges([]);
+      return;
+    }
+
+    // Debug: Log all connections to see the pattern
+    // console.log('All connections:');
+    // Array.from(connections.entries()).slice(0, 10).forEach(([source, target]) => {
+    //   const sourcePort = allPorts.find(p => p.uuid === source);
+    //   const targetPort = allPorts.find(p => p.uuid === target);
+    //   console.log(`${source} (${sourcePort?.type}) -> ${target} (${targetPort?.type})`);
+    // });
+
     const componentPorts = new Map<string, { provider: PortInfo[], receiver: PortInfo[] }>();
     
-    for (const component of allComponents) {
+    for (const component of selectedComponents) {
         const providerPorts = allPorts.filter(p => 
             portToComponentMap.get(p.uuid) === component.uuid && p.type === 'P_PORT_PROTOTYPE'
         );
@@ -339,7 +422,7 @@ const ArchViewer = () => {
         });
     }
 
-    const newNodes: Node[] = allComponents.map(c => {
+    const newNodes: Node[] = selectedComponents.map((c: SWComponent) => {
         const backgroundColor = getAsilColorWithOpacity(c.asil);
         const ports = componentPorts.get(c.uuid) || { provider: [], receiver: [] };
         const nodeHeight = Math.max(80, 40 + Math.max(ports.provider.length, ports.receiver.length) * 15);
@@ -365,18 +448,19 @@ const ArchViewer = () => {
         }
     });
     
-    // Create direct port-to-port connections for ALL components
+    // Create direct port-to-port connections only between selected components
+    const selectedComponentUuids: string[] = selectedComponents.map((c: SWComponent) => c.uuid);
     const newEdges: Edge[] = [];
     let edgeCount = 0;
     const processedConnections = new Set<string>(); // Track unique connections to prevent duplicates
     
-    console.log('Processing connections...');
+    // console.log('Processing connections...');
     connections.forEach((targetPortUuid, sourcePortUuid) => {
         const sourcePort = allPorts.find(p => p.uuid === sourcePortUuid);
         const targetPort = allPorts.find(p => p.uuid === targetPortUuid);
 
         if (!sourcePort || !targetPort) {
-            console.log('Missing port:', { sourcePortUuid, targetPortUuid, sourcePort: !!sourcePort, targetPort: !!targetPort });
+            // console.log('Missing port:', { sourcePortUuid, targetPortUuid, sourcePort: !!sourcePort, targetPort: !!targetPort });
             return;
         }
         
@@ -394,29 +478,33 @@ const ArchViewer = () => {
             receiverPortUuid = targetPortUuid;
         } else if (sourcePort.type === 'R_PORT_PROTOTYPE' && targetPort.type === 'P_PORT_PROTOTYPE') {
             // Reverse direction: target is provider, source is receiver
+            // console.log('Reversing connection direction:', {
+            //     sourcePortUuid,
+            //     targetPortUuid
+            // });
             providerPort = targetPort;
             receiverPort = sourcePort;
             providerPortUuid = targetPortUuid;
             receiverPortUuid = sourcePortUuid;
         } else {
-            // Skip connections that don't match expected port types
+            //Skip connections that don't match expected port types
             const sourceComponentUuid = portToComponentMap.get(sourcePortUuid);
             const targetComponentUuid = portToComponentMap.get(targetPortUuid);
             const sourceComponent = allComponents.find(c => c.uuid === sourceComponentUuid);
             const targetComponent = allComponents.find(c => c.uuid === targetComponentUuid);
             
-            console.log('Unexpected port types:', { 
-                sourceType: sourcePort.type, 
-                targetType: targetPort.type,
-                sourcePortUuid: sourcePortUuid,
-                targetPortUuid: targetPortUuid,
-                sourcePortName: sourcePort.name,
-                targetPortName: targetPort.name,
-                sourceComponent: sourceComponent?.name || 'Unknown',
-                targetComponent: targetComponent?.name || 'Unknown',
-                sourceComponentUuid: sourceComponentUuid,
-                targetComponentUuid: targetComponentUuid
-            });
+            // console.log('Unexpected port types:', { 
+            //     sourceType: sourcePort.type, 
+            //     targetType: targetPort.type,
+            //     sourcePortUuid: sourcePortUuid,
+            //     targetPortUuid: targetPortUuid,
+            //     sourcePortName: sourcePort.name,
+            //     targetPortName: targetPort.name,
+            //     sourceComponent: sourceComponent?.name || 'Unknown',
+            //     targetComponent: targetComponent?.name || 'Unknown',
+            //     sourceComponentUuid: sourceComponentUuid,
+            //     targetComponentUuid: targetComponentUuid
+            // });
             return;
         }
 
@@ -426,12 +514,12 @@ const ArchViewer = () => {
         const connectionId = `${sortedIds[0]}<->${sortedIds[1]}`;
         
         if (processedConnections.has(connectionId)) {
-            console.log('Duplicate connection skipped:', {
-                connectionId,
-                originalMapping: `${sourcePortUuid}->${targetPortUuid}`,
-                providerPort: providerPort.name,
-                receiverPort: receiverPort.name
-            });
+            // console.log('Duplicate connection skipped:', {
+            //     connectionId,
+            //     originalMapping: `${sourcePortUuid}->${targetPortUuid}`,
+            //     providerPort: providerPort.name,
+            //     receiverPort: receiverPort.name
+            // });
             return;
         }
         
@@ -441,12 +529,17 @@ const ArchViewer = () => {
         const receiverComponentUuid = portToComponentMap.get(receiverPortUuid);
 
         if (!providerComponentUuid || !receiverComponentUuid) {
-            console.log('Missing component mapping:', { providerPortUuid, receiverPortUuid, providerComponentUuid, receiverComponentUuid });
+            // console.log('Missing component mapping:', { providerPortUuid, receiverPortUuid, providerComponentUuid, receiverComponentUuid });
+            return;
+        }
+
+        // Only show connections between selected components
+        if (!selectedComponentUuids.includes(providerComponentUuid) || !selectedComponentUuids.includes(receiverComponentUuid)) {
             return;
         }
 
         if (providerComponentUuid === receiverComponentUuid) {
-            console.log('Self connection skipped:', { providerComponentUuid, receiverComponentUuid });
+            // console.log('Self connection skipped:', { providerComponentUuid, receiverComponentUuid });
             return;
         }
         
@@ -470,43 +563,48 @@ const ArchViewer = () => {
         
         newEdges.push(edge);
         
-        if (edgeCount <= 10) { // Log first 10 edges for debugging
-            console.log(`Edge ${edgeCount}:`, {
-                id: edge.id,
-                source: providerComponentUuid,
-                target: receiverComponentUuid,
-                sourceHandle: providerPortUuid,
-                targetHandle: receiverPortUuid,
-                providerComponent: allComponents.find(c => c.uuid === providerComponentUuid)?.name,
-                receiverComponent: allComponents.find(c => c.uuid === receiverComponentUuid)?.name,
-                originalMapping: `${sourcePortUuid}->${targetPortUuid}`,
-                connectionId
-            });
-        }
+        // if (edgeCount <= 10) { // Log first 10 edges for debugging
+        //     console.log(`Edge ${edgeCount}:`, {
+        //         id: edge.id,
+        //         source: providerComponentUuid,
+        //         target: receiverComponentUuid,
+        //         sourceHandle: providerPortUuid,
+        //         targetHandle: receiverPortUuid,
+        //         providerComponent: allComponents.find(c => c.uuid === providerComponentUuid)?.name,
+        //         receiverComponent: allComponents.find(c => c.uuid === receiverComponentUuid)?.name,
+        //         originalMapping: `${sourcePortUuid}->${targetPortUuid}`,
+        //         connectionId
+        //     });
+        // }
     });
 
-    console.log(`Created ${edgeCount} edges from ${connections.size} connections`);
-    console.log(`Processed connections size: ${processedConnections.size}`);
+    // console.log(`Created ${edgeCount} edges from ${connections.size} connections`);
+    // console.log(`Processed connections size: ${processedConnections.size}`);
 
     elkLayout(newNodes, newEdges).then(({nodes: layoutedNodes, edges: layoutedEdges}) => {
-        console.log('Layout complete:', { nodes: layoutedNodes.length, edges: layoutedEdges.length });
+        // console.log('Layout complete:', { nodes: layoutedNodes.length, edges: layoutedEdges.length });
         setNodes(layoutedNodes);
         setEdges(layoutedEdges);
+        
+        // Fit view to new nodes after a short delay to ensure rendering is complete
+        setTimeout(() => {
+          if (layoutedNodes.length > 0) {
+            fitView({ padding: 0.1, duration: 800 });
+          }
+        }, 100);
     });
-  }, [allComponents, allPorts, connections, portToComponentMap, setNodes, setEdges]);
+  }, [allComponents, allPorts, connections, portToComponentMap, selectedComponentIds, setNodes, setEdges, fitView]);
 
-  // Auto-create visualization when data is loaded
+  // Auto-create visualization when component selection changes and data is loaded
   useEffect(() => {
-    if (allComponents.length > 0 && allPorts.length > 0 && connections.size > 0) {
+    if (selectedComponentIds.length > 0 && allComponents.length > 0) {
       createVisualization();
+    } else if (selectedComponentIds.length === 0) {
+      // Clear visualization when no components selected
+      setNodes([]);
+      setEdges([]);
     }
-  }, [allComponents, allPorts, connections, createVisualization]);
-
-  const handleSelectionChange = useCallback((newSelectedValues: string[]) => {
-    const lastSelected = newSelectedValues[newSelectedValues.length - 1];
-    const component = allComponents.find((c: SWComponent) => c.uuid === lastSelected);
-    setSelectedItem(component || null);
-  }, [allComponents]);
+  }, [allComponents, allPorts, connections, selectedComponentIds, createVisualization]);
 
   const onNodeClick: NodeMouseHandler = useCallback((event, node) => {
       const component = allComponents.find((c: SWComponent) => c.uuid === node.id);
@@ -577,11 +675,90 @@ const ArchViewer = () => {
 
 
 
-  const handleShowPartners = useCallback(() => {
-    // This function could be enhanced to highlight partner components
-    // For now, just close the context menu
+  const handleShowPartners = useCallback(async () => {
+    if (!contextMenu) return;
+    
+    const nodeId = contextMenu.id;
+    
+    try {
+      // Get fresh partner data for this specific component
+      const partnerResult = await getPartnerPortsForComponents([nodeId]);
+      
+      const allPartnerComponentIds = new Set<string>();
+      allPartnerComponentIds.add(nodeId); // Include the original component
+      
+      if (partnerResult && typeof partnerResult === 'object' && 'records' in partnerResult && 
+          Array.isArray(partnerResult.records)) {
+          
+          // First, get all ports for this component to build a comprehensive partner list
+          const componentPorts = allPorts.filter(port => 
+            portToComponentMap.get(port.uuid) === nodeId
+          );
+          
+          // If we don't have ports loaded for this component, load them
+          if (componentPorts.length === 0) {
+            const component = allComponents.find(c => c.uuid === nodeId);
+            if (component) {
+              const [providerPortsResult, receiverPortsResult] = await Promise.all([
+                getProviderPortsForSWComponent(component.uuid),
+                getReceiverPortsForSWComponent(component.uuid),
+              ]);
+              
+              if (providerPortsResult.success && receiverPortsResult.success) {
+                const componentPortsList = [...(providerPortsResult.data || []), ...(receiverPortsResult.data || [])];
+                componentPortsList.forEach((port: PortInfo) => {
+                  portToComponentMap.set(port.uuid, component.uuid);
+                });
+                allPorts.push(...componentPortsList);
+                setPortToComponentMap(new Map(portToComponentMap));
+                setAllPorts([...allPorts]);
+              }
+            }
+          }
+          
+          // Process partner connections from the fresh query result
+          partnerResult.records.forEach(record => {
+            if (record && typeof record.get === 'function') {
+              const sourcePortUUID = record.get('sourcePortUUID');
+              const partnerPortUUID = record.get('partnerPortUUID');
+              const partnerPortOwnerUUID = record.get('partnerPortOwnerUUID');
+              
+              if (partnerPortOwnerUUID) {
+                allPartnerComponentIds.add(partnerPortOwnerUUID);
+              }
+            }
+          });
+      }
+      
+      // Update the selection to show only the component and its partners
+      const partnerComponentArray = Array.from(allPartnerComponentIds);
+      setSelectedComponentIds(partnerComponentArray);
+      
+      // Close the context menu
+      setContextMenu(null);
+      
+    } catch (error) {
+      console.error('Failed to load partners:', error);
+      setContextMenu(null);
+    }
+  }, [contextMenu, allPorts, portToComponentMap, allComponents, setSelectedComponentIds]);
+
+  const handleRemoveComponent = useCallback(() => {
+    if (!contextMenu) return;
+    
+    const nodeId = contextMenu.id;
+    
+    // Remove the component from the selection
+    setSelectedComponentIds(prevIds => prevIds.filter(id => id !== nodeId));
+    
+    // Close the context menu
     setContextMenu(null);
-  }, []);
+    
+    // console.log(`Removed component from view:`, {
+    //   removedComponent: allComponents.find(c => c.uuid === nodeId)?.name,
+    //   remainingCount: selectedComponentIds.length - 1
+    // });
+  }, [contextMenu, selectedComponentIds, allComponents, setSelectedComponentIds]);
 
   const onNodeContextMenu: NodeMouseHandler = useCallback((event, node) => {
     event.preventDefault();
@@ -638,13 +815,51 @@ const ArchViewer = () => {
     <Row gutter={16} style={{ padding: '24px', height: '80vh' }}>
         {isPanelVisible && (
             <Col span={6}>
-                <Title level={4}>Component Details</Title>
-                <div style={{marginTop: '20px'}}>
-                    <DetailView item={selectedItem} portToComponentMap={portToComponentMap} allComponents={allComponents} />
+                <Title level={4}>Component Selection</Title>
+                <div style={{ marginBottom: '16px' }}>
+                    <Space>
+                        <Button onClick={handleSelectAll} size="small">
+                            Select All
+                        </Button>
+                        <Button onClick={handleClearSelection} size="small">
+                            Clear Selection
+                        </Button>
+                    </Space>
                 </div>
+                <TreeSelect
+                    treeData={treeData}
+                    value={selectedComponentIds}
+                    onChange={handleTreeSelectionChange}
+                    treeCheckable
+                    showCheckedStrategy={TreeSelect.SHOW_PARENT}
+                    placeholder="Select components to display"
+                    style={{ width: '100%', marginBottom: '16px' }}
+                    maxTagCount="responsive"
+                    treeDefaultExpandAll
+                    disabled={loadingData}
+                />
                 <div style={{ marginTop: '20px' }}>
-                    <Card title="Instructions" size="small">
-                        <Text>Click on a component to see its connections highlighted. All components and their connections are always visible.</Text>
+                    <Card title="Information" size="small">
+                        {loadingData ? (
+                            <div style={{ textAlign: 'center' }}>
+                                <Spin size="small" />
+                                <Text style={{ marginLeft: '8px' }}>Loading component data...</Text>
+                            </div>
+                        ) : (
+                            <>
+                                <Text>Selected: {selectedComponentIds.length} / {allComponents.length} components</Text>
+                                <br />
+                                {selectedComponentIds.length === 0 ? (
+                                    <Text style={{ fontSize: '12px', color: '#666' }}>
+                                        Select components from the tree above to visualize their connections.
+                                    </Text>
+                                ) : (
+                                    <Text style={{ fontSize: '12px', color: '#666' }}>
+                                        Only connections between selected components are shown.
+                                    </Text>
+                                )}
+                            </>
+                        )}
                     </Card>
                 </div>
             </Col>
@@ -660,27 +875,24 @@ const ArchViewer = () => {
                     zIndex: 10
                 }}
             />
-             <ReactFlowProvider>
-                <ReactFlow
-                    nodes={nodes}
-                    edges={edges}
-                    onNodesChange={onNodesChange}
-                    onEdgesChange={onEdgesChange}
-                    onNodeClick={onNodeClick}
-                    onEdgeClick={onEdgeClick}
-                    onPaneClick={onPaneClick}
-                    onNodeContextMenu={onNodeContextMenu}
-                    onEdgeContextMenu={onEdgeContextMenu}
-                    onNodeDragStart={onNodeDragStart}
-                    onNodeDragStop={onNodeDragStop}
-                    fitView
-                    minZoom={0.1}
-                    nodeTypes={nodeTypes}
-                >
-                    <Controls />
-                    <Background />
-                </ReactFlow>
-            </ReactFlowProvider>
+            <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onNodeClick={onNodeClick}
+                onEdgeClick={onEdgeClick}
+                onPaneClick={onPaneClick}
+                onNodeContextMenu={onNodeContextMenu}
+                onEdgeContextMenu={onEdgeContextMenu}
+                onNodeDragStart={onNodeDragStart}
+                onNodeDragStop={onNodeDragStop}
+                minZoom={0.1}
+                nodeTypes={nodeTypes}
+            >
+                <Controls />
+                <Background />
+            </ReactFlow>
         </Col>
         {contextMenu && (
             <div
@@ -704,6 +916,14 @@ const ArchViewer = () => {
                 >
                     Show Partners
                 </Button>
+                <Button
+                    type="text"
+                    icon={<DeleteOutlined />}
+                    onClick={handleRemoveComponent}
+                    danger
+                >
+                    Remove from Diagram
+                </Button>
                 <Link href={contextMenu ? `/arxml-safety/${contextMenu.id}` : '#'} legacyBehavior>
                     <a onClick={() => setContextMenu(null)} style={{ textDecoration: 'none' }}>
                         <Button
@@ -721,10 +941,10 @@ const ArchViewer = () => {
   );
 };
 
-const ArchViewerWrapper = () => (
+const ArchViewer = () => (
     <ReactFlowProvider>
-        <ArchViewer />
+        <ArchViewerInner />
     </ReactFlowProvider>
-)
+);
 
-export default ArchViewerWrapper;
+export default ArchViewer;
