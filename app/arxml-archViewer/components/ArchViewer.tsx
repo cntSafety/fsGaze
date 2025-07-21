@@ -101,6 +101,12 @@ interface SWComponent {
   asil: string;
 }
 
+interface FailureData {
+  swComponentUuid: string;
+  asil?: string;
+  [key: string]: any;
+}
+
 type DetailViewItem = SWComponent | PortInfo | null;
 
 interface TreeNode {
@@ -207,10 +213,10 @@ const ArchViewer = () => {
         }
         
         const allDbComponents = componentsResult.data;
-        const componentUuids = allDbComponents.map(c => c.uuid);
+        const componentUuids = allDbComponents.map((c: any) => c.uuid);
         const failuresResult = await getFailuresAndCountsForComponents(componentUuids);
 
-        const failuresByComponent = new Map<string, any[]>();
+        const failuresByComponent = new Map<string, FailureData[]>();
         if (failuresResult.success && failuresResult.data) {
           for (const failure of failuresResult.data) {
             if (!failuresByComponent.has(failure.swComponentUuid)) {
@@ -221,9 +227,9 @@ const ArchViewer = () => {
         }
 
         const asilOrder: { [key: string]: number } = { 'QM': 0, 'A': 1, 'B': 2, 'C': 3, 'D': 4, 'TBC': -1 };
-        const getHighestAsil = (failures: any[]): string => {
+        const getHighestAsil = (failures: FailureData[]): string => {
           if (!failures || failures.length === 0) return 'N/A';
-          return failures.reduce((highest, current) => {
+          return failures.reduce((highest: string, current: FailureData) => {
             const currentAsil = current.asil || 'TBC';
             const highestAsil = highest || 'TBC';
             if ((asilOrder[currentAsil] ?? -1) > (asilOrder[highestAsil] ?? -1)) {
@@ -266,19 +272,22 @@ const ArchViewer = () => {
             const componentPorts = [...(providerPortsResult.data || []), ...(receiverPortsResult.data || [])];
             allPortsList.push(...componentPorts);
             
-            componentPorts.forEach(port => {
+            componentPorts.forEach((port: PortInfo) => {
                 newPortToComponentMap.set(port.uuid, component.uuid);
             });
 
             // Fetch partner connections for each port
             for (const port of componentPorts) {
-              const partnerResult = await getPartnerPort(port.uuid) as any;
+              const partnerResult = await getPartnerPort(port.uuid);
               
-              if (partnerResult.records && partnerResult.records.length > 0) {
+              if (partnerResult && typeof partnerResult === 'object' && 'records' in partnerResult && 
+                  Array.isArray(partnerResult.records) && partnerResult.records.length > 0) {
                   const record = partnerResult.records[0];
-                  const partnerPortUUID = record.get('partnerPortUUID');
-                  if (partnerPortUUID) {
-                    newConnections.set(port.uuid, partnerPortUUID);
+                  if (record && typeof record.get === 'function') {
+                    const partnerPortUUID = record.get('partnerPortUUID');
+                    if (partnerPortUUID) {
+                      newConnections.set(port.uuid, partnerPortUUID);
+                    }
                   }
               }
             }
@@ -302,6 +311,14 @@ const ArchViewer = () => {
     console.log('Total components:', allComponents.length);
     console.log('Total ports:', allPorts.length);
     console.log('Total connections:', connections.size);
+
+    // Debug: Log all connections to see the pattern
+    console.log('All connections:');
+    Array.from(connections.entries()).slice(0, 10).forEach(([source, target]) => {
+      const sourcePort = allPorts.find(p => p.uuid === source);
+      const targetPort = allPorts.find(p => p.uuid === target);
+      console.log(`${source} (${sourcePort?.type}) -> ${target} (${targetPort?.type})`);
+    });
 
     // Show ALL components, no filtering
 
@@ -353,6 +370,7 @@ const ArchViewer = () => {
     let edgeCount = 0;
     const processedConnections = new Set<string>(); // Track unique connections to prevent duplicates
     
+    console.log('Processing connections...');
     connections.forEach((targetPortUuid, sourcePortUuid) => {
         const sourcePort = allPorts.find(p => p.uuid === sourcePortUuid);
         const targetPort = allPorts.find(p => p.uuid === targetPortUuid);
@@ -402,11 +420,18 @@ const ArchViewer = () => {
             return;
         }
 
-        // Create unique connection ID to prevent duplicates
-        const connectionId = `${providerPortUuid}->${receiverPortUuid}`;
+        // Create bidirectional connection ID to prevent duplicates
+        // Always put the lexicographically smaller UUID first to ensure consistency
+        const sortedIds = [providerPortUuid, receiverPortUuid].sort();
+        const connectionId = `${sortedIds[0]}<->${sortedIds[1]}`;
         
         if (processedConnections.has(connectionId)) {
-            //console.log('Duplicate connection skipped:', connectionId);
+            console.log('Duplicate connection skipped:', {
+                connectionId,
+                originalMapping: `${sourcePortUuid}->${targetPortUuid}`,
+                providerPort: providerPort.name,
+                receiverPort: receiverPort.name
+            });
             return;
         }
         
@@ -427,7 +452,7 @@ const ArchViewer = () => {
         
         edgeCount++;
         const edge = {
-            id: connectionId,
+            id: `${providerComponentUuid}->${receiverComponentUuid}-${edgeCount}`, // Include edge count to make truly unique
             source: providerComponentUuid,
             target: receiverComponentUuid,
             sourceHandle: providerPortUuid,
@@ -438,13 +463,14 @@ const ArchViewer = () => {
             },
             data: {
                 sourcePort: providerPort,
-                targetPort: receiverPort
+                targetPort: receiverPort,
+                connectionMapping: `${sourcePortUuid}->${targetPortUuid}`
             }
         };
         
         newEdges.push(edge);
         
-        if (edgeCount <= 5) { // Log first few edges for debugging
+        if (edgeCount <= 10) { // Log first 10 edges for debugging
             console.log(`Edge ${edgeCount}:`, {
                 id: edge.id,
                 source: providerComponentUuid,
@@ -452,12 +478,15 @@ const ArchViewer = () => {
                 sourceHandle: providerPortUuid,
                 targetHandle: receiverPortUuid,
                 providerComponent: allComponents.find(c => c.uuid === providerComponentUuid)?.name,
-                receiverComponent: allComponents.find(c => c.uuid === receiverComponentUuid)?.name
+                receiverComponent: allComponents.find(c => c.uuid === receiverComponentUuid)?.name,
+                originalMapping: `${sourcePortUuid}->${targetPortUuid}`,
+                connectionId
             });
         }
     });
 
     console.log(`Created ${edgeCount} edges from ${connections.size} connections`);
+    console.log(`Processed connections size: ${processedConnections.size}`);
 
     elkLayout(newNodes, newEdges).then(({nodes: layoutedNodes, edges: layoutedEdges}) => {
         console.log('Layout complete:', { nodes: layoutedNodes.length, edges: layoutedEdges.length });
@@ -475,54 +504,30 @@ const ArchViewer = () => {
 
   const handleSelectionChange = useCallback((newSelectedValues: string[]) => {
     const lastSelected = newSelectedValues[newSelectedValues.length - 1];
-    const component = allComponents.find(c => c.uuid === lastSelected);
+    const component = allComponents.find((c: SWComponent) => c.uuid === lastSelected);
     setSelectedItem(component || null);
-
-    // No longer recreating the visualization on selection change
-    // The visualization is now static and shows all components
-
   }, [allComponents]);
 
-  const onNodeDragStart: NodeMouseHandler = useCallback((_event, _node) => {
-    setEdges(currentEdges => {
-        animatedEdgeIdsRef.current = currentEdges.filter(e => e.animated).map(e => e.id);
-        return currentEdges.map(e => ({ ...e, animated: false }));
-    });
-  }, [setEdges]);
-
-  const onNodeDragStop: NodeMouseHandler = useCallback((_event, _node) => {
-      setEdges(currentEdges => {
-          const animatedIds = new Set(animatedEdgeIdsRef.current);
-          return currentEdges.map(e => ({ ...e, animated: animatedIds.has(e.id) }));
-      });
-  }, [setEdges]);
-
-  const handleShowPartners = useCallback(() => {
-    // This function could be enhanced to highlight partner components
-    // For now, just close the context menu
-    setContextMenu(null);
-  }, []);
-
   const onNodeClick: NodeMouseHandler = useCallback((event, node) => {
-      const component = allComponents.find(c => c.uuid === node.id);
+      const component = allComponents.find((c: SWComponent) => c.uuid === node.id);
       if(component) {
         setSelectedItem(component);
       }
 
-      const connectedEdges = edges.filter(e => e.source === node.id || e.target === node.id);
+      const connectedEdges = edges.filter((e: Edge) => e.source === node.id || e.target === node.id);
       const partnerNodeIds = new Set(
-        connectedEdges.flatMap(e => [e.source, e.target])
+        connectedEdges.flatMap((e: Edge) => [e.source, e.target])
       );
 
-      setNodes(nds =>
-        nds.map(n => ({
+      setNodes((nds: Node[]) =>
+        nds.map((n: Node) => ({
           ...n,
           style: { ...n.style, opacity: partnerNodeIds.has(n.id) ? 1 : 0.3, transition: 'opacity 0.2s' }
         }))
       );
 
-      setEdges(eds =>
-        eds.map(e => {
+      setEdges((eds: Edge[]) =>
+        eds.map((e: Edge) => {
             const isConnected = e.source === node.id || e.target === node.id;
             return {
                 ...e,
@@ -537,18 +542,9 @@ const ArchViewer = () => {
 
   }, [allComponents, edges, setNodes, setEdges]);
 
-  const onNodeContextMenu: NodeMouseHandler = useCallback((event, node) => {
-    event.preventDefault();
-    setContextMenu({
-        id: node.id,
-        top: event.clientY,
-        left: event.clientX,
-    });
-  }, []);
-
   const onEdgeClick: EdgeMouseHandler = useCallback((event, edge) => {
-      setEdges(eds =>
-          eds.map(e => {
+      setEdges((eds: Edge[]) =>
+          eds.map((e: Edge) => {
               const isSelected = e.id === edge.id;
               return {
                   ...e,
@@ -563,8 +559,8 @@ const ArchViewer = () => {
               };
           })
       );
-      setNodes(nds =>
-          nds.map(n => {
+      setNodes((nds: Node[]) =>
+          nds.map((n: Node) => {
               const isConnected = n.id === edge.source || n.id === edge.target;
               return {
                   ...n,
@@ -579,9 +575,34 @@ const ArchViewer = () => {
       setSelectedItem(null);
   }, [setEdges, setNodes]);
 
+
+
+  const handleShowPartners = useCallback(() => {
+    // This function could be enhanced to highlight partner components
+    // For now, just close the context menu
+    setContextMenu(null);
+  }, []);
+
+  const onNodeContextMenu: NodeMouseHandler = useCallback((event, node) => {
+    event.preventDefault();
+    setContextMenu({
+        id: node.id,
+        top: event.clientY,
+        left: event.clientX,
+    });
+  }, []);
+
   const onEdgeContextMenu: EdgeMouseHandler = useCallback((event, edge) => {
     event.preventDefault();
     // Simple edge context menu removed for now - could show port details here
+  }, []);
+
+  const onNodeDragStart: NodeMouseHandler = useCallback((event, node) => {
+    // Optional: Add any logic when node drag starts
+  }, []);
+
+  const onNodeDragStop: NodeMouseHandler = useCallback((event, node) => {
+    // Optional: Add any logic when node drag stops
   }, []);
 
   const onPaneClick = useCallback(() => {
