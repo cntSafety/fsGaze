@@ -1,5 +1,5 @@
 'use client';
-
+// Arch Viewer supports display of all ports
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { TreeSelect, Spin, Typography, Row, Col, Card, Button, Space } from 'antd';
 import { MenuFoldOutlined, MenuUnfoldOutlined, UsergroupAddOutlined, LinkOutlined } from '@ant-design/icons';
@@ -406,7 +406,7 @@ const ArchViewer = () => {
         const connectionId = `${providerPortUuid}->${receiverPortUuid}`;
         
         if (processedConnections.has(connectionId)) {
-            console.log('Duplicate connection skipped:', connectionId);
+            //console.log('Duplicate connection skipped:', connectionId);
             return;
         }
         
