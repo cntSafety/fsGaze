@@ -118,7 +118,7 @@ interface TreeNode {
   children?: TreeNode[];
 }
 
-const COMPOSITION_SW_COMPONENT_TYPE = 'COMPOSITION-SW-COMPONENT-TYPE';
+const COMPOSITION_SW_COMPONENT_TYPE = 'COMPOSITION_SW_COMPONENT_TYPE';
 
 const elk = new ELK();
 

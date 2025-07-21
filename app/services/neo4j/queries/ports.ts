@@ -738,34 +738,26 @@ export const getPartnerPortsForComponentsOptimized = async (componentUuids: stri
     
     const result = await session.run<PartnerPortInfo & { sourcePortUUID: string }>(
       `
-      // Find all assembly connectors that connect to ports of our selected components
       UNWIND $componentUuids as componentUuid
-      MATCH (selectedComp {uuid: componentUuid})-[:CONTAINS]->(selectedPort)
-      WHERE (selectedPort:P_PORT_PROTOTYPE OR selectedPort:R_PORT_PROTOTYPE)
-      
-      // Find assembly connectors connecting to this port
-      MATCH (selectedPort)<-[portRef:\`TARGET-P-PORT-REF\`|\`TARGET-R-PORT-REF\`]-(connector:ASSEMBLY_SW_CONNECTOR)
-      
-      // Find the partner port on the other side of the connector
-      MATCH (connector)-[partnerRef:\`TARGET-P-PORT-REF\`|\`TARGET-R-PORT-REF\`]->(partnerPort)
-      WHERE partnerPort <> selectedPort
-      AND (partnerPort:P_PORT_PROTOTYPE OR partnerPort:R_PORT_PROTOTYPE)
-      AND labels(selectedPort)[0] <> labels(partnerPort)[0]  // Ensure P->R or R->P connections
-      
-      // Get the component that contains the partner port
-      MATCH (partnerPort)<-[:CONTAINS]-(partnerComponent)
-      
-      // Get failure mode information for the partner port
-      OPTIONAL MATCH (partnerPort)<-[:OCCURRENCE]-(FM:FAILUREMODE)
-      
+      MATCH (selectedComp {uuid: componentUuid})-[:CONTAINS]->(portA)
+      WHERE (portA:P_PORT_PROTOTYPE OR portA:R_PORT_PROTOTYPE)
+
+      MATCH path = shortestPath((portA)-[:\`TARGET-P-PORT-REF\`|\`TARGET-R-PORT-REF\`|\`OUTER-PORT-REF\`*0..6]-(portB))
+      WHERE portB <> portA
+      AND (portB:P_PORT_PROTOTYPE OR portB:R_PORT_PROTOTYPE)
+      AND labels(portA)[0] <> labels(portB)[0]
+      AND ALL(n IN nodes(path) WHERE n:P_PORT_PROTOTYPE OR n:R_PORT_PROTOTYPE OR n:ASSEMBLY_SW_CONNECTOR OR n:DELEGATION_SW_CONNECTOR)
+      MATCH (portB)<-[:CONTAINS]-(PortBcontainedBy)
+      WHERE NOT 'COMPOSITION_SW_COMPONENT_TYPE' IN labels(PortBcontainedBy)
+      OPTIONAL MATCH (portB)<-[:OCCURRENCE]-(FM:FAILUREMODE)
       RETURN DISTINCT 
-        selectedPort.uuid as sourcePortUUID,
-        partnerPort.name as partnerPortName, 
-        partnerPort.uuid as partnerPortUUID, 
-        labels(partnerPort)[0] as partnerPortType, 
-        partnerComponent.name as partnerPortOwner, 
-        partnerComponent.uuid as partnerPortOwnerUUID, 
-        labels(partnerComponent) as partnerPortOwnerType,
+        portA.uuid as sourcePortUUID,
+        portB.name as partnerPortName, 
+        portB.uuid as partnerPortUUID, 
+        labels(portB)[0] as partnerPortType, 
+        PortBcontainedBy.name as partnerPortOwner, 
+        PortBcontainedBy.uuid as partnerPortOwnerUUID, 
+        labels(PortBcontainedBy) as partnerPortOwnerType,
         FM.name as failureModeName,
         FM.uuid as failureModeUUID,
         FM.asil as failureModeASIL
