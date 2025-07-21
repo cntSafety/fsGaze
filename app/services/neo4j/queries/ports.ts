@@ -645,6 +645,153 @@ export const getSRInterfaceBasedConforRPort = async (rPortUuid: string): Promise
 };
 
 /**
+ * Gets all ports (both P-Ports and R-Ports) for multiple components in a single batch query.
+ * This is optimized for the ArchViewer use case where we need all ports for selected components.
+ *
+ * @param componentUuids Array of component UUIDs to get all ports for.
+ * @returns A Promise that resolves to an object containing success status and port data grouped by component.
+ */
+export const getAllPortsForComponents = async (componentUuids: string[]): Promise<{
+  success: boolean;
+  data?: Map<string, PortInfo[]>;
+  message?: string;
+  error?: string;
+}> => {
+  const session = driver.session();
+  
+  try {
+    console.log(`🔍 Batch fetching ports for ${componentUuids.length} components`);
+    
+    const result = await session.run(
+      `
+      UNWIND $componentUuids as componentUuid
+      MATCH (component {uuid: componentUuid})-[:CONTAINS]->(port)
+      WHERE port:P_PORT_PROTOTYPE OR port:R_PORT_PROTOTYPE
+      RETURN component.uuid as componentUuid,
+             port.name as portName,
+             port.uuid as portUuid,
+             labels(port)[0] as portType
+      ORDER BY component.uuid, port.name
+      `,
+      { componentUuids }
+    );
+
+    if (result.records.length === 0) {
+      return {
+        success: true,
+        data: new Map(),
+        message: `No ports found for the specified components`,
+      };
+    }
+
+    // Group ports by component UUID
+    const portsByComponent = new Map<string, PortInfo[]>();
+    
+    result.records.forEach(record => {
+      const componentUuid = record.get('componentUuid');
+      const portInfo: PortInfo = {
+        name: record.get('portName') || 'Unnamed Port',
+        uuid: record.get('portUuid') || '',
+        type: record.get('portType') || 'UNKNOWN_PORT_TYPE',
+      };
+      
+      if (!portsByComponent.has(componentUuid)) {
+        portsByComponent.set(componentUuid, []);
+      }
+      portsByComponent.get(componentUuid)!.push(portInfo);
+    });
+
+    console.log(`✅ Batch port fetch completed: ${result.records.length} ports for ${portsByComponent.size} components`);
+
+    return {
+      success: true,
+      data: portsByComponent,
+    };
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error(`❌ Error batch fetching ports for components:`, errorMessage);
+    
+    return {
+      success: false,
+      message: `Error batch fetching ports for components.`,
+      error: errorMessage,
+    };
+  } finally {
+    await session.close();
+  }
+};
+
+/**
+ * SUPER OPTIMIZED: Gets all partner port connections by directly querying assembly connectors.
+ * This avoids expensive path traversals and processes connections more efficiently.
+ *
+ * @param componentUuids Array of component UUIDs to get all port connections for.
+ * @returns A Promise that resolves to the raw Neo4j QueryResult containing partner port info.
+ */
+export const getPartnerPortsForComponentsOptimized = async (componentUuids: string[]): Promise<QueryResult<PartnerPortInfo & { sourcePortUUID: string }>> => {
+  const session = driver.session();
+  try {
+    // ⏱️ Performance Measurement: Database query timing
+    const queryStart = performance.now();
+    console.log(`🚀 OPTIMIZED: Executing assembly connector-based query for ${componentUuids.length} components...`);
+    
+    const result = await session.run<PartnerPortInfo & { sourcePortUUID: string }>(
+      `
+      // Find all assembly connectors that connect to ports of our selected components
+      UNWIND $componentUuids as componentUuid
+      MATCH (selectedComp {uuid: componentUuid})-[:CONTAINS]->(selectedPort)
+      WHERE (selectedPort:P_PORT_PROTOTYPE OR selectedPort:R_PORT_PROTOTYPE)
+      
+      // Find assembly connectors connecting to this port
+      MATCH (selectedPort)<-[portRef:\`TARGET-P-PORT-REF\`|\`TARGET-R-PORT-REF\`]-(connector:ASSEMBLY_SW_CONNECTOR)
+      
+      // Find the partner port on the other side of the connector
+      MATCH (connector)-[partnerRef:\`TARGET-P-PORT-REF\`|\`TARGET-R-PORT-REF\`]->(partnerPort)
+      WHERE partnerPort <> selectedPort
+      AND (partnerPort:P_PORT_PROTOTYPE OR partnerPort:R_PORT_PROTOTYPE)
+      AND labels(selectedPort)[0] <> labels(partnerPort)[0]  // Ensure P->R or R->P connections
+      
+      // Get the component that contains the partner port
+      MATCH (partnerPort)<-[:CONTAINS]-(partnerComponent)
+      
+      // Get failure mode information for the partner port
+      OPTIONAL MATCH (partnerPort)<-[:OCCURRENCE]-(FM:FAILUREMODE)
+      
+      RETURN DISTINCT 
+        selectedPort.uuid as sourcePortUUID,
+        partnerPort.name as partnerPortName, 
+        partnerPort.uuid as partnerPortUUID, 
+        labels(partnerPort)[0] as partnerPortType, 
+        partnerComponent.name as partnerPortOwner, 
+        partnerComponent.uuid as partnerPortOwnerUUID, 
+        labels(partnerComponent) as partnerPortOwnerType,
+        FM.name as failureModeName,
+        FM.uuid as failureModeUUID,
+        FM.asil as failureModeASIL
+      `,
+      { componentUuids }
+    );
+    
+    const queryEnd = performance.now();
+    const queryTime = queryEnd - queryStart;
+    console.log(`⚡ OPTIMIZED query completed in ${queryTime.toFixed(2)}ms`);
+    console.log(`📊 Optimized query statistics: 
+      - Components queried: ${componentUuids.length}
+      - Records returned: ${result.records.length}
+      - Query performance: ${(result.records.length / queryTime * 1000).toFixed(0)} records/second`);
+    
+    return result;
+  } catch (error) {
+    console.warn(`❌ Optimized query failed, falling back to original query:`, error);
+    // Fallback to the original query if optimized version fails
+    return getPartnerPortsForComponents(componentUuids);
+  } finally {
+    await session.close();
+  }
+};
+
+/**
  * Gets all partner port connections for ports belonging to specific components.
  * This is optimized for the ArchViewer use case where we need all connections for selected components.
  *
@@ -654,6 +801,10 @@ export const getSRInterfaceBasedConforRPort = async (rPortUuid: string): Promise
 export const getPartnerPortsForComponents = async (componentUuids: string[]): Promise<QueryResult<PartnerPortInfo & { sourcePortUUID: string }>> => {
   const session = driver.session();
   try {
+    // ⏱️ Performance Measurement: Database query timing
+    const queryStart = performance.now();
+    console.log(`🔄 Executing partner ports query for ${componentUuids.length} components...`);
+    
     const result = await session.run<PartnerPortInfo & { sourcePortUUID: string }>(
       `
       UNWIND $componentUuids as componentUuid
@@ -679,6 +830,15 @@ export const getPartnerPortsForComponents = async (componentUuids: string[]): Pr
       `,
       { componentUuids }
     );
+    
+    const queryEnd = performance.now();
+    const queryTime = queryEnd - queryStart;
+    console.log(`⚡ Partner ports database query completed in ${queryTime.toFixed(2)}ms`);
+    console.log(`📊 Query statistics: 
+      - Components queried: ${componentUuids.length}
+      - Records returned: ${result.records.length}
+      - Query performance: ${(result.records.length / queryTime * 1000).toFixed(0)} records/second`);
+    
     return result;
   } finally {
     await session.close();

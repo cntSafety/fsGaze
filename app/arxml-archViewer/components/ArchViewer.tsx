@@ -24,7 +24,7 @@ import Link from 'next/link';
 import { getAsilColor } from '@/app/components/asilColors';
 
 import { getApplicationSwComponents } from '@/app/services/neo4j/queries/components';
-import { getProviderPortsForSWComponent, getReceiverPortsForSWComponent, getPartnerPortsForComponents } from '@/app/services/neo4j/queries/ports';
+import { getProviderPortsForSWComponent, getReceiverPortsForSWComponent, getPartnerPortsForComponents, getPartnerPortsForComponentsOptimized, getAllPortsForComponents } from '@/app/services/neo4j/queries/ports';
 import { PortInfo } from '@/app/services/neo4j/types';
 import { getFailuresAndCountsForComponents } from '@/app/services/neo4j/queries/safety/failureModes';
 
@@ -286,14 +286,41 @@ const ArchViewerInner = () => {
 
     try {
       setLoadingData(true);
+      
+      // ⏱️ Performance Measurement: Start timing
+      const startTime = performance.now();
+      console.log(`🚀 Loading component data for ${componentIds.length} components...`);
+      
       const selectedComponents = allComponents.filter(c => componentIds.includes(c.uuid));
 
       const newConnections = new Map<string, string>();
       const newPortToComponentMap = new Map<string, string>();
       const allPortsList: PortInfo[] = [];
 
-      // Fetch ports for selected components
-      for (const component of selectedComponents) {
+      // ⏱️ Performance Measurement: Port fetching phase
+      const portFetchStart = performance.now();
+      
+      // SUPER OPTIMIZED: Single batch query to get all ports for all components at once
+      const allPortsResult = await getAllPortsForComponents(componentIds);
+      
+      const portFetchEnd = performance.now();
+      console.log(`⚡ Batch port fetching completed in ${(portFetchEnd - portFetchStart).toFixed(2)}ms (single query for all components)`);
+
+      // Process the batch port results
+      if (allPortsResult.success && allPortsResult.data) {
+        allPortsResult.data.forEach((ports: PortInfo[], componentUuid: string) => {
+          allPortsList.push(...ports);
+          ports.forEach((port: PortInfo) => {
+            newPortToComponentMap.set(port.uuid, componentUuid);
+          });
+        });
+        
+        console.log(`📦 Processed ${allPortsList.length} ports across ${allPortsResult.data.size} components`);
+      } else {
+        console.warn('Batch port fetch failed, falling back to individual queries');
+        
+        // FALLBACK: Use the original parallel approach if batch query fails
+        const portPromises = selectedComponents.map(async (component) => {
           const [providerPortsResult, receiverPortsResult] = await Promise.all([
             getProviderPortsForSWComponent(component.uuid),
             getReceiverPortsForSWComponent(component.uuid),
@@ -301,19 +328,51 @@ const ArchViewerInner = () => {
 
           if (!providerPortsResult.success || !receiverPortsResult.success) {
               console.error(`Failed to fetch ports for ${component.name}`);
-              continue;
+              return { component, ports: [] };
           }
 
           const componentPorts = [...(providerPortsResult.data || []), ...(receiverPortsResult.data || [])];
-          allPortsList.push(...componentPorts);
-          
-          componentPorts.forEach((port: PortInfo) => {
-              newPortToComponentMap.set(port.uuid, component.uuid);
+          return { component, ports: componentPorts };
+        });
+
+        // Wait for all port fetching to complete in parallel
+        const portResults = await Promise.all(portPromises);
+        
+        // Process the fallback port results
+        portResults.forEach(({ component, ports }) => {
+          allPortsList.push(...ports);
+          ports.forEach((port: PortInfo) => {
+            newPortToComponentMap.set(port.uuid, component.uuid);
           });
+        });
+        
+        console.log(`📦 Fallback: Processed ${allPortsList.length} ports using individual queries`);
       }
 
-      // Fetch partner connections for selected components
-      const partnerResult = await getPartnerPortsForComponents(componentIds);
+      // ⏱️ Performance Measurement: Partner connection fetching phase
+      const connectionFetchStart = performance.now();
+      
+      // SUPER OPTIMIZED: Try the optimized assembly connector query first
+      console.log(`🚀 Attempting OPTIMIZED connection fetching...`);
+      let partnerResult;
+      let usedOptimizedQuery = false;
+      
+      try {
+        partnerResult = await getPartnerPortsForComponentsOptimized(componentIds);
+        usedOptimizedQuery = true;
+        console.log(`✅ OPTIMIZED query succeeded`);
+      } catch (error) {
+        console.warn(`❌ Optimized query failed, falling back to original:`, error);
+        partnerResult = await getPartnerPortsForComponents(componentIds);
+        usedOptimizedQuery = false;
+      }
+      
+      const connectionFetchEnd = performance.now();
+      const connectionFetchTime = connectionFetchEnd - connectionFetchStart;
+      console.log(`⚡ Partner connection fetching completed in ${connectionFetchTime.toFixed(2)}ms (${usedOptimizedQuery ? 'OPTIMIZED' : 'FALLBACK'} query)`);
+      
+      // ⏱️ Performance Measurement: Connection processing phase
+      const connectionProcessingStart = performance.now();
       
       if (partnerResult && typeof partnerResult === 'object' && 'records' in partnerResult && 
           Array.isArray(partnerResult.records)) {
@@ -327,10 +386,32 @@ const ArchViewerInner = () => {
             }
           });
       }
+      
+      const connectionProcessingEnd = performance.now();
+      const connectionProcessingTime = connectionProcessingEnd - connectionProcessingStart;
+      console.log(`⚡ Connection processing completed in ${connectionProcessingTime.toFixed(2)}ms`);
 
       setConnections(newConnections);
       setPortToComponentMap(newPortToComponentMap);
       setAllPorts(allPortsList);
+      
+      // ⏱️ Performance Measurement: Total time
+      const endTime = performance.now();
+      const totalTime = endTime - startTime;
+      console.log(`✅ Component data loading completed in ${totalTime.toFixed(2)}ms total`);
+      console.log(`📊 DETAILED Performance breakdown:
+        - Port fetching: ${(portFetchEnd - portFetchStart).toFixed(2)}ms (${((portFetchEnd - portFetchStart) / totalTime * 100).toFixed(1)}%)
+        - Connection fetching: ${connectionFetchTime.toFixed(2)}ms (${(connectionFetchTime / totalTime * 100).toFixed(1)}%)
+        - Connection processing: ${connectionProcessingTime.toFixed(2)}ms (${(connectionProcessingTime / totalTime * 100).toFixed(1)}%)
+        - Other processing: ${(totalTime - (portFetchEnd - portFetchStart) - connectionFetchTime - connectionProcessingTime).toFixed(2)}ms
+        - Components processed: ${selectedComponents.length}
+        - Total ports loaded: ${allPortsList.length}
+        - Total connections found: ${newConnections.size}
+        - PORT OPTIMIZATION: Used ${allPortsResult.success ? 'SINGLE BATCH QUERY' : 'FALLBACK PARALLEL QUERIES'} for port fetching
+        - CONNECTION OPTIMIZATION: Used ${usedOptimizedQuery ? 'OPTIMIZED ASSEMBLY CONNECTOR' : 'ORIGINAL PATH TRAVERSAL'} query
+        - Connection efficiency: ${newConnections.size > 0 ? (newConnections.size / connectionFetchTime * 1000).toFixed(0) : 0} connections/second
+        - Overall efficiency: ${((allPortsList.length + newConnections.size) / totalTime * 1000).toFixed(0)} total records/second`);
+        
     } catch (error) {
       console.error('Failed to load component data:', error);
     } finally {
@@ -681,42 +762,102 @@ const ArchViewerInner = () => {
     const nodeId = contextMenu.id;
     
     try {
-      // Get fresh partner data for this specific component
-      const partnerResult = await getPartnerPortsForComponents([nodeId]);
+      // ⏱️ Performance Measurement: Start timing
+      const startTime = performance.now();
+      console.log(`🔍 Finding partners for component: ${allComponents.find(c => c.uuid === nodeId)?.name || nodeId}`);
+      
+      // ⏱️ Performance Measurement: Partner query phase
+      const partnerQueryStart = performance.now();
+      
+      // SUPER OPTIMIZED: Try the optimized assembly connector query first
+      console.log(`🚀 Attempting OPTIMIZED partner query for single component...`);
+      let partnerResult;
+      let usedOptimizedQuery = false;
+      
+      try {
+        partnerResult = await getPartnerPortsForComponentsOptimized([nodeId]);
+        usedOptimizedQuery = true;
+        console.log(`✅ OPTIMIZED single component query succeeded`);
+      } catch (error) {
+        console.warn(`❌ Optimized single component query failed, falling back:`, error);
+        partnerResult = await getPartnerPortsForComponents([nodeId]);
+        usedOptimizedQuery = false;
+      }
+      
+      const partnerQueryEnd = performance.now();
+      const partnerQueryTime = partnerQueryEnd - partnerQueryStart;
+      console.log(`⚡ Partner query completed in ${partnerQueryTime.toFixed(2)}ms (${usedOptimizedQuery ? 'OPTIMIZED' : 'FALLBACK'})`);
       
       const allPartnerComponentIds = new Set<string>();
       allPartnerComponentIds.add(nodeId); // Include the original component
       
+      let partnerPortsFound = 0;
+      let uniquePartnersFound = 0;
+      let portLoadingTime = 0;
+      let partnerProcessingTime = 0;
+      
       if (partnerResult && typeof partnerResult === 'object' && 'records' in partnerResult && 
           Array.isArray(partnerResult.records)) {
           
-          // First, get all ports for this component to build a comprehensive partner list
+          // ⏱️ Performance Measurement: Port loading phase
+          const portLoadingStart = performance.now();
+          
+          // OPTIMIZED: Check if we need to load ports for this component (batch check)
           const componentPorts = allPorts.filter(port => 
             portToComponentMap.get(port.uuid) === nodeId
           );
           
-          // If we don't have ports loaded for this component, load them
+          // If we don't have ports loaded for this component, load them using batch query
           if (componentPorts.length === 0) {
             const component = allComponents.find(c => c.uuid === nodeId);
             if (component) {
-              const [providerPortsResult, receiverPortsResult] = await Promise.all([
-                getProviderPortsForSWComponent(component.uuid),
-                getReceiverPortsForSWComponent(component.uuid),
-              ]);
+              console.log(`📦 Loading ports for component: ${component.name}`);
               
-              if (providerPortsResult.success && receiverPortsResult.success) {
-                const componentPortsList = [...(providerPortsResult.data || []), ...(receiverPortsResult.data || [])];
+              // OPTIMIZED: Use batch query instead of individual calls
+              const batchPortResult = await getAllPortsForComponents([component.uuid]);
+              
+              if (batchPortResult.success && batchPortResult.data && batchPortResult.data.has(component.uuid)) {
+                const componentPortsList = batchPortResult.data.get(component.uuid) || [];
                 componentPortsList.forEach((port: PortInfo) => {
                   portToComponentMap.set(port.uuid, component.uuid);
                 });
                 allPorts.push(...componentPortsList);
                 setPortToComponentMap(new Map(portToComponentMap));
                 setAllPorts([...allPorts]);
+                
+                console.log(`✅ Batch loaded ${componentPortsList.length} ports for ${component.name}`);
+              } else {
+                console.warn('Batch port loading failed, falling back to individual queries');
+                
+                // FALLBACK: Individual queries if batch fails
+                const [providerPortsResult, receiverPortsResult] = await Promise.all([
+                  getProviderPortsForSWComponent(component.uuid),
+                  getReceiverPortsForSWComponent(component.uuid),
+                ]);
+                
+                if (providerPortsResult.success && receiverPortsResult.success) {
+                  const componentPortsList = [...(providerPortsResult.data || []), ...(receiverPortsResult.data || [])];
+                  componentPortsList.forEach((port: PortInfo) => {
+                    portToComponentMap.set(port.uuid, component.uuid);
+                  });
+                  allPorts.push(...componentPortsList);
+                  setPortToComponentMap(new Map(portToComponentMap));
+                  setAllPorts([...allPorts]);
+                  
+                  console.log(`✅ Fallback loaded ${componentPortsList.length} ports for ${component.name}`);
+                }
               }
             }
           }
           
-          // Process partner connections from the fresh query result
+          const portLoadingEnd = performance.now();
+          portLoadingTime = portLoadingEnd - portLoadingStart;
+          console.log(`⚡ Port loading phase completed in ${portLoadingTime.toFixed(2)}ms`);
+          
+          // ⏱️ Performance Measurement: Partner processing phase  
+          const partnerProcessingStart = performance.now();
+          
+          // OPTIMIZED: Process all partner connections in a single loop (no sequential queries)
           partnerResult.records.forEach(record => {
             if (record && typeof record.get === 'function') {
               const sourcePortUUID = record.get('sourcePortUUID');
@@ -724,11 +865,24 @@ const ArchViewerInner = () => {
               const partnerPortOwnerUUID = record.get('partnerPortOwnerUUID');
               
               if (partnerPortOwnerUUID) {
+                const wasNew = !allPartnerComponentIds.has(partnerPortOwnerUUID);
                 allPartnerComponentIds.add(partnerPortOwnerUUID);
+                if (wasNew) uniquePartnersFound++;
+              }
+              
+              if (sourcePortUUID && partnerPortUUID) {
+                partnerPortsFound++;
               }
             }
           });
+          
+          const partnerProcessingEnd = performance.now();
+          partnerProcessingTime = partnerProcessingEnd - partnerProcessingStart;
+          console.log(`⚡ Partner processing completed in ${partnerProcessingTime.toFixed(2)}ms`);
       }
+      
+      // ⏱️ Performance Measurement: UI update phase
+      const uiUpdateStart = performance.now();
       
       // Update the selection to show only the component and its partners
       const partnerComponentArray = Array.from(allPartnerComponentIds);
@@ -737,6 +891,25 @@ const ArchViewerInner = () => {
       // Close the context menu
       setContextMenu(null);
       
+      const uiUpdateEnd = performance.now();
+      const uiUpdateTime = uiUpdateEnd - uiUpdateStart;
+      console.log(`⚡ UI update completed in ${uiUpdateTime.toFixed(2)}ms`);
+      
+      // ⏱️ Performance Measurement: Total time and summary
+      const endTime = performance.now();
+      const totalTime = endTime - startTime;
+      console.log(`✅ Show Partners completed in ${totalTime.toFixed(2)}ms total`);
+      console.log(`📊 DETAILED Partner analysis results:
+        - Partner query: ${partnerQueryTime.toFixed(2)}ms (${(partnerQueryTime / totalTime * 100).toFixed(1)}%)
+        - Port loading: ${portLoadingTime.toFixed(2)}ms (${(portLoadingTime / totalTime * 100).toFixed(1)}%)
+        - Partner processing: ${partnerProcessingTime.toFixed(2)}ms (${(partnerProcessingTime / totalTime * 100).toFixed(1)}%)
+        - UI update: ${uiUpdateTime.toFixed(2)}ms (${(uiUpdateTime / totalTime * 100).toFixed(1)}%)
+        - Components to display: ${partnerComponentArray.length}
+        - Unique partners found: ${uniquePartnersFound}
+        - Partner ports found: ${partnerPortsFound}
+        - Original component: ${allComponents.find(c => c.uuid === nodeId)?.name || 'Unknown'}
+        - QUERY OPTIMIZATION: Used ${usedOptimizedQuery ? 'OPTIMIZED ASSEMBLY CONNECTOR' : 'ORIGINAL PATH TRAVERSAL'} query
+        - Query efficiency: ${partnerPortsFound > 0 ? (partnerPortsFound / partnerQueryTime * 1000).toFixed(0) : 0} partner connections/second`);
     } catch (error) {
       console.error('Failed to load partners:', error);
       setContextMenu(null);
@@ -832,11 +1005,20 @@ const ArchViewerInner = () => {
                     onChange={handleTreeSelectionChange}
                     treeCheckable
                     showCheckedStrategy={TreeSelect.SHOW_PARENT}
-                    placeholder="Select components to display"
+                    placeholder="Search and select components to display"
                     style={{ width: '100%', marginBottom: '16px' }}
                     maxTagCount="responsive"
                     treeDefaultExpandAll
                     disabled={loadingData}
+                    showSearch
+                    treeNodeFilterProp="title"
+                    filterTreeNode={(input, node) => {
+                        // Search in both component type and component name
+                        const searchText = input.toLowerCase();
+                        const nodeTitle = (node.title || '').toString().toLowerCase();
+                        return nodeTitle.includes(searchText);
+                    }}
+                    searchPlaceholder="Type to search components..."
                 />
                 <div style={{ marginTop: '20px' }}>
                     <Card title="Information" size="small">
