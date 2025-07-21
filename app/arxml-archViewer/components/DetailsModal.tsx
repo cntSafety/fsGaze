@@ -146,15 +146,17 @@ const DetailsModal: React.FC<DetailsModalProps> = ({
                     <Row gutter={16}>
                         <Col span={11}>
                             <Card 
-                                title="Source (Provider)" 
+                                title={<Text strong>Source (Provider)</Text>}
                                 size="small"
-                                style={{ backgroundColor: '#f6ffed' }}
+                                type="inner"
                             >
                                 <Text strong>{sourcePort.name}</Text>
                                 <br />
                                 <Text type="secondary">Component: {sourceComponent}</Text>
                                 <br />
                                 <Text type="secondary">Type: {sourcePort.type}</Text>
+                                <br />
+                                <Tag color="green">Provider</Tag>
                             </Card>
                         </Col>
                         <Col span={2} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -162,15 +164,17 @@ const DetailsModal: React.FC<DetailsModalProps> = ({
                         </Col>
                         <Col span={11}>
                             <Card 
-                                title="Target (Receiver)" 
+                                title={<Text strong>Target (Receiver)</Text>}
                                 size="small"
-                                style={{ backgroundColor: '#fff1f0' }}
+                                type="inner"
                             >
                                 <Text strong>{targetPort.name}</Text>
                                 <br />
                                 <Text type="secondary">Component: {targetComponent}</Text>
                                 <br />
                                 <Text type="secondary">Type: {targetPort.type}</Text>
+                                <br />
+                                <Tag color="orange">Receiver</Tag>
                             </Card>
                         </Col>
                     </Row>

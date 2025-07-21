@@ -775,107 +775,14 @@ export const getPartnerPortsForComponentsOptimized = async (componentUuids: stri
     
     return result;
   } catch (error) {
-    console.warn(`❌ Optimized query failed, falling back to original query:`, error);
-    // Fallback to the original query if optimized version fails
-    return getPartnerPortsForComponents(componentUuids);
+    console.error(`❌ Optimized query failed:`, error);
+    throw error;
   } finally {
     await session.close();
   }
 };
 
-/**
- * Gets all partner port connections for ports belonging to specific components.
- * This is optimized for the ArchViewer use case where we need all connections for selected components.
- *
- * @param componentUuids Array of component UUIDs to get all port connections for.
- * @returns A Promise that resolves to the raw Neo4j QueryResult containing partner port info for all ports of the specified components.
- */
-export const getPartnerPortsForComponents = async (componentUuids: string[]): Promise<QueryResult<PartnerPortInfo & { sourcePortUUID: string }>> => {
-  const session = driver.session();
-  try {
-    // ⏱️ Performance Measurement: Database query timing
-    const queryStart = performance.now();
-    console.log(`🔄 Executing partner ports query for ${componentUuids.length} components...`);
-    
-    const result = await session.run<PartnerPortInfo & { sourcePortUUID: string }>(
-      `
-      UNWIND $componentUuids as componentUuid
-      MATCH (component {uuid: componentUuid})-[:CONTAINS]->(portA)
-      WHERE portA:P_PORT_PROTOTYPE OR portA:R_PORT_PROTOTYPE
-      MATCH path = shortestPath((portA)-[:\`TARGET-P-PORT-REF\`|\`TARGET-R-PORT-REF\`|\`OUTER-PORT-REF\`*0..6]-(portB))
-      WHERE portB <> portA
-      AND (portB:P_PORT_PROTOTYPE OR portB:R_PORT_PROTOTYPE)
-      AND labels(portA)[0] <> labels(portB)[0]
-      AND ALL(n IN nodes(path) WHERE n:P_PORT_PROTOTYPE OR n:R_PORT_PROTOTYPE OR n:ASSEMBLY_SW_CONNECTOR OR n:DELEGATION_SW_CONNECTOR)
-      OPTIONAL MATCH (portB)<-[:CONTAINS]-(PortBcontainedBy)
-      OPTIONAL MATCH (portB)<-[:OCCURRENCE]-(FM:FAILUREMODE)
-      RETURN DISTINCT portA.uuid as sourcePortUUID,
-             portB.name as partnerPortName, 
-             portB.uuid as partnerPortUUID, 
-             labels(portB)[0] as partnerPortType, 
-             PortBcontainedBy.name as partnerPortOwner, 
-             PortBcontainedBy.uuid as partnerPortOwnerUUID, 
-             labels(PortBcontainedBy) as partnerPortOwnerType,
-             FM.name as failureModeName,
-             FM.uuid as failureModeUUID,
-             FM.asil as failureModeASIL
-      `,
-      { componentUuids }
-    );
-    
-    const queryEnd = performance.now();
-    const queryTime = queryEnd - queryStart;
-    console.log(`⚡ Partner ports database query completed in ${queryTime.toFixed(2)}ms`);
-    console.log(`📊 Query statistics: 
-      - Components queried: ${componentUuids.length}
-      - Records returned: ${result.records.length}
-      - Query performance: ${(result.records.length / queryTime * 1000).toFixed(0)} records/second`);
-    
-    return result;
-  } finally {
-    await session.close();
-  }
-};
 
-/**
- * Finds the partner ports for multiple given ports by traversing assembly and delegation connectors.
- * This is a batch version of getPartnerPort to reduce database round trips.
- *
- * @param portUuids Array of UUIDs of the starting ports (P_PORT_PROTOTYPE or R_PORT_PROTOTYPE).
- * @returns A Promise that resolves to the raw Neo4j QueryResult containing partner port info for all provided ports.
- */
-export const getPartnerPortsForMultiplePorts = async (portUuids: string[]): Promise<QueryResult<PartnerPortInfo & { sourcePortUUID: string }>> => {
-  const session = driver.session();
-  try {
-    const result = await session.run<PartnerPortInfo & { sourcePortUUID: string }>(
-      `
-      UNWIND $portUuids as portUuid
-      MATCH (portA {uuid: portUuid}) 
-      MATCH path = shortestPath((portA)-[:\`TARGET-P-PORT-REF\`|\`TARGET-R-PORT-REF\`|\`OUTER-PORT-REF\`*0..6]-(portB))
-      WHERE portB <> portA
-      AND (portB:P_PORT_PROTOTYPE OR portB:R_PORT_PROTOTYPE)
-      AND labels(portA)[0] <> labels(portB)[0]
-      AND ALL(n IN nodes(path) WHERE n:P_PORT_PROTOTYPE OR n:R_PORT_PROTOTYPE OR n:ASSEMBLY_SW_CONNECTOR OR n:DELEGATION_SW_CONNECTOR)
-      OPTIONAL MATCH (portB)<-[:CONTAINS]-(PortBcontainedBy)
-      OPTIONAL MATCH (portB)<-[:OCCURRENCE]-(FM:FAILUREMODE)
-      RETURN DISTINCT portA.uuid as sourcePortUUID,
-             portB.name as partnerPortName, 
-             portB.uuid as partnerPortUUID, 
-             labels(portB)[0] as partnerPortType, 
-             PortBcontainedBy.name as partnerPortOwner, 
-             PortBcontainedBy.uuid as partnerPortOwnerUUID, 
-             labels(PortBcontainedBy) as partnerPortOwnerType,
-             FM.name as failureModeName,
-             FM.uuid as failureModeUUID,
-             FM.asil as failureModeASIL
-      `,
-      { portUuids }
-    );
-    return result;
-  } finally {
-    await session.close();
-  }
-};
 
 /**
  * Finds the partner port for a given port by traversing assembly and delegation connectors.

@@ -1,8 +1,8 @@
 'use client';
 // Arch Viewer supports display of all ports
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
-import { TreeSelect, Spin, Typography, Row, Col, Card, Button, Space, Dropdown, Menu } from 'antd';
-import { MenuFoldOutlined, MenuUnfoldOutlined, UsergroupAddOutlined, LinkOutlined, DeleteOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { TreeSelect, Spin, Typography, Row, Col, Card, Button, Space, Dropdown, Menu, Input, notification, Collapse } from 'antd';
+import { MenuFoldOutlined, MenuUnfoldOutlined, UsergroupAddOutlined, LinkOutlined, DeleteOutlined, InfoCircleOutlined, SaveOutlined, UploadOutlined, CopyOutlined } from '@ant-design/icons';
 import ReactFlow, {
     Controls,
     Background,
@@ -24,7 +24,7 @@ import Link from 'next/link';
 import { getAsilColor } from '@/app/components/asilColors';
 
 import { getApplicationSwComponents } from '@/app/services/neo4j/queries/components';
-import { getProviderPortsForSWComponent, getReceiverPortsForSWComponent, getPartnerPortsForComponents, getPartnerPortsForComponentsOptimized, getAllPortsForComponents } from '@/app/services/neo4j/queries/ports';
+import { getProviderPortsForSWComponent, getReceiverPortsForSWComponent, getPartnerPortsForComponentsOptimized, getAllPortsForComponents } from '@/app/services/neo4j/queries/ports';
 import { PortInfo } from '@/app/services/neo4j/types';
 import { getFailuresAndCountsForComponents } from '@/app/services/neo4j/queries/safety/failureModes';
 import DetailsModal from './DetailsModal';
@@ -200,6 +200,8 @@ const ArchViewerInner = () => {
   const [connections, setConnections] = useState<Map<string, string>>(new Map());
   const [portToComponentMap, setPortToComponentMap] = useState<Map<string, string>>(new Map());
   const [selectedComponentIds, setSelectedComponentIds] = useState<string[]>([]);
+  const [pendingComponentIds, setPendingComponentIds] = useState<string[]>([]);
+  const [componentSelectionText, setComponentSelectionText] = useState<string>('');
   const [selectedItem, setSelectedItem] = useState<DetailViewItem>(null);
   const [contextMenu, setContextMenu] = useState<{ id: string; top: number; left: number; type: 'node' | 'edge'; edgeData?: any } | null>(null);
   const [detailsModal, setDetailsModal] = useState<{
@@ -370,23 +372,14 @@ const ArchViewerInner = () => {
       const connectionFetchStart = performance.now();
       
       // SUPER OPTIMIZED: Try the optimized assembly connector query first
-      console.log(`🚀 Attempting OPTIMIZED connection fetching...`);
-      let partnerResult;
-      let usedOptimizedQuery = false;
+      console.log(`🚀 Executing OPTIMIZED connection fetching...`);
       
-      try {
-        partnerResult = await getPartnerPortsForComponentsOptimized(componentIds);
-        usedOptimizedQuery = true;
-        console.log(`✅ OPTIMIZED query succeeded`);
-      } catch (error) {
-        console.warn(`❌ Optimized query failed, falling back to original:`, error);
-        partnerResult = await getPartnerPortsForComponents(componentIds);
-        usedOptimizedQuery = false;
-      }
+      const partnerResult = await getPartnerPortsForComponentsOptimized(componentIds);
+      console.log(`✅ OPTIMIZED query completed successfully`);
       
       const connectionFetchEnd = performance.now();
       const connectionFetchTime = connectionFetchEnd - connectionFetchStart;
-      console.log(`⚡ Partner connection fetching completed in ${connectionFetchTime.toFixed(2)}ms (${usedOptimizedQuery ? 'OPTIMIZED' : 'FALLBACK'} query)`);
+      console.log(`⚡ Partner connection fetching completed in ${connectionFetchTime.toFixed(2)}ms`);
       
       // ⏱️ Performance Measurement: Connection processing phase
       const connectionProcessingStart = performance.now();
@@ -425,7 +418,7 @@ const ArchViewerInner = () => {
         - Total ports loaded: ${allPortsList.length}
         - Total connections found: ${newConnections.size}
         - PORT OPTIMIZATION: Used ${allPortsResult.success ? 'SINGLE BATCH QUERY' : 'FALLBACK PARALLEL QUERIES'} for port fetching
-        - CONNECTION OPTIMIZATION: Used ${usedOptimizedQuery ? 'OPTIMIZED ASSEMBLY CONNECTOR' : 'ORIGINAL PATH TRAVERSAL'} query
+        - CONNECTION OPTIMIZATION: Used OPTIMIZED ASSEMBLY CONNECTOR query
         - Connection efficiency: ${newConnections.size > 0 ? (newConnections.size / connectionFetchTime * 1000).toFixed(0) : 0} connections/second
         - Overall efficiency: ${((allPortsList.length + newConnections.size) / totalTime * 1000).toFixed(0)} total records/second`);
         
@@ -436,10 +429,15 @@ const ArchViewerInner = () => {
     }
   }, [allComponents]);
 
-  // Load component data when selection changes
+  // Load component data when components are loaded
   useEffect(() => {
     loadComponentData(selectedComponentIds);
   }, [selectedComponentIds, loadComponentData]);
+
+  // Update text field when selection changes
+  useEffect(() => {
+    setComponentSelectionText(selectedComponentIds.join(', '));
+  }, [selectedComponentIds]);
 
   // Create tree data for component selection
   const treeData = useMemo((): TreeNode[] => {
@@ -467,18 +465,118 @@ const ArchViewerInner = () => {
   }, [allComponents]);
 
   const handleSelectAll = useCallback(() => {
-    setSelectedComponentIds(allComponents.map(c => c.uuid));
+    const allIds = allComponents.map(c => c.uuid);
+    setSelectedComponentIds(allIds);
+    setPendingComponentIds(allIds);
   }, [allComponents]);
 
   const handleClearSelection = useCallback(() => {
     setSelectedComponentIds([]);
+    setPendingComponentIds([]);
   }, []);
+
+  // Handle loading component IDs from text input
+  const handleLoadFromText = useCallback(() => {
+    if (!componentSelectionText.trim()) {
+      notification.warning({
+        message: 'No Input',
+        description: 'Please enter component UUIDs in the text field.',
+      });
+      return;
+    }
+
+    const inputIds = componentSelectionText
+      .split(',')
+      .map(id => id.trim())
+      .filter(id => id.length > 0);
+
+    if (inputIds.length === 0) {
+      notification.warning({
+        message: 'Invalid Input',
+        description: 'Please enter valid component UUIDs separated by commas.',
+      });
+      return;
+    }
+
+    // Validate that the IDs exist in available components
+    const validIds = inputIds.filter(id => 
+      allComponents.some(component => component.uuid === id)
+    );
+
+    const invalidIds = inputIds.filter(id => 
+      !allComponents.some(component => component.uuid === id)
+    );
+
+    if (invalidIds.length > 0) {
+      notification.warning({
+        message: 'Some Components Not Found',
+        description: `${invalidIds.length} component(s) were not found and will be ignored. ${validIds.length} valid components will be selected.`,
+      });
+    }
+
+    if (validIds.length > 0) {
+      setSelectedComponentIds(validIds);
+      setPendingComponentIds(validIds);
+      notification.success({
+        message: 'Components Loaded',
+        description: `Successfully loaded ${validIds.length} component(s) from text input.`,
+      });
+    } else {
+      notification.error({
+        message: 'No Valid Components',
+        description: 'None of the provided UUIDs match available components.',
+      });
+    }
+  }, [componentSelectionText, allComponents]);
+
+  // Handle copying current selection to clipboard
+  const handleCopySelection = useCallback(async () => {
+    if (selectedComponentIds.length === 0) {
+      notification.warning({
+        message: 'No Selection',
+        description: 'No components are currently selected.',
+      });
+      return;
+    }
+
+    const selectionText = selectedComponentIds.join(', ');
+    
+    try {
+      await navigator.clipboard.writeText(selectionText);
+      notification.success({
+        message: 'Copied to Clipboard',
+        description: `${selectedComponentIds.length} component UUIDs copied to clipboard.`,
+      });
+    } catch (error) {
+      // Fallback for browsers that don't support clipboard API
+      const textArea = document.createElement('textarea');
+      textArea.value = selectionText;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      
+      notification.success({
+        message: 'Copied to Clipboard',
+        description: `${selectedComponentIds.length} component UUIDs copied to clipboard.`,
+      });
+    }
+  }, [selectedComponentIds]);
 
   const handleTreeSelectionChange = useCallback((selectedValues: string[]) => {
     // Filter out type nodes (they start with 'type-')
     const componentIds = selectedValues.filter(value => !value.startsWith('type-'));
-    setSelectedComponentIds(componentIds);
+    // Only update pending state, don't trigger diagram update yet
+    setPendingComponentIds(componentIds);
   }, []);
+
+  // Handle when TreeSelect dropdown closes - commit the pending selection
+  const handleTreeDropdownVisibleChange = useCallback((open: boolean) => {
+    if (!open && pendingComponentIds !== selectedComponentIds) {
+      // Dropdown closed and selection has changed, commit the changes
+      setSelectedComponentIds(pendingComponentIds);
+    }
+  }, [pendingComponentIds, selectedComponentIds]);
 
   const createVisualization = useCallback(() => {
     // console.log('Creating visualization...');
@@ -787,23 +885,14 @@ const ArchViewerInner = () => {
       const partnerQueryStart = performance.now();
       
       // SUPER OPTIMIZED: Try the optimized assembly connector query first
-      console.log(`🚀 Attempting OPTIMIZED partner query for single component...`);
-      let partnerResult;
-      let usedOptimizedQuery = false;
+      console.log(`🚀 Executing OPTIMIZED partner query for single component...`);
       
-      try {
-        partnerResult = await getPartnerPortsForComponentsOptimized([nodeId]);
-        usedOptimizedQuery = true;
-        console.log(`✅ OPTIMIZED single component query succeeded`);
-      } catch (error) {
-        console.warn(`❌ Optimized single component query failed, falling back:`, error);
-        partnerResult = await getPartnerPortsForComponents([nodeId]);
-        usedOptimizedQuery = false;
-      }
+      const partnerResult = await getPartnerPortsForComponentsOptimized([nodeId]);
+      console.log(`✅ OPTIMIZED single component query completed successfully`);
       
       const partnerQueryEnd = performance.now();
       const partnerQueryTime = partnerQueryEnd - partnerQueryStart;
-      console.log(`⚡ Partner query completed in ${partnerQueryTime.toFixed(2)}ms (${usedOptimizedQuery ? 'OPTIMIZED' : 'FALLBACK'})`);
+      console.log(`⚡ Partner query completed in ${partnerQueryTime.toFixed(2)}ms`);
       
       const allPartnerComponentIds = new Set<string>();
       allPartnerComponentIds.add(nodeId); // Include the original component
@@ -925,7 +1014,7 @@ const ArchViewerInner = () => {
         - Unique partners found: ${uniquePartnersFound}
         - Partner ports found: ${partnerPortsFound}
         - Original component: ${allComponents.find(c => c.uuid === nodeId)?.name || 'Unknown'}
-        - QUERY OPTIMIZATION: Used ${usedOptimizedQuery ? 'OPTIMIZED ASSEMBLY CONNECTOR' : 'ORIGINAL PATH TRAVERSAL'} query
+        - QUERY OPTIMIZATION: Used OPTIMIZED ASSEMBLY CONNECTOR query
         - Query efficiency: ${partnerPortsFound > 0 ? (partnerPortsFound / partnerQueryTime * 1000).toFixed(0) : 0} partner connections/second`);
     } catch (error) {
       console.error('Failed to load partners:', error);
@@ -1117,6 +1206,42 @@ const ArchViewerInner = () => {
         {isPanelVisible && (
             <Col span={6}>
                 <Title level={4}>Component Selection</Title>
+                
+                {/* Information Card - moved above TreeSelect for better visibility */}
+                <div style={{ marginBottom: '16px' }}>
+                    <Card title="Information" size="small">
+                        {loadingData ? (
+                            <div style={{ textAlign: 'center' }}>
+                                <Spin size="small" />
+                                <Text style={{ marginLeft: '8px' }}>Loading component data...</Text>
+                            </div>
+                        ) : (
+                            <>
+                                <Text>Selected: {selectedComponentIds.length} / {allComponents.length} components</Text>
+                                {pendingComponentIds.length !== selectedComponentIds.length && (
+                                    <>
+                                        <br />
+                                        <Text type="warning" style={{ fontSize: '12px' }}>
+                                            Pending: {pendingComponentIds.length} components (close dropdown to apply)
+                                        </Text>
+                                    </>
+                                )}
+
+                                <br />
+                                {selectedComponentIds.length === 0 ? (
+                                    <Text type="secondary" style={{ fontSize: '12px' }}>
+                                        Select components from the tree above to visualize their connections.
+                                    </Text>
+                                ) : (
+                                    <Text type="secondary" style={{ fontSize: '12px' }}>
+                                        Only connections between selected components are shown.
+                                    </Text>
+                                )}
+                            </>
+                        )}
+                    </Card>
+                </div>
+                
                 <div style={{ marginBottom: '16px' }}>
                     <Space>
                         <Button onClick={handleSelectAll} size="small">
@@ -1129,8 +1254,9 @@ const ArchViewerInner = () => {
                 </div>
                 <TreeSelect
                     treeData={treeData}
-                    value={selectedComponentIds}
+                    value={pendingComponentIds}
                     onChange={handleTreeSelectionChange}
+                    onDropdownVisibleChange={handleTreeDropdownVisibleChange}
                     treeCheckable
                     showCheckedStrategy={TreeSelect.SHOW_PARENT}
                     placeholder="Search and select components to display"
@@ -1147,30 +1273,49 @@ const ArchViewerInner = () => {
                         return nodeTitle.includes(searchText);
                     }}
                 />
-                <div style={{ marginTop: '20px' }}>
-                    <Card title="Information" size="small">
-                        {loadingData ? (
-                            <div style={{ textAlign: 'center' }}>
-                                <Spin size="small" />
-                                <Text style={{ marginLeft: '8px' }}>Loading component data...</Text>
-                            </div>
-                        ) : (
-                            <>
-                                <Text>Selected: {selectedComponentIds.length} / {allComponents.length} components</Text>
-                                <br />
-                                {selectedComponentIds.length === 0 ? (
-                                    <Text type="secondary" style={{ fontSize: '12px' }}>
-                                        Select components from the tree above to visualize their connections.
+                
+                <Collapse 
+                    size="small" 
+                    style={{ marginBottom: '16px' }}
+                    items={[
+                        {
+                            key: '1',
+                            label: 'Load/Save Selection',
+                            children: (
+                                <Space direction="vertical" style={{ width: '100%' }}>
+                                    <Input.TextArea
+                                        value={componentSelectionText}
+                                        onChange={(e) => setComponentSelectionText(e.target.value)}
+                                        placeholder="Enter component UUIDs separated by commas..."
+                                        rows={3}
+                                        style={{ fontSize: '11px' }}
+                                    />
+                                    <Space wrap>
+                                        <Button 
+                                            icon={<UploadOutlined />} 
+                                            onClick={handleLoadFromText}
+                                            size="small"
+                                            disabled={!componentSelectionText.trim() || loadingData}
+                                        >
+                                            Load
+                                        </Button>
+                                        <Button 
+                                            icon={<CopyOutlined />} 
+                                            onClick={handleCopySelection}
+                                            size="small"
+                                            disabled={selectedComponentIds.length === 0}
+                                        >
+                                            Copy
+                                        </Button>
+                                    </Space>
+                                    <Text type="secondary" style={{ fontSize: '10px' }}>
+                                        Copy current selection or paste UUIDs to quickly restore a view
                                     </Text>
-                                ) : (
-                                    <Text type="secondary" style={{ fontSize: '12px' }}>
-                                        Only connections between selected components are shown.
-                                    </Text>
-                                )}
-                            </>
-                        )}
-                    </Card>
-                </div>
+                                </Space>
+                            )
+                        }
+                    ]}
+                />
             </Col>
         )}
         <Col span={isPanelVisible ? 18 : 24} style={{position: 'relative', height: '100%'}}>
