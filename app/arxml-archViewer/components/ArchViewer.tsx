@@ -1,8 +1,8 @@
 'use client';
 // Arch Viewer supports display of all ports
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
-import { TreeSelect, Spin, Typography, Row, Col, Card, Button, Space } from 'antd';
-import { MenuFoldOutlined, MenuUnfoldOutlined, UsergroupAddOutlined, LinkOutlined, DeleteOutlined } from '@ant-design/icons';
+import { TreeSelect, Spin, Typography, Row, Col, Card, Button, Space, Dropdown, Menu } from 'antd';
+import { MenuFoldOutlined, MenuUnfoldOutlined, UsergroupAddOutlined, LinkOutlined, DeleteOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import ReactFlow, {
     Controls,
     Background,
@@ -27,6 +27,7 @@ import { getApplicationSwComponents } from '@/app/services/neo4j/queries/compone
 import { getProviderPortsForSWComponent, getReceiverPortsForSWComponent, getPartnerPortsForComponents, getPartnerPortsForComponentsOptimized, getAllPortsForComponents } from '@/app/services/neo4j/queries/ports';
 import { PortInfo } from '@/app/services/neo4j/types';
 import { getFailuresAndCountsForComponents } from '@/app/services/neo4j/queries/safety/failureModes';
+import DetailsModal from './DetailsModal';
 
 const { Title, Text } = Typography;
 
@@ -50,7 +51,7 @@ const CustomNode = ({ data }: { data: { label: string, component: SWComponent, p
                     id={port.uuid}
                     style={{ 
                         top: `${20 + (index * 15)}px`,
-                        background: '#555',
+                        background: 'var(--ant-color-text-secondary, #666)',
                         width: '8px',
                         height: '8px'
                     }}
@@ -71,7 +72,7 @@ const CustomNode = ({ data }: { data: { label: string, component: SWComponent, p
                     id={port.uuid}
                     style={{ 
                         top: `${20 + (index * 15)}px`,
-                        background: '#555',
+                        background: 'var(--ant-color-text-secondary, #666)',
                         width: '8px',
                         height: '8px'
                     }}
@@ -200,7 +201,23 @@ const ArchViewerInner = () => {
   const [portToComponentMap, setPortToComponentMap] = useState<Map<string, string>>(new Map());
   const [selectedComponentIds, setSelectedComponentIds] = useState<string[]>([]);
   const [selectedItem, setSelectedItem] = useState<DetailViewItem>(null);
-  const [contextMenu, setContextMenu] = useState<{ id: string; top: number; left: number; } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ id: string; top: number; left: number; type: 'node' | 'edge'; edgeData?: any } | null>(null);
+  const [detailsModal, setDetailsModal] = useState<{
+    isVisible: boolean;
+    componentUuid: string | null;
+    componentName: string | null;
+    connectionInfo: {
+      sourcePort: PortInfo;
+      targetPort: PortInfo;
+      sourceComponent: string;
+      targetComponent: string;
+    } | null;
+  }>({
+    isVisible: false,
+    componentUuid: null,
+    componentName: null,
+    connectionInfo: null
+  });
   const animatedEdgeIdsRef = useRef<string[]>([]);
   
   const { fitView } = useReactFlow();
@@ -521,7 +538,7 @@ const ArchViewerInner = () => {
             style: {
                 backgroundColor: backgroundColor,
                 color: getTextColorForBackground(backgroundColor),
-                border: '1px solid #555',
+                border: '1px solid var(--ant-color-border, #d9d9d9)',
                 borderRadius: 4,
                 height: nodeHeight,
                 minWidth: 150
@@ -730,7 +747,7 @@ const ArchViewerInner = () => {
                   animated: isSelected,
                   style: {
                       ...e.style,
-                      stroke: isSelected ? '#ff0072' : undefined,
+                      stroke: isSelected ? 'var(--ant-color-primary, #1677ff)' : undefined,
                       strokeWidth: isSelected ? 2.5 : undefined,
                       opacity: isSelected ? 1 : 0.5,
                       transition: 'stroke 0.2s, stroke-width 0.2s, opacity 0.2s',
@@ -916,6 +933,57 @@ const ArchViewerInner = () => {
     }
   }, [contextMenu, allPorts, portToComponentMap, allComponents, setSelectedComponentIds]);
 
+  const handleShowComponentDetails = useCallback(() => {
+    if (!contextMenu || contextMenu.type !== 'node') return;
+    
+    const nodeId = contextMenu.id;
+    const component = allComponents.find(c => c.uuid === nodeId);
+    
+    if (component) {
+      setDetailsModal({
+        isVisible: true,
+        componentUuid: component.uuid,
+        componentName: component.name,
+        connectionInfo: null
+      });
+    }
+    
+    setContextMenu(null);
+  }, [contextMenu, allComponents]);
+
+  const handleShowConnectionDetails = useCallback(() => {
+    if (!contextMenu || contextMenu.type !== 'edge' || !contextMenu.edgeData) return;
+    
+    const { sourcePort, targetPort } = contextMenu.edgeData;
+    const sourceComponent = allComponents.find(c => c.uuid === portToComponentMap.get(sourcePort.uuid));
+    const targetComponent = allComponents.find(c => c.uuid === portToComponentMap.get(targetPort.uuid));
+    
+    if (sourcePort && targetPort && sourceComponent && targetComponent) {
+      setDetailsModal({
+        isVisible: true,
+        componentUuid: null,
+        componentName: null,
+        connectionInfo: {
+          sourcePort,
+          targetPort,
+          sourceComponent: sourceComponent.name,
+          targetComponent: targetComponent.name
+        }
+      });
+    }
+    
+    setContextMenu(null);
+  }, [contextMenu, allComponents, portToComponentMap]);
+
+  const handleCloseDetailsModal = useCallback(() => {
+    setDetailsModal({
+      isVisible: false,
+      componentUuid: null,
+      componentName: null,
+      connectionInfo: null
+    });
+  }, []);
+
   const handleRemoveComponent = useCallback(() => {
     if (!contextMenu) return;
     
@@ -933,18 +1001,78 @@ const ArchViewerInner = () => {
     // });
   }, [contextMenu, selectedComponentIds, allComponents, setSelectedComponentIds]);
 
+  const contextMenuItems = useMemo(() => {
+    if (!contextMenu) return [];
+    
+    if (contextMenu.type === 'node') {
+      return [
+        {
+          key: 'show-partners',
+          icon: <UsergroupAddOutlined />,
+          label: 'Show Partners',
+          onClick: handleShowPartners
+        },
+        {
+          key: 'show-details',
+          icon: <InfoCircleOutlined />,
+          label: 'Show Component Details',
+          onClick: handleShowComponentDetails
+        },
+        {
+          key: 'go-to-component',
+          icon: <LinkOutlined />,
+          label: (
+            <Link href={contextMenu ? `/arxml-safety/${contextMenu.id}` : '#'} legacyBehavior>
+              <a onClick={() => setContextMenu(null)} style={{ textDecoration: 'none', color: 'inherit' }}>
+                Go to component
+              </a>
+            </Link>
+          )
+        },
+        {
+          type: 'divider' as const
+        },
+        {
+          key: 'remove-component',
+          icon: <DeleteOutlined />,
+          label: 'Remove from Diagram',
+          danger: true,
+          onClick: handleRemoveComponent
+        }
+      ];
+    } else if (contextMenu.type === 'edge') {
+      return [
+        {
+          key: 'show-connection-details',
+          icon: <InfoCircleOutlined />,
+          label: 'Show Connection Details',
+          onClick: handleShowConnectionDetails
+        }
+      ];
+    }
+    
+    return [];
+  }, [contextMenu, handleShowPartners, handleShowComponentDetails, handleRemoveComponent, handleShowConnectionDetails]);
+
   const onNodeContextMenu: NodeMouseHandler = useCallback((event, node) => {
     event.preventDefault();
     setContextMenu({
         id: node.id,
         top: event.clientY,
         left: event.clientX,
+        type: 'node'
     });
   }, []);
 
   const onEdgeContextMenu: EdgeMouseHandler = useCallback((event, edge) => {
     event.preventDefault();
-    // Simple edge context menu removed for now - could show port details here
+    setContextMenu({
+        id: edge.id,
+        top: event.clientY,
+        left: event.clientX,
+        type: 'edge',
+        edgeData: edge.data
+    });
   }, []);
 
   const onNodeDragStart: NodeMouseHandler = useCallback((event, node) => {
@@ -1018,7 +1146,6 @@ const ArchViewerInner = () => {
                         const nodeTitle = (node.title || '').toString().toLowerCase();
                         return nodeTitle.includes(searchText);
                     }}
-                    searchPlaceholder="Type to search components..."
                 />
                 <div style={{ marginTop: '20px' }}>
                     <Card title="Information" size="small">
@@ -1032,11 +1159,11 @@ const ArchViewerInner = () => {
                                 <Text>Selected: {selectedComponentIds.length} / {allComponents.length} components</Text>
                                 <br />
                                 {selectedComponentIds.length === 0 ? (
-                                    <Text style={{ fontSize: '12px', color: '#666' }}>
+                                    <Text type="secondary" style={{ fontSize: '12px' }}>
                                         Select components from the tree above to visualize their connections.
                                     </Text>
                                 ) : (
-                                    <Text style={{ fontSize: '12px', color: '#666' }}>
+                                    <Text type="secondary" style={{ fontSize: '12px' }}>
                                         Only connections between selected components are shown.
                                     </Text>
                                 )}
@@ -1077,48 +1204,48 @@ const ArchViewerInner = () => {
             </ReactFlow>
         </Col>
         {contextMenu && (
-            <div
-                style={{
-                    position: 'absolute',
-                    top: contextMenu.top,
-                    left: contextMenu.left,
-                    zIndex: 1000,
-                    background: 'white',
-                    border: '1px solid #ddd',
-                    boxShadow: '0 2px 5px rgba(0,0,0,0.15)',
-                    borderRadius: '4px',
-                    display: 'flex',
-                    flexDirection: 'column'
-                }}
-            >
-                <Button
-                    type="text"
-                    icon={<UsergroupAddOutlined />}
-                    onClick={handleShowPartners}
+            <>
+                {/* Invisible overlay to handle click outside */}
+                <div
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        zIndex: 999,
+                        background: 'transparent'
+                    }}
+                    onClick={() => setContextMenu(null)}
+                />
+                <Dropdown
+                    menu={{ items: contextMenuItems }}
+                    trigger={[]}
+                    open={true}
+                    onOpenChange={(open) => !open && setContextMenu(null)}
+                    placement="bottomLeft"
                 >
-                    Show Partners
-                </Button>
-                <Button
-                    type="text"
-                    icon={<DeleteOutlined />}
-                    onClick={handleRemoveComponent}
-                    danger
-                >
-                    Remove from Diagram
-                </Button>
-                <Link href={contextMenu ? `/arxml-safety/${contextMenu.id}` : '#'} legacyBehavior>
-                    <a onClick={() => setContextMenu(null)} style={{ textDecoration: 'none' }}>
-                        <Button
-                            type="text"
-                            icon={<LinkOutlined />}
-                            style={{width: '100%', textAlign: 'left'}}
-                        >
-                            Go to component
-                        </Button>
-                    </a>
-                </Link>
-            </div>
+                    <div
+                        style={{
+                            position: 'absolute',
+                            top: contextMenu.top,
+                            left: contextMenu.left,
+                            width: 1,
+                            height: 1,
+                            pointerEvents: 'none',
+                            zIndex: 1000
+                        }}
+                    />
+                </Dropdown>
+            </>
         )}
+        <DetailsModal
+            componentUuid={detailsModal.componentUuid}
+            componentName={detailsModal.componentName}
+            connectionInfo={detailsModal.connectionInfo}
+            isVisible={detailsModal.isVisible}
+            onClose={handleCloseDetailsModal}
+        />
     </Row>
   );
 };
