@@ -409,6 +409,47 @@ export const getFailuresForSwComponents = async (swComponentUuid: string): Promi
   }
 };
 
+/**
+ * Retrieves failure modes and their associated counts for multiple software components.
+ * 
+ * This function fetches all failure modes that occur in the specified software components
+ * and includes aggregate counts of related safety artifacts (risk ratings, safety tasks,
+ * safety requirements, and safety notes) for each failure mode.
+ * 
+ * @param componentUuids - Array of software component UUIDs to fetch failure data for
+ * 
+ * @returns Promise that resolves to an object containing:
+ * - success: boolean indicating if the operation was successful
+ * - data: Array of failure mode objects with the following structure:
+ *   - swComponentUuid: UUID of the software component
+ *   - swComponentName: Name of the software component
+ *   - failureUuid: UUID of the failure mode
+ *   - failureName: Name of the failure mode
+ *   - failureDescription: Description of the failure mode
+ *   - asil: ASIL (Automotive Safety Integrity Level) classification
+ *   - created: Creation timestamp of the failure mode
+ *   - riskRatingCount: Number of risk ratings associated with this failure mode
+ *   - safetyTaskCount: Number of safety tasks associated with this failure mode
+ *   - safetyReqCount: Number of safety requirements associated with this failure mode
+ *   - safetyNoteCount: Number of safety notes associated with this failure mode
+ * - message: Error message if the operation failed
+ * 
+ * @example
+ * ```typescript
+ * const componentIds = ['comp-1', 'comp-2', 'comp-3'];
+ * const result = await getFailuresAndCountsForComponents(componentIds);
+ * 
+ * if (result.success && result.data) {
+ *   result.data.forEach(failure => {
+ *     console.log(`${failure.failureName} (${failure.asil}) - ${failure.riskRatingCount} risk ratings`);
+ *   });
+ * }
+ * ```
+ * 
+ * @throws Will return success: false with error message if Neo4j query fails
+ * 
+ * @since 1.0.0
+ */
 export const getFailuresAndCountsForComponents = async (
   componentUuids: string[]
 ): Promise<{ success: boolean; data?: any[]; message?: string }> => {
@@ -464,6 +505,46 @@ export const getFailuresAndCountsForComponents = async (
   }
 };
 
+/**
+ * Retrieves failure modes and their associated counts for a single software component.
+ * 
+ * This function fetches all failure modes that occur in the specified software component
+ * and includes aggregate counts of related safety artifacts (risk ratings, safety tasks,
+ * safety requirements, and safety notes) for each failure mode.
+ * 
+ * @param componentUuid - UUID of the software component to fetch failure data for
+ * 
+ * @returns Promise that resolves to an object containing:
+ * - success: boolean indicating if the operation was successful
+ * - data: Array of failure mode objects with the following structure:
+ *   - failureUuid: UUID of the failure mode
+ *   - failureName: Name of the failure mode
+ *   - failureDescription: Description of the failure mode
+ *   - asil: ASIL (Automotive Safety Integrity Level) classification
+ *   - relationshipType: Type of relationship (typically 'HAS_FAILURE')
+ *   - riskRatingCount: Number of risk ratings associated with this failure mode
+ *   - safetyTaskCount: Number of safety tasks associated with this failure mode
+ *   - safetyReqCount: Number of safety requirements associated with this failure mode
+ *   - safetyNoteCount: Number of safety notes associated with this failure mode
+ * - message: Error message if the operation failed
+ * 
+ * @example
+ * ```typescript
+ * const componentId = 'comp-123';
+ * const result = await getFailuresAndCountsForComponent(componentId);
+ * 
+ * if (result.success && result.data) {
+ *   console.log(`Found ${result.data.length} failure modes`);
+ *   result.data.forEach(failure => {
+ *     console.log(`${failure.failureName} (${failure.asil}) - ${failure.riskRatingCount} risk ratings`);
+ *   });
+ * }
+ * ```
+ * 
+ * @throws Will return success: false with error message if Neo4j query fails
+ * 
+ * @since 1.0.0
+ */
 export const getFailuresAndCountsForComponent = async (
   componentUuid: string
 ): Promise<{ success: boolean; data?: any[]; message?: string }> => {
@@ -513,6 +594,51 @@ export const getFailuresAndCountsForComponent = async (
   }
 };
 
+/**
+ * Retrieves failure modes and their associated counts for multiple ports.
+ * 
+ * This function fetches all failure modes that occur in the specified ports
+ * and includes aggregate counts of related safety artifacts (risk ratings, safety tasks,
+ * safety requirements, and safety notes) for each failure mode. Results are grouped by port UUID.
+ * 
+ * @param portUuids - Array of port UUIDs to fetch failure data for
+ * 
+ * @returns Promise that resolves to an object containing:
+ * - success: boolean indicating if the operation was successful
+ * - data: Object with port UUIDs as keys, each containing an array of failure mode objects:
+ *   - failureUuid: UUID of the failure mode
+ *   - failureName: Name of the failure mode
+ *   - failureDescription: Description of the failure mode
+ *   - asil: ASIL (Automotive Safety Integrity Level) classification
+ *   - failureType: Type of failure (typically 'FAILURE')
+ *   - relationshipType: Type of relationship (typically 'HAS_FAILURE')
+ *   - riskRatingCount: Number of risk ratings associated with this failure mode
+ *   - safetyTaskCount: Number of safety tasks associated with this failure mode
+ *   - safetyReqCount: Number of safety requirements associated with this failure mode
+ *   - safetyNoteCount: Number of safety notes associated with this failure mode
+ * - message: Error message if the operation failed
+ * 
+ * @example
+ * ```typescript
+ * const portIds = ['port-1', 'port-2', 'port-3'];
+ * const result = await getFailuresAndCountsForPorts(portIds);
+ * 
+ * if (result.success && result.data) {
+ *   Object.entries(result.data).forEach(([portId, failures]) => {
+ *     console.log(`Port ${portId} has ${failures.length} failure modes`);
+ *     failures.forEach(failure => {
+ *       console.log(`  - ${failure.failureName} (${failure.asil})`);
+ *     });
+ *   });
+ * }
+ * ```
+ * 
+ * @throws Will return success: false with error message if Neo4j query fails
+ * 
+ * @since 1.0.0
+ * 
+ * @note Returns empty data object if portUuids array is empty
+ */
 export const getFailuresAndCountsForPorts = async (
   portUuids: string[]
 ): Promise<{ success: boolean; data?: any; message?: string }> => {

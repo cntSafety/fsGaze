@@ -22,16 +22,17 @@ import 'reactflow/dist/style.css';
 import ELK from 'elkjs/lib/elk.bundled.js';
 import Link from 'next/link';
 import { getAsilColor } from '@/app/components/asilColors';
+import { useTheme } from '@/app/components/ThemeProvider';
 
 import { getApplicationSwComponents } from '@/app/services/neo4j/queries/components';
-import { getProviderPortsForSWComponent, getReceiverPortsForSWComponent, getPartnerPortsForComponentsOptimized, getAllPortsForComponents } from '@/app/services/neo4j/queries/ports';
+import { getPartnerPortsForComponentsOptimized, getAllPortsForComponents } from '@/app/services/neo4j/queries/ports';
 import { PortInfo } from '@/app/services/neo4j/types';
 import { getFailuresAndCountsForComponents } from '@/app/services/neo4j/queries/safety/failureModes';
 import DetailsModal from './DetailsModal';
 
 const { Title, Text } = Typography;
 
-const getAsilColorWithOpacity = (asil: string, opacity: number = 0.6) => {
+const getAsilColorWithOpacity = (asil: string, opacity: number = 0.7) => {
     const baseColor = getAsilColor(asil);
     if (baseColor.startsWith('rgb(')) {
         return `rgba(${baseColor.substring(4, baseColor.length - 1)}, ${opacity})`;
@@ -40,8 +41,20 @@ const getAsilColorWithOpacity = (asil: string, opacity: number = 0.6) => {
 };
 
 const CustomNode = ({ data }: { data: { label: string, component: SWComponent, providerPorts: PortInfo[], receiverPorts: PortInfo[] } }) => {
+    const maxPorts = Math.max(data.providerPorts.length, data.receiverPorts.length);
+    const nodeHeight = Math.max(60, 30 + maxPorts * 15);
+    
     return (
-        <div style={{ padding: '10px', minHeight: '60px', position: 'relative' }}>
+        <div style={{ 
+            width: '100%',
+            height: '100%',
+            position: 'relative',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '8px 12px',
+            boxSizing: 'border-box'
+        }}>
             {/* Receiver ports on the left */}
             {data.receiverPorts.map((port, index) => (
                 <Handle
@@ -50,16 +63,26 @@ const CustomNode = ({ data }: { data: { label: string, component: SWComponent, p
                     position={Position.Left}
                     id={port.uuid}
                     style={{ 
-                        top: `${20 + (index * 15)}px`,
-                        background: 'var(--ant-color-text-secondary, #666)',
+                        top: `${25 + (index * 15)}px`,
+                        left: '-4px',
+                        background: '#6b7280',
+                        border: '2px solid #ffffff',
                         width: '8px',
-                        height: '8px'
+                        height: '8px',
+                        borderRadius: '50%'
                     }}
                     isConnectable={true}
                 />
             ))}
             
-            <div style={{ textAlign: 'center', padding: '5px 0' }}>
+            <div style={{ 
+                textAlign: 'center',
+                fontSize: '12px',
+                fontWeight: 600,
+                color: 'inherit',
+                wordBreak: 'break-word',
+                lineHeight: '1.2'
+            }}>
                 {data.label}
             </div>
             
@@ -71,10 +94,13 @@ const CustomNode = ({ data }: { data: { label: string, component: SWComponent, p
                     position={Position.Right}
                     id={port.uuid}
                     style={{ 
-                        top: `${20 + (index * 15)}px`,
-                        background: 'var(--ant-color-text-secondary, #666)',
+                        top: `${25 + (index * 15)}px`,
+                        right: '-4px',
+                        background: '#6b7280',
+                        border: '2px solid #ffffff',
                         width: '8px',
-                        height: '8px'
+                        height: '8px',
+                        borderRadius: '50%'
                     }}
                     isConnectable={true}
                 />
@@ -135,7 +161,7 @@ const elkLayout = async (nodes: Node[], edges: Edge[]): Promise<{nodes: Node[], 
         },
         children: nodes.map(node => ({
             id: node.id,
-            width: parseInt(String(node.style?.minWidth)) || 150,
+            width: parseInt(String(node.style?.width)) || 150,
             height: parseInt(String(node.style?.height)) || 80
         })),
         edges: edges.map(edge => ({
@@ -194,6 +220,7 @@ const DetailView = ({ item, portToComponentMap, allComponents }: { item: DetailV
 const ArchViewerInner = () => {
   const [loading, setLoading] = useState(true);
   const [loadingData, setLoadingData] = useState(false);
+  const { themeMode } = useTheme();
   const [isPanelVisible, setIsPanelVisible] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [allComponents, setAllComponents] = useState<SWComponent[]>([]);
@@ -351,36 +378,8 @@ const ArchViewerInner = () => {
         
         console.log(`📦 Processed ${allPortsList.length} ports across ${allPortsResult.data.size} components`);
       } else {
-        console.warn('Batch port fetch failed, falling back to individual queries');
-        
-        // FALLBACK: Use the original parallel approach if batch query fails
-        const portPromises = selectedComponents.map(async (component) => {
-          const [providerPortsResult, receiverPortsResult] = await Promise.all([
-            getProviderPortsForSWComponent(component.uuid),
-            getReceiverPortsForSWComponent(component.uuid),
-          ]);
-
-          if (!providerPortsResult.success || !receiverPortsResult.success) {
-              console.error(`Failed to fetch ports for ${component.name}`);
-              return { component, ports: [] };
-          }
-
-          const componentPorts = [...(providerPortsResult.data || []), ...(receiverPortsResult.data || [])];
-          return { component, ports: componentPorts };
-        });
-
-        // Wait for all port fetching to complete in parallel
-        const portResults = await Promise.all(portPromises);
-        
-        // Process the fallback port results
-        portResults.forEach(({ component, ports }) => {
-          allPortsList.push(...ports);
-          ports.forEach((port: PortInfo) => {
-            newPortToComponentMap.set(port.uuid, component.uuid);
-          });
-        });
-        
-        console.log(`📦 Fallback: Processed ${allPortsList.length} ports using individual queries`);
+        console.error('Batch port fetch failed - no fallback available');
+        throw new Error('Failed to load port data');
       }
 
       // ⏱️ Performance Measurement: Partner connection fetching phase
@@ -432,7 +431,7 @@ const ArchViewerInner = () => {
         - Components processed: ${selectedComponents.length}
         - Total ports loaded: ${allPortsList.length}
         - Total connections found: ${newConnections.size}
-        - PORT OPTIMIZATION: Used ${allPortsResult.success ? 'SINGLE BATCH QUERY' : 'FALLBACK PARALLEL QUERIES'} for port fetching
+        - PORT OPTIMIZATION: Used SINGLE BATCH QUERY for port fetching
         - CONNECTION OPTIMIZATION: Used OPTIMIZED ASSEMBLY CONNECTOR query
         - Connection efficiency: ${newConnections.size > 0 ? (newConnections.size / connectionFetchTime * 1000).toFixed(0) : 0} connections/second
         - Overall efficiency: ${((allPortsList.length + newConnections.size) / totalTime * 1000).toFixed(0)} total records/second`);
@@ -636,7 +635,9 @@ const ArchViewerInner = () => {
     const newNodes: Node[] = selectedComponents.map((c: SWComponent) => {
         const backgroundColor = getAsilColorWithOpacity(c.asil);
         const ports = componentPorts.get(c.uuid) || { provider: [], receiver: [] };
-        const nodeHeight = Math.max(80, 40 + Math.max(ports.provider.length, ports.receiver.length) * 15);
+        const maxPorts = Math.max(ports.provider.length, ports.receiver.length);
+        const nodeHeight = Math.max(80, 50 + maxPorts * 15);
+        const nodeWidth = Math.max(150, c.name.length * 8 + 40);
         
         return {
             id: c.uuid,
@@ -651,10 +652,13 @@ const ArchViewerInner = () => {
             style: {
                 backgroundColor: backgroundColor,
                 color: getTextColorForBackground(backgroundColor),
-                border: '1px solid var(--ant-color-border, #d9d9d9)',
-                borderRadius: 4,
+                border: '2px solid rgba(255, 255, 255, 0.8)',
+                borderRadius: '8px',
+                width: nodeWidth,
                 height: nodeHeight,
-                minWidth: 150
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                fontSize: '12px',
+                fontWeight: '600'
             }
         }
     });
@@ -948,25 +952,8 @@ const ArchViewerInner = () => {
                 
                 console.log(`✅ Batch loaded ${componentPortsList.length} ports for ${component.name}`);
               } else {
-                console.warn('Batch port loading failed, falling back to individual queries');
-                
-                // FALLBACK: Individual queries if batch fails
-                const [providerPortsResult, receiverPortsResult] = await Promise.all([
-                  getProviderPortsForSWComponent(component.uuid),
-                  getReceiverPortsForSWComponent(component.uuid),
-                ]);
-                
-                if (providerPortsResult.success && receiverPortsResult.success) {
-                  const componentPortsList = [...(providerPortsResult.data || []), ...(receiverPortsResult.data || [])];
-                  componentPortsList.forEach((port: PortInfo) => {
-                    portToComponentMap.set(port.uuid, component.uuid);
-                  });
-                  allPorts.push(...componentPortsList);
-                  setPortToComponentMap(new Map(portToComponentMap));
-                  setAllPorts([...allPorts]);
-                  
-                  console.log(`✅ Fallback loaded ${componentPortsList.length} ports for ${component.name}`);
-                }
+                console.error('Batch port loading failed - no fallback available');
+                throw new Error(`Failed to load ports for component: ${component.name}`);
               }
             }
           }
@@ -1160,20 +1147,32 @@ const ArchViewerInner = () => {
 
   const onNodeContextMenu: NodeMouseHandler = useCallback((event, node) => {
     event.preventDefault();
+    
+    // Get the ReactFlow container bounds to calculate relative position
+    const reactFlowBounds = (event.target as HTMLElement).closest('.react-flow')?.getBoundingClientRect();
+    const adjustedX = reactFlowBounds ? event.clientX - reactFlowBounds.left : event.clientX;
+    const adjustedY = reactFlowBounds ? event.clientY - reactFlowBounds.top : event.clientY;
+    
     setContextMenu({
         id: node.id,
-        top: event.clientY,
-        left: event.clientX,
+        top: adjustedY,
+        left: adjustedX,
         type: 'node'
     });
   }, []);
 
   const onEdgeContextMenu: EdgeMouseHandler = useCallback((event, edge) => {
     event.preventDefault();
+    
+    // Get the ReactFlow container bounds to calculate relative position
+    const reactFlowBounds = (event.target as HTMLElement).closest('.react-flow')?.getBoundingClientRect();
+    const adjustedX = reactFlowBounds ? event.clientX - reactFlowBounds.left : event.clientX;
+    const adjustedY = reactFlowBounds ? event.clientY - reactFlowBounds.top : event.clientY;
+    
     setContextMenu({
         id: edge.id,
-        top: event.clientY,
-        left: event.clientX,
+        top: adjustedY,
+        left: adjustedX,
         type: 'edge',
         edgeData: edge.data
     });
@@ -1213,11 +1212,34 @@ const ArchViewerInner = () => {
 
 
   if (loading) {
-    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', width: '100vw' }}><Spin size="large" /></div>;
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: 'calc(100vh - 96px)', 
+        width: 'calc(100% + 48px)',
+        backgroundColor: themeMode === 'dark' ? '#141414' : '#f5f5f5',
+        margin: '-24px',
+        borderRadius: '8px',
+        overflow: 'hidden'
+      }}>
+        <Spin size="large" />
+      </div>
+    );
   }
 
   return (
-    <div style={{ height: '100vh', width: '100vw', position: 'relative', display: 'flex' }}>
+    <div style={{ 
+      height: 'calc(100vh - 96px)', // Account for navbar height and padding
+      width: 'calc(100% + 48px)', // Account for left and right padding
+      position: 'relative', 
+      display: 'flex',
+      backgroundColor: themeMode === 'dark' ? '#141414' : '#f5f5f5',
+      margin: '-24px', // Counteract the main content padding
+      borderRadius: '8px',
+      overflow: 'hidden'
+    }}>
         {isPanelVisible && (
             <>
                 {/* Mobile overlay backdrop */}
@@ -1229,7 +1251,7 @@ const ArchViewerInner = () => {
                             left: 0,
                             right: 0,
                             bottom: 0,
-                            backgroundColor: 'var(--ant-color-bg-mask, rgba(0, 0, 0, 0.45))',
+                            backgroundColor: themeMode === 'dark' ? 'rgba(0, 0, 0, 0.65)' : 'rgba(0, 0, 0, 0.45)',
                             zIndex: 999
                         }}
                         onClick={() => setIsPanelVisible(false)}
@@ -1240,16 +1262,16 @@ const ArchViewerInner = () => {
                   width: isMobile ? '300px' : '350px', 
                   minWidth: isMobile ? '300px' : '300px',
                   maxWidth: isMobile ? '300px' : '400px',
-                  height: '100vh',
-                  borderRight: !isMobile ? '1px solid var(--ant-color-border, #d9d9d9)' : 'none',
-                  backgroundColor: 'var(--ant-color-bg-container, #ffffff)',
+                  height: '100%',
+                  borderRight: !isMobile ? `1px solid ${themeMode === 'dark' ? '#434343' : '#d9d9d9'}` : 'none',
+                  backgroundColor: themeMode === 'dark' ? '#1f1f1f' : '#ffffff',
                   overflow: 'auto',
                   padding: '16px',
                   position: isMobile ? 'fixed' : 'relative',
                   left: isMobile ? 0 : 'auto',
                   top: isMobile ? 0 : 'auto',
                   zIndex: isMobile ? 1000 : 1,
-                  boxShadow: isMobile ? 'var(--ant-box-shadow-base, 0 6px 16px 0 rgba(0, 0, 0, 0.08))' : 'none'
+                  boxShadow: isMobile ? (themeMode === 'dark' ? '0 6px 16px 0 rgba(0, 0, 0, 0.3)' : '0 6px 16px 0 rgba(0, 0, 0, 0.08)') : 'none'
                 }}>
                     <Space style={{ width: '100%', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                         <Title level={4} style={{ margin: 0 }}>Component Selection</Title>
@@ -1261,39 +1283,37 @@ const ArchViewerInner = () => {
                     </Space>
                 
                 {/* Information Card - moved above TreeSelect for better visibility */}
-                <div style={{ marginBottom: '16px' }}>
-                    <Card title="Information" size="small">
-                        {loadingData ? (
-                            <Space>
-                                <Spin size="small" />
-                                <Text>Loading component data...</Text>
-                            </Space>
-                        ) : (
-                            <>
-                                <Text>Selected: {selectedComponentIds.length} / {allComponents.length} components</Text>
-                                {pendingComponentIds.length !== selectedComponentIds.length && (
-                                    <>
-                                        <br />
-                                        <Text type="warning" style={{ fontSize: '12px' }}>
-                                            Pending: {pendingComponentIds.length} components (close dropdown to apply)
-                                        </Text>
-                                    </>
-                                )}
+                <Card title="Information" size="small" style={{ marginBottom: '16px' }}>
+                    {loadingData ? (
+                        <Space>
+                            <Spin size="small" />
+                            <Text>Loading component data...</Text>
+                        </Space>
+                    ) : (
+                        <>
+                            <Text>Selected: {selectedComponentIds.length} / {allComponents.length} components</Text>
+                            {pendingComponentIds.length !== selectedComponentIds.length && (
+                                <>
+                                    <br />
+                                    <Text type="warning" style={{ fontSize: '12px' }}>
+                                        Pending: {pendingComponentIds.length} components (close dropdown to apply)
+                                    </Text>
+                                </>
+                            )}
 
-                                <br />
-                                {selectedComponentIds.length === 0 ? (
-                                    <Text type="secondary" style={{ fontSize: '12px' }}>
-                                        Select components from the tree above to visualize their connections.
-                                    </Text>
-                                ) : (
-                                    <Text type="secondary" style={{ fontSize: '12px' }}>
-                                        Only connections between selected components are shown.
-                                    </Text>
-                                )}
-                            </>
-                        )}
-                    </Card>
-                </div>
+                            <br />
+                            {selectedComponentIds.length === 0 ? (
+                                <Text type="secondary" style={{ fontSize: '12px' }}>
+                                    Select components from the tree above to visualize their connections.
+                                </Text>
+                            ) : (
+                                <Text type="secondary" style={{ fontSize: '12px' }}>
+                                    Only connections between selected components are shown.
+                                </Text>
+                            )}
+                        </>
+                    )}
+                </Card>
                 
                 <div style={{ marginBottom: '16px' }}>
                     <Space>
@@ -1369,13 +1389,36 @@ const ArchViewerInner = () => {
                         }
                     ]}
                 />
+
+                {/* ASIL Legend */}
+                <Card title="ASIL Legend" size="small" style={{ marginBottom: '16px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+                        {['D', 'C', 'B', 'A', 'QM', 'TBC', 'N/A'].map((asil) => (
+                            <div key={asil} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <div 
+                                    style={{ 
+                                        width: '16px', 
+                                        height: '16px', 
+                                        backgroundColor: getAsilColor(asil),
+                                        border: '1px solid rgba(255, 255, 255, 0.3)',
+                                        borderRadius: '3px',
+                                        flexShrink: 0
+                                    }} 
+                                />
+                                <Text style={{ fontSize: '11px', fontWeight: 500 }}>
+                                    {asil === 'N/A' ? 'N/A' : asil === 'TBC' ? 'TBC' : `ASIL ${asil}`}
+                                </Text>
+                            </div>
+                        ))}
+                    </div>
+                </Card>
                 </div>
             </>
         )}
         
         <div style={{ 
           flex: 1, 
-          height: '100vh', 
+          height: '100%', 
           position: 'relative',
           overflow: 'hidden',
           display: 'flex',
@@ -1386,10 +1429,11 @@ const ArchViewerInner = () => {
                 style={{ 
                     borderRadius: 0, 
                     border: 'none',
-                    borderBottom: '1px solid var(--ant-color-border, #d9d9d9)',
+                    borderBottom: `1px solid ${themeMode === 'dark' ? '#434343' : '#d9d9d9'}`,
                     height: '48px',
                     display: 'flex',
-                    alignItems: 'center'
+                    alignItems: 'center',
+                    backgroundColor: themeMode === 'dark' ? '#1f1f1f' : '#ffffff'
                 }}
                 bodyStyle={{ 
                     padding: '0 16px', 
@@ -1413,24 +1457,36 @@ const ArchViewerInner = () => {
             </Card>
             
             <div style={{ flex: 1, position: 'relative' }}>
-            <ReactFlow
-                nodes={nodes}
-                edges={edges}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                onNodeClick={onNodeClick}
-                onEdgeClick={onEdgeClick}
-                onPaneClick={onPaneClick}
-                onNodeContextMenu={onNodeContextMenu}
-                onEdgeContextMenu={onEdgeContextMenu}
-                onNodeDragStart={onNodeDragStart}
-                onNodeDragStop={onNodeDragStop}
-                minZoom={0.1}
-                nodeTypes={nodeTypes}
-            >
-                <Controls />
-                <Background />
-            </ReactFlow>
+                <ReactFlow
+                    nodes={nodes}
+                    edges={edges}
+                    onNodesChange={onNodesChange}
+                    onEdgesChange={onEdgesChange}
+                    onNodeClick={onNodeClick}
+                    onEdgeClick={onEdgeClick}
+                    onPaneClick={onPaneClick}
+                    onNodeContextMenu={onNodeContextMenu}
+                    onEdgeContextMenu={onEdgeContextMenu}
+                    onNodeDragStart={onNodeDragStart}
+                    onNodeDragStop={onNodeDragStop}
+                    minZoom={0.1}
+                    nodeTypes={nodeTypes}
+                    style={{
+                        backgroundColor: themeMode === 'dark' ? '#141414' : '#f5f5f5'
+                    }}
+                >
+                    <Controls 
+                        style={{
+                            backgroundColor: themeMode === 'dark' ? '#1f1f1f' : 'white',
+                            border: `1px solid ${themeMode === 'dark' ? '#434343' : '#d9d9d9'}`,
+                            borderRadius: '6px'
+                        }}
+                    />
+                    <Background 
+                        color={themeMode === 'dark' ? '#434343' : '#f0f0f0'}
+                        gap={20}
+                    />
+                </ReactFlow>
             </div>
         </div>
         {contextMenu && (
@@ -1448,25 +1504,31 @@ const ArchViewerInner = () => {
                     }}
                     onClick={() => setContextMenu(null)}
                 />
-                <Dropdown
-                    menu={{ items: contextMenuItems }}
-                    trigger={[]}
-                    open={true}
-                    onOpenChange={(open) => !open && setContextMenu(null)}
-                    placement="bottomLeft"
+                <div
+                    style={{
+                        position: 'absolute',
+                        top: contextMenu.top,
+                        left: contextMenu.left,
+                        zIndex: 1000,
+                        pointerEvents: 'auto'
+                    }}
                 >
-                    <div
-                        style={{
-                            position: 'absolute',
-                            top: contextMenu.top,
-                            left: contextMenu.left,
-                            width: 1,
-                            height: 1,
-                            pointerEvents: 'none',
-                            zIndex: 1000
-                        }}
-                    />
-                </Dropdown>
+                    <Dropdown
+                        menu={{ items: contextMenuItems }}
+                        trigger={[]}
+                        open={true}
+                        onOpenChange={(open) => !open && setContextMenu(null)}
+                        placement="bottomLeft"
+                    >
+                        <div
+                            style={{
+                                width: 1,
+                                height: 1,
+                                pointerEvents: 'none'
+                            }}
+                        />
+                    </Dropdown>
+                </div>
             </>
         )}
         <DetailsModal

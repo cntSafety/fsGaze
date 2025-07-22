@@ -723,9 +723,9 @@ export const getAllPortsForComponents = async (componentUuids: string[]): Promis
 };
 
 /**
- * SUPER OPTIMIZED: Gets all partner port connections by directly querying assembly connectors.
- * This avoids expensive path traversals and processes connections more efficiently.
- *
+ * Gets all partner port connections by shortest path querying target-port-ref and outer-port-ref.
+ * This shows all connections for a component DIRECTLY to the partner component and NOT to the COMPOSITIONS
+ * So this is a good query if you dont need the COMPOSITIONS
  * @param componentUuids Array of component UUIDs to get all port connections for.
  * @returns A Promise that resolves to the raw Neo4j QueryResult containing partner port info.
  */
