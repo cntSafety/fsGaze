@@ -1,7 +1,7 @@
 'use client';
 // Arch Viewer supports display of all ports
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
-import { TreeSelect, Spin, Typography, Row, Col, Card, Button, Space, Dropdown, Menu, Input, notification, Collapse } from 'antd';
+import { TreeSelect, Spin, Typography, Card, Button, Space, Dropdown, Menu, Input, notification, Collapse } from 'antd';
 import { MenuFoldOutlined, MenuUnfoldOutlined, UsergroupAddOutlined, LinkOutlined, DeleteOutlined, InfoCircleOutlined, SaveOutlined, UploadOutlined, CopyOutlined } from '@ant-design/icons';
 import ReactFlow, {
     Controls,
@@ -89,10 +89,10 @@ const nodeTypes: NodeTypes = {
 
 const getTextColorForBackground = (rgba: string) => {
     const rgb = rgba.match(/\d+/g);
-    if (!rgb) return '#000000';
+    if (!rgb) return 'var(--ant-color-text, #000000)';
     // Formula to determine perceived brightness
     const brightness = (parseInt(rgb[0]) * 299 + parseInt(rgb[1]) * 587 + parseInt(rgb[2]) * 114) / 1000;
-    return brightness > 125 ? '#000000' : '#FFFFFF';
+    return brightness > 125 ? 'var(--ant-color-text, #000000)' : 'var(--ant-color-text-base, #ffffff)';
 };
 
 interface SWComponent {
@@ -195,6 +195,7 @@ const ArchViewerInner = () => {
   const [loading, setLoading] = useState(true);
   const [loadingData, setLoadingData] = useState(false);
   const [isPanelVisible, setIsPanelVisible] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
   const [allComponents, setAllComponents] = useState<SWComponent[]>([]);
   const [allPorts, setAllPorts] = useState<PortInfo[]>([]);
   const [connections, setConnections] = useState<Map<string, string>>(new Map());
@@ -225,6 +226,20 @@ const ArchViewerInner = () => {
   const { fitView } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+
+  // Check for mobile screen size
+  useEffect(() => {
+    const checkScreenSize = () => {
+      setIsMobile(window.innerWidth < 768);
+      if (window.innerWidth < 768) {
+        setIsPanelVisible(false); // Auto-hide panel on mobile
+      }
+    };
+    
+    checkScreenSize();
+    window.addEventListener('resize', checkScreenSize);
+    return () => window.removeEventListener('resize', checkScreenSize);
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -1198,23 +1213,61 @@ const ArchViewerInner = () => {
 
 
   if (loading) {
-    return <div className="flex justify-center items-center h-full"><Spin size="large" /></div>;
+    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', width: '100vw' }}><Spin size="large" /></div>;
   }
 
   return (
-    <Row gutter={16} style={{ padding: '24px', height: '80vh' }}>
+    <div style={{ height: '100vh', width: '100vw', position: 'relative', display: 'flex' }}>
         {isPanelVisible && (
-            <Col span={6}>
-                <Title level={4}>Component Selection</Title>
+            <>
+                {/* Mobile overlay backdrop */}
+                {isMobile && (
+                    <div 
+                        style={{
+                            position: 'fixed',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            backgroundColor: 'var(--ant-color-bg-mask, rgba(0, 0, 0, 0.45))',
+                            zIndex: 999
+                        }}
+                        onClick={() => setIsPanelVisible(false)}
+                    />
+                )}
+                
+                <div style={{ 
+                  width: isMobile ? '300px' : '350px', 
+                  minWidth: isMobile ? '300px' : '300px',
+                  maxWidth: isMobile ? '300px' : '400px',
+                  height: '100vh',
+                  borderRight: !isMobile ? '1px solid var(--ant-color-border, #d9d9d9)' : 'none',
+                  backgroundColor: 'var(--ant-color-bg-container, #ffffff)',
+                  overflow: 'auto',
+                  padding: '16px',
+                  position: isMobile ? 'fixed' : 'relative',
+                  left: isMobile ? 0 : 'auto',
+                  top: isMobile ? 0 : 'auto',
+                  zIndex: isMobile ? 1000 : 1,
+                  boxShadow: isMobile ? 'var(--ant-box-shadow-base, 0 6px 16px 0 rgba(0, 0, 0, 0.08))' : 'none'
+                }}>
+                    <Space style={{ width: '100%', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                        <Title level={4} style={{ margin: 0 }}>Component Selection</Title>
+                        <Button
+                            icon={<MenuFoldOutlined />}
+                            onClick={() => setIsPanelVisible(false)}
+                            size="small"
+                        />
+                    </Space>
                 
                 {/* Information Card - moved above TreeSelect for better visibility */}
                 <div style={{ marginBottom: '16px' }}>
                     <Card title="Information" size="small">
                         {loadingData ? (
-                            <div style={{ textAlign: 'center' }}>
+                            <Space>
                                 <Spin size="small" />
-                                <Text style={{ marginLeft: '8px' }}>Loading component data...</Text>
-                            </div>
+                                <Text>Loading component data...</Text>
+                            </Space>
                         ) : (
                             <>
                                 <Text>Selected: {selectedComponentIds.length} / {allComponents.length} components</Text>
@@ -1316,19 +1369,50 @@ const ArchViewerInner = () => {
                         }
                     ]}
                 />
-            </Col>
+                </div>
+            </>
         )}
-        <Col span={isPanelVisible ? 18 : 24} style={{position: 'relative', height: '100%'}}>
-            <Button
-                icon={isPanelVisible ? <MenuFoldOutlined /> : <MenuUnfoldOutlined />}
-                onClick={() => setIsPanelVisible(!isPanelVisible)}
-                style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    zIndex: 10
+        
+        <div style={{ 
+          flex: 1, 
+          height: '100vh', 
+          position: 'relative',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column'
+        }}>
+            <Card 
+                size="small" 
+                style={{ 
+                    borderRadius: 0, 
+                    border: 'none',
+                    borderBottom: '1px solid var(--ant-color-border, #d9d9d9)',
+                    height: '48px',
+                    display: 'flex',
+                    alignItems: 'center'
                 }}
-            />
+                bodyStyle={{ 
+                    padding: '0 16px', 
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center'
+                }}
+            >
+                <Space align="center">
+                    {!isPanelVisible && (
+                        <Button
+                            icon={<MenuUnfoldOutlined />}
+                            onClick={() => setIsPanelVisible(true)}
+                            size="small"
+                        />
+                    )}
+                    <Title level={4} style={{ margin: 0 }}>
+                        Software Component Architecture Viewer
+                    </Title>
+                </Space>
+            </Card>
+            
+            <div style={{ flex: 1, position: 'relative' }}>
             <ReactFlow
                 nodes={nodes}
                 edges={edges}
@@ -1347,7 +1431,8 @@ const ArchViewerInner = () => {
                 <Controls />
                 <Background />
             </ReactFlow>
-        </Col>
+            </div>
+        </div>
         {contextMenu && (
             <>
                 {/* Invisible overlay to handle click outside */}
@@ -1391,7 +1476,7 @@ const ArchViewerInner = () => {
             isVisible={detailsModal.isVisible}
             onClose={handleCloseDetailsModal}
         />
-    </Row>
+    </div>
   );
 };
 
