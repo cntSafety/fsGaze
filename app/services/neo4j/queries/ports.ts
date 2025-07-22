@@ -752,7 +752,9 @@ export const getPartnerPortsForComponentsOptimized = async (componentUuids: stri
       OPTIONAL MATCH (portB)<-[:OCCURRENCE]-(FM:FAILUREMODE)
       RETURN DISTINCT 
         portA.uuid as sourcePortUUID,
+        portA.name as sourcePortName,
         selectedComp.uuid as sourceComponentUUID,
+        selectedComp.name as sourceComponentName,
         portB.name as partnerPortName, 
         portB.uuid as partnerPortUUID, 
         labels(portB)[0] as partnerPortType, 

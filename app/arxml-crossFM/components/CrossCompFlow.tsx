@@ -10,7 +10,7 @@
  */
 'use client';
 
-import React, { useMemo, useState, memo, useEffect } from 'react';
+import React, { useMemo, useState, memo, useEffect, useCallback } from 'react';
 import ReactFlow, {
     Controls,
     Background,
@@ -20,18 +20,18 @@ import ReactFlow, {
     Position,
     Handle,
     NodeProps,
+    Node,
     Edge,
-    MarkerType,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { Card, Typography, Space, Tag, Button, Spin, Tooltip, Switch } from 'antd';
-import { ReloadOutlined, DeleteOutlined } from '@ant-design/icons';
+import { ReloadOutlined, DeleteOutlined, SafetyOutlined } from '@ant-design/icons';
 import InteractiveSmoothStepEdge from './InteractiveSmoothStepEdge';
 import { getAsilColor } from '@/app/components/asilColors';
-import { useSafetyData } from '@/app/arxml-crossFM/hooks/useSafetyData';
-import { useCausationManager } from '@/app/arxml-crossFM/hooks/useCausationManager';
+import { useSafetyData } from '../hooks/useSafetyData';
+import { useCausationManager } from '../hooks/useCausationManager';
+import SafetyTreeView from './SafetyTreeView';
 import PortConnectionDetailsModal from './PortConnectionDetailsModal';
-import { getAllPortConnections } from '@/app/services/neo4j/queries/ports';
 
 const { Text } = Typography;
 
@@ -43,13 +43,8 @@ interface SwComponentNodeData {
   onPortClick: (port: any, type: 'provider' | 'receiver') => void;
 }
 
-/**
- * A custom React Flow node to display a Software Component (SWC) and its ports.
- * This is a pure presentation component; all its data is passed in via props.
- */
-const SwComponentNode = memo(({ data }: NodeProps<SwComponentNodeData>) => {
+const SwComponentNode = memo(({ data, id }: NodeProps<SwComponentNodeData>) => {
   const { component, providerPorts, receiverPorts, onPortClick } = data;
-  const nodeRef = React.useRef<HTMLDivElement>(null);
   
   return (
     <div style={{
@@ -65,18 +60,16 @@ const SwComponentNode = memo(({ data }: NodeProps<SwComponentNodeData>) => {
       flexDirection: 'column',
       justifyContent: 'space-between'
     }}>
-      {/* Component Title */}
       <div style={{ 
         textAlign: 'center', 
         marginBottom: '12px',
         fontSize: '14px',
         fontWeight: '600',
-        color: '#1890ff'
+        color: '#1890ff',
+        cursor: 'pointer'
       }}>
         {component.name}
       </div>
-
-      {/* Ports Container */}
       <div style={{ 
         display: 'flex', 
         justifyContent: 'space-between',
@@ -84,7 +77,6 @@ const SwComponentNode = memo(({ data }: NodeProps<SwComponentNodeData>) => {
         flex: 1,
         gap: '8px'
       }}>
-        {/* Receiver Ports (Left) */}
         <div style={{ 
           display: 'flex', 
           flexDirection: 'column',
@@ -143,7 +135,7 @@ const SwComponentNode = memo(({ data }: NodeProps<SwComponentNodeData>) => {
                     }}>
                       <span style={{
                         fontWeight: 'bold',
-                        color: '#CC5500' // Dark orange color
+                        color: '#CC5500'
                       }}>
                         {failure.name.replace(/_/g, ' ')}
                       </span>
@@ -166,8 +158,6 @@ const SwComponentNode = memo(({ data }: NodeProps<SwComponentNodeData>) => {
             </div>
           ))}
         </div>
-
-        {/* Provider Ports (Right) */}
         <div style={{ 
           display: 'flex', 
           flexDirection: 'column',
@@ -238,7 +228,7 @@ const SwComponentNode = memo(({ data }: NodeProps<SwComponentNodeData>) => {
                       </Tag>}
                       <span style={{
                         fontWeight: 'bold',
-                        color: '#CC5500' // Dark orange color
+                        color: '#CC5500'
                       }}>
                         {failure.name.replace(/_/g, ' ')}
                       </span>
@@ -250,8 +240,6 @@ const SwComponentNode = memo(({ data }: NodeProps<SwComponentNodeData>) => {
           ))}
         </div>
       </div>
-
-      {/* Component Info */}
       <div style={{ 
         fontSize: '10px', 
         color: '#9CA3AF',
@@ -264,152 +252,137 @@ const SwComponentNode = memo(({ data }: NodeProps<SwComponentNodeData>) => {
   );
 });
 
-/**
- * The main component for the Cross-Component Failure Flow page.
- * It integrates the data loading and causation management hooks to provide
- * an interactive graph visualization of failure mode causations.
- */
+const nodeTypes = { swComponent: SwComponentNode };
+
 export default function CrossCompFlow() {
-  const [isBigPictureMode, setIsBigPictureMode] = useState(false);
-  const [showPortConnections, setShowPortConnections] = useState(false);
-  const [isFetchingPortConnections, setIsFetchingPortConnections] = useState(false);
+    const [showPortConnections, setShowPortConnections] = useState(false);
+    const [showSafetyTree, setShowSafetyTree] = useState(false);
+    
+    const {
+        nodes, edges, loading, onNodesChange, onEdgesChange, setEdges, setNodes, loadDataAndLayout
+    } = useSafetyData(showPortConnections);
+    
+    const {
+        contextMenu,
+        onConnect,
+        onEdgeContextMenu,
+        handleDeleteCausation,
+        hideContextMenu,
+    } = useCausationManager(nodes, setEdges);
+    
+    const [selectedPortInfo, setSelectedPortInfo] = useState<{port: any; type: 'provider' | 'receiver'} | null>(null);
+    const [isPortModalVisible, setIsPortModalVisible] = useState(false);
 
-  const {
-      nodes,
-      edges,
-      loading,
-      onNodesChange,
-      onEdgesChange,
-      setEdges,
-      loadDataAndLayout,
-      setNodes,
-  } = useSafetyData(isBigPictureMode, showPortConnections);
-  
-  const [selectedPortInfo, setSelectedPortInfo] = useState<{port: any; type: 'provider' | 'receiver'} | null>(null);
-  const [isPortModalVisible, setIsPortModalVisible] = useState(false);
-  
-  const {
-      contextMenu,
-      onConnect,
-      onEdgeContextMenu,
-      handleDeleteCausation,
-      hideContextMenu,
-  } = useCausationManager(nodes, setEdges);
+    const handlePortClick = (port: any, type: 'provider' | 'receiver') => {
+        setSelectedPortInfo({ port, type });
+        setIsPortModalVisible(true);
+    };
+    
+    const handleClosePortModal = () => {
+        setIsPortModalVisible(false);
+        setSelectedPortInfo(null);
+    };
 
-  const handlePortClick = (port: any, type: 'provider' | 'receiver') => {
-    setSelectedPortInfo({ port, type });
-    setIsPortModalVisible(true);
-  };
-  
-  const handleClosePortModal = () => {
-    setIsPortModalVisible(false);
-    setSelectedPortInfo(null);
-  };
+    const nodesWithHandlers = useMemo(() => {
+        return nodes.map(node => ({
+            ...node,
+            data: {
+                ...node.data,
+                onPortClick: handlePortClick,
+            },
+        }));
+    }, [nodes]);
 
-  const nodesWithHandlers = useMemo(() => {
-    return nodes.map(node => ({
-        ...node,
-        data: {
-            ...node.data,
-            onPortClick: handlePortClick,
-        },
-    }));
-  }, [nodes]);
+    const edgeTypes = useMemo(() => ({
+        smoothstep: InteractiveSmoothStepEdge,
+    }), []);
 
-  const nodeTypes: NodeTypes = useMemo(() => ({
-    swComponent: SwComponentNode,
-  }), []);
+    if (loading) {
+        return (
+            <div className="flex justify-center items-center h-full">
+                <Spin size="large" />
+            </div>
+        );
+    }
 
-  const edgeTypes = useMemo(() => ({
-    interactive: InteractiveSmoothStepEdge,
-  }), []);
-
-  if (loading) {
     return (
-      <div className="flex justify-center items-center h-full">
-        <Spin size="large" />
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ height: 'calc(100vh - 200px)', position: 'relative' }} onClick={hideContextMenu}>
-        <ReactFlow
-          nodes={nodesWithHandlers}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onEdgeContextMenu={onEdgeContextMenu}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          fitView
-          fitViewOptions={{ 
-            padding: 0.1,
-            includeHiddenNodes: false,
-            minZoom: 0.1,
-            maxZoom: 1.2
-          }}
-          proOptions={{ hideAttribution: true }}
-          connectionLineType={ConnectionLineType.Straight}
-          minZoom={0.1}
-          maxZoom={2}
-        >
-          <Panel position="top-right">
-            <Space>
-              <Switch
-                checkedChildren="Connections"
-                unCheckedChildren="Connections"
-                loading={isFetchingPortConnections}
-                checked={showPortConnections}
-                onChange={setShowPortConnections}
-              />
-              <Switch
-                checkedChildren="Big Picture"
-                unCheckedChildren="Causations Only"
-                loading={loading && isBigPictureMode}
-                checked={isBigPictureMode}
-                onChange={setIsBigPictureMode}
-              />
-              <Button onClick={loadDataAndLayout} icon={<ReloadOutlined />} size="small">
-                Reload Layout
-              </Button>
-            </Space>
-          </Panel>
-          <Background />
-          <Controls />
-        </ReactFlow>
-
-        {contextMenu && (
-          <div
-            style={{
-              position: 'absolute',
-              top: contextMenu.y,
-              left: contextMenu.x,
-              zIndex: 10,
-              backgroundColor: 'white',
-              border: '1px solid #ddd',
-              boxShadow: '0 2px 5px rgba(0,0,0,0.15)',
-              borderRadius: '4px',
-              padding: '8px',
-            }}
-          >
-            <Button
-              type="primary"
-              danger
-              icon={<DeleteOutlined />}
-              onClick={handleDeleteCausation}
+        <div style={{ height: 'calc(100vh - 200px)', position: 'relative' }} onClick={hideContextMenu}>
+            <ReactFlow
+                nodes={nodesWithHandlers}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onConnect={onConnect}
+                onEdgeContextMenu={onEdgeContextMenu}
+                nodeTypes={nodeTypes}
+                edgeTypes={edgeTypes}
+                fitView
+                className="bg-gray-100 dark:bg-gray-900"
             >
-              Delete Causation
-            </Button>
-          </div>
-        )}
+                <Controls />
+                <Background />
+                <Panel position="top-right">
+                    <Space>
+                        <Tooltip title="Toggle Port-to-Port Connections">
+                            <Switch
+                                checkedChildren="Connections ON"
+                                unCheckedChildren="Connections OFF"
+                                checked={showPortConnections}
+                                onChange={setShowPortConnections}
+                            />
+                        </Tooltip>
+                        <Button onClick={() => setShowSafetyTree(true)} icon={<SafetyOutlined />} size="small">
+                            Safety Tree
+                        </Button>
+                        <Button onClick={loadDataAndLayout} icon={<ReloadOutlined />} size="small">
+                            Reload
+                        </Button>
+                    </Space>
+                </Panel>
+            </ReactFlow>
 
-        <PortConnectionDetailsModal
-          isVisible={isPortModalVisible}
-          onClose={handleClosePortModal}
-          portInfo={selectedPortInfo}
-        />
-    </div>
-  );
+            {contextMenu && (
+                <div
+                    style={{
+                        position: 'absolute',
+                        top: contextMenu.y,
+                        left: contextMenu.x,
+                        zIndex: 10,
+                        backgroundColor: 'white',
+                        border: '1px solid #ddd',
+                        boxShadow: '0 2px 5px rgba(0,0,0,0.15)',
+                        borderRadius: '4px',
+                        padding: '8px',
+                    }}
+                >
+                    <Button
+                        type="primary"
+                        danger
+                        icon={<DeleteOutlined />}
+                        onClick={handleDeleteCausation}
+                    >
+                        Delete Causation
+                    </Button>
+                </div>
+            )}
+            
+            <PortConnectionDetailsModal
+                isVisible={isPortModalVisible}
+                onClose={handleClosePortModal}
+                portInfo={selectedPortInfo}
+            />
+            
+            {showSafetyTree && (
+                <div style={{ position: 'absolute', top: 0, right: 0, width: '400px', height: '100%', zIndex: 20, background: 'white', boxShadow: '-2px 0 5px rgba(0,0,0,0.1)' }}>
+                    <SafetyTreeView
+                        onFailureSelect={(failure) => {
+                            console.log('Failure selected:', failure);
+                            // Future implementation to highlight the selected failure
+                        }}
+                    />
+                     <Button onClick={() => setShowSafetyTree(false)} style={{ position: 'absolute', top: 10, right: 10 }}>Close</Button>
+                </div>
+            )}
+        </div>
+    );
 }
