@@ -171,21 +171,21 @@ export async function getSafetyGraph(): Promise<{
         }));
 
         // Uncomment this block for detailed debugging of the export process
-        /*
-        console.log("Debug: Export summary:");
-        console.log(`- failures: ${failures.length}`);
-        console.log(`- causations: ${causations.length}`);
-        console.log(`- riskRatings: ${riskRatings.length}`);
-        console.log(`- safetyTasks: ${safetyTasks.length}`);
-        console.log(`- safetyReqs: ${safetyReqs.length}`);
-        console.log(`- safetyNotes: ${safetyNotes.length}`);
-        console.log(`- occurrences: ${occurrences.length}`);
-        console.log(`- causationLinks: ${causationLinks.length}`);
-        console.log(`- riskRatingLinks: ${riskRatingLinks.length}`);
-        console.log(`- safetyTaskLinks: ${safetyTaskLinks.length}`);
-        console.log(`- safetyReqLinks: ${safetyReqLinks.length}`);
-        console.log(`- safetyNoteLinks: ${safetyNoteLinks.length}`);
-        */
+        
+        // console.log("Debug: Export summary:");
+        // console.log(`- failures: ${failures.length}`);
+        // console.log(`- causations: ${causations.length}`);
+        // console.log(`- riskRatings: ${riskRatings.length}`);
+        // console.log(`- safetyTasks: ${safetyTasks.length}`);
+        // console.log(`- safetyReqs: ${safetyReqs.length}`);
+        // console.log(`- safetyNotes: ${safetyNotes.length}`);
+        // console.log(`- occurrences: ${occurrences.length}`);
+        // console.log(`- causationLinks: ${causationLinks.length}`);
+        // console.log(`- riskRatingLinks: ${riskRatingLinks.length}`);
+        // console.log(`- safetyTaskLinks: ${safetyTaskLinks.length}`);
+        // console.log(`- safetyReqLinks: ${safetyReqLinks.length}`);
+        // console.log(`- safetyNoteLinks: ${safetyNoteLinks.length}`);
+        
 
         return {
             success: true,

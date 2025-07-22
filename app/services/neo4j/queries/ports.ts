@@ -729,7 +729,7 @@ export const getAllPortsForComponents = async (componentUuids: string[]): Promis
  * @param componentUuids Array of component UUIDs to get all port connections for.
  * @returns A Promise that resolves to the raw Neo4j QueryResult containing partner port info.
  */
-export const getPartnerPortsForComponentsOptimized = async (componentUuids: string[]): Promise<QueryResult<PartnerPortInfo & { sourcePortUUID: string }>> => {
+export const getPartnerPortsForComponentsOptimized = async (componentUuids: string[]): Promise<QueryResult<any>> => {
   const session = driver.session();
   try {
     // ⏱️ Performance Measurement: Database query timing
@@ -752,6 +752,7 @@ export const getPartnerPortsForComponentsOptimized = async (componentUuids: stri
       OPTIONAL MATCH (portB)<-[:OCCURRENCE]-(FM:FAILUREMODE)
       RETURN DISTINCT 
         portA.uuid as sourcePortUUID,
+        selectedComp.uuid as sourceComponentUUID,
         portB.name as partnerPortName, 
         portB.uuid as partnerPortUUID, 
         labels(portB)[0] as partnerPortType, 
