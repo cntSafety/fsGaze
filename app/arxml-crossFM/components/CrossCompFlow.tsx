@@ -28,6 +28,7 @@ import { Card, Typography, Space, Tag, Button, Spin, Tooltip, Switch } from 'ant
 import { ReloadOutlined, DeleteOutlined, SafetyOutlined } from '@ant-design/icons';
 import InteractiveSmoothStepEdge from './InteractiveSmoothStepEdge';
 import { getAsilColor } from '@/app/components/asilColors';
+import { useTheme } from '@/app/components/ThemeProvider';
 import { useSafetyData } from '../hooks/useSafetyData';
 import { useCausationManager } from '../hooks/useCausationManager';
 import SafetyTreeView from './SafetyTreeView';
@@ -257,6 +258,7 @@ SwComponentNode.displayName = 'SwComponentNode';
 const nodeTypes = { swComponent: SwComponentNode };
 
 export default function CrossCompFlow() {
+    const { themeMode } = useTheme();
     const [showPortConnections, setShowPortConnections] = useState(false);
     const [showSafetyTree, setShowSafetyTree] = useState(false);
     
@@ -308,7 +310,7 @@ export default function CrossCompFlow() {
     }
 
     return (
-        <div style={{ height: 'calc(100vh - 200px)', position: 'relative' }} onClick={hideContextMenu}>
+        <div style={{ height: 'calc(100vh - 200px)', position: 'relative', background: themeMode === 'dark' ? '#141414' : '#f5f5f5' }} onClick={hideContextMenu}>
             <ReactFlow
                 nodes={nodesWithHandlers}
                 edges={edges}
@@ -320,9 +322,8 @@ export default function CrossCompFlow() {
                 edgeTypes={edgeTypes}
                 fitView
                 className="bg-gray-100 dark:bg-gray-900"
+                style={{ background: themeMode === 'dark' ? '#141414' : '#f5f5f5' }}
             >
-                <Controls />
-                <Background />
                 <Panel position="top-right">
                     <Space>
                         <Tooltip title="Toggle Port-to-Port Connections">
@@ -341,6 +342,8 @@ export default function CrossCompFlow() {
                         </Button>
                     </Space>
                 </Panel>
+                <Background color={themeMode === 'dark' ? '#434343' : '#f0f0f0'} />
+                <Controls />
             </ReactFlow>
 
             {contextMenu && (
@@ -350,8 +353,8 @@ export default function CrossCompFlow() {
                         top: contextMenu.y,
                         left: contextMenu.x,
                         zIndex: 10,
-                        backgroundColor: 'white',
-                        border: '1px solid #ddd',
+                        backgroundColor: themeMode === 'dark' ? '#1f1f1f' : 'white',
+                        border: `1px solid ${themeMode === 'dark' ? '#434343' : '#ddd'}`,
                         boxShadow: '0 2px 5px rgba(0,0,0,0.15)',
                         borderRadius: '4px',
                         padding: '8px',
@@ -375,7 +378,7 @@ export default function CrossCompFlow() {
             />
             
             {showSafetyTree && (
-                <div style={{ position: 'absolute', top: 0, right: 0, width: '400px', height: '100%', zIndex: 20, background: 'white', boxShadow: '-2px 0 5px rgba(0,0,0,0.1)' }}>
+                <div style={{ position: 'absolute', top: 0, right: 0, width: '400px', height: '100%', zIndex: 20, background: themeMode === 'dark' ? '#1f1f1f' : 'white', boxShadow: '-2px 0 5px rgba(0,0,0,0.1)' }}>
                     <SafetyTreeView
                         onFailureSelect={(failure) => {
                             console.log('Failure selected:', failure);

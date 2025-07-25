@@ -126,7 +126,7 @@ export const buildFlowDiagram = (safetyGraph: SafetyGraphData): { nodes: Node[],
                             target: effectOcc.componentUuid,
                             sourceHandle,
                             targetHandle,
-                            type: 'interactive',
+                            type: 'smoothstep',
                             animated: false,
                             style: {
                                 strokeWidth: 1.5,

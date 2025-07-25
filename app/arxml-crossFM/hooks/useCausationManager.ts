@@ -63,7 +63,7 @@ export const useCausationManager = (nodes: Node[], setEdges: Dispatch<SetStateAc
                     target: params.target!,
                     sourceHandle: params.sourceHandle,
                     targetHandle: params.targetHandle,
-                    type: 'interactive',
+                    type: 'smoothstep',
                     animated: false,
                     style: {
                         strokeWidth: 1.5,
