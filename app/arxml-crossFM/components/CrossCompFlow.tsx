@@ -252,6 +252,8 @@ const SwComponentNode = memo(({ data, id }: NodeProps<SwComponentNodeData>) => {
   );
 });
 
+SwComponentNode.displayName = 'SwComponentNode';
+
 const nodeTypes = { swComponent: SwComponentNode };
 
 export default function CrossCompFlow() {
