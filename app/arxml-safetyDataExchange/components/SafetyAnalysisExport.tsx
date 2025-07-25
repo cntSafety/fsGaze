@@ -23,7 +23,7 @@ const SafetyAnalysisExport: React.FC<SafetyAnalysisExportProps> = ({ style }) =>
         icon={<ExportOutlined />}
         onClick={handleNavigateToExport}
       >
-        Export Safety Analysis
+        View and Export Safety Analysis
       </Button>
     </div>
   );

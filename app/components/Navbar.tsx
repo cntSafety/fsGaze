@@ -66,11 +66,11 @@ const menuItemsDef: MenuItemDef[] = [
         label: 'Software',
         icon: HiOutlineCode,
         items: [
-            { label: 'ARXML Importer', href: '/arxml-importer', isActive: true },
-            { label: 'Architecture Viewer', href: '/arxml-archViewer', isActive: true },
-            { label: 'SW Safety Tables', href: '/arxml-safety', isActive: true },
-            { label: 'Failure Chain', href: '/arxml-crossFM', isActive: true },
+            // { label: 'ARXML Importer', href: '/arxml-importer', isActive: true },
             { label: 'Data and Reports', href: '/arxml-safetyDataExchange', isActive: true },
+            { label: 'Architecture Viewer', href: '/arxml-archViewer', isActive: true },
+            { label: 'SW Safety Analysis', href: '/arxml-safety', isActive: true },
+            { label: 'Failure Chain', href: '/arxml-crossFM', isActive: true },
             { label: 'Safety Tasks', href: '/arxml-safety-status', isActive: true },
             { label: 'SW Flow', href: '/arxml-flowViewer', isActive: true }
         ]

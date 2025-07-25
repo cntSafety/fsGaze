@@ -7,6 +7,7 @@ import { getSafetyGraph } from '@/app/services/neo4j/queries/safety/exportGraph'
 import { importFullGraph } from '@/app/services/neo4j/queries/general';
 import StatusDB, { StatusDBRef } from '@/app/components/statusDB';
 import SafetyAnalysisExport from './SafetyAnalysisExport';
+import Link from 'next/link';
 
 const { Title, Paragraph } = Typography;
 
@@ -882,7 +883,7 @@ const SafetyDataExchange: React.FC = () => {
     },
     {
       key: 'safety-csv',
-      label: 'Safety CSV',
+      label: 'Safety Analysis Reports',
       children: (
         <Card title="Export Safety Analysis to CSV">
           <Space direction="vertical" style={{ width: '100%' }}>
@@ -978,6 +979,31 @@ const SafetyDataExchange: React.FC = () => {
             )}
           </Card>
         </Space>
+      ),
+    },
+    {
+      key: 'arxml-import',
+      label: 'ARXML-Import',
+      children: (
+        <Card title="ARXML Import for SW Safety Analysis">
+          <Typography.Paragraph>
+            <strong>Upload your ARXML files</strong><br/>
+            To prepare for SW Safety Analysis, upload your ARXML files here. This step extracts the main software architecture data, including SW Components and Interfaces.<br/>
+            <br/>
+            <strong>When to re-import:</strong> If you update your ARXML files, you must re-import them. After re-importing, use the <strong>Graph-as-Code</strong> export to save the updated graph for version control (e.g., with git). You can then reload the graph-as-code files to restore the full state.
+          </Typography.Paragraph>
+          <Typography.Paragraph type="secondary">
+            <InfoCircleOutlined style={{ marginRight: 8 }} />
+            <strong>About Graph-as-Code:</strong> The graph-as-code concept means your SW architecture and safety data are stored as structured files (JSON in our case) that can be versioned, merged, and reviewed in git, just like source code. This enables collaborative modeling, change tracking, and easy restoration of any state.
+          </Typography.Paragraph>
+          <Typography.Paragraph>
+            <Link href="/arxml-importer" legacyBehavior>
+              <a target="_blank" rel="noopener noreferrer">
+                <Button type="primary" icon={<UploadOutlined />}>Go to ARXML Importer</Button>
+              </a>
+            </Link>
+          </Typography.Paragraph>
+        </Card>
       ),
     },
   ];

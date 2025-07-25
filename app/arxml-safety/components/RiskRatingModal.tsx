@@ -363,7 +363,7 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
     }
 
     // Add "Create New" button for edit and tabs modes
-    if ((mode === 'edit' || mode === 'tabs') && onCreateNew) {
+/*     if ((mode === 'edit' || mode === 'tabs') && onCreateNew) {
       buttons.push(
         <Button
           key="createNew"
@@ -375,7 +375,7 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
           New Rating Version
         </Button>
       );
-    }
+    } */
 
     // Add Save/Update button
     buttons.push(
