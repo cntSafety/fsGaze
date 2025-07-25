@@ -96,7 +96,13 @@ export async function getSafetyNodesForComponent(componentUuid: string): Promise
                     recordObj[key] = value;
                 }
             });
-            
+            // Add RiskScore if all three values are present and numbers
+            const sev = recordObj['Severity'];
+            const occ = recordObj['Occurrence'];
+            const det = recordObj['Detection'];
+            recordObj['RiskScore'] = (typeof sev === 'number' && typeof occ === 'number' && typeof det === 'number')
+                ? sev * occ * det
+                : null;
             return recordObj;
         });        
         return {

@@ -273,13 +273,13 @@ const RiskRatingModal: React.FC<RiskRatingModalProps> = ({
         <Divider />
         <Form.Item
           name="ratingComment"
-          label="Rating Comment (Optional)"
+          label="Rating Text"
         >
           <TextArea
             placeholder="Add any additional comments about this risk rating..."
             rows={3}
             showCount
-            maxLength={500}
+            maxLength={1000}
           />
         </Form.Item>
 
