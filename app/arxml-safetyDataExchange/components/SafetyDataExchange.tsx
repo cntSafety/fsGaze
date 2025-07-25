@@ -7,6 +7,7 @@ import { getSafetyGraph } from '@/app/services/neo4j/queries/safety/exportGraph'
 import { importFullGraph } from '@/app/services/neo4j/queries/general';
 import StatusDB, { StatusDBRef } from '@/app/components/statusDB';
 import SafetyAnalysisExport from './SafetyAnalysisExport';
+import SafetyStatistics from './SafetyStatistics';
 import Link from 'next/link';
 
 const { Title, Paragraph } = Typography;
@@ -184,7 +185,7 @@ const SafetyDataExchange: React.FC = () => {
           const writable = await fileHandle.createWritable();
           await writable.write(content);
           await writable.close();
-          
+
           console.log(`File saved successfully: ${suggestedName}`);
           return true;
         } catch (err: any) {
@@ -264,7 +265,7 @@ const SafetyDataExchange: React.FC = () => {
       console.log(`[EXPORT] Server response received in ${totalTime}ms`);
 
       setFullGraphExportLogs(prev => [
-        ...prev, 
+        ...prev,
         `[INFO] Server processing completed in ${totalTime}ms`,
         '[INFO] Downloading ZIP file...'
       ]);
@@ -276,7 +277,7 @@ const SafetyDataExchange: React.FC = () => {
       // Generate filename with current date
       const date = new Date().toISOString().split('T')[0];
       const filename = `graph-export-${date}.zip`;
-      
+
       // Use File System Access API for download
       const saved = await saveFileWithFileSystemAPI(
         blob,
@@ -284,16 +285,16 @@ const SafetyDataExchange: React.FC = () => {
         'application/zip',
         'ZIP files'
       );
-      
+
       const downloadTime = Date.now() - startTime;
       console.log(`[EXPORT] Download completed in ${downloadTime}ms`);
       setFullGraphExportLogs(prev => [
-        ...prev, 
+        ...prev,
         `[SUCCESS] ZIP file ${saved ? 'saved' : 'downloaded'} successfully!`,
         `[INFO] File size: ${fileSize} MB`,
         `[INFO] Total time: ${downloadTime}ms`
       ]);
-      
+
       // Show success message
       setTimeout(() => {
         Modal.success({
@@ -314,17 +315,17 @@ const SafetyDataExchange: React.FC = () => {
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
+
       // Ensure modal and state are set if they weren't already
       if (!showFullGraphExportModal) {
         setShowFullGraphExportModal(true);
         setIsExportingFullGraph(true);
         setFullGraphExportLogs(['[ERROR] Export failed before completion']);
       }
-      
+
       setFullGraphExportError(`Export failed: ${errorMessage}`);
       setFullGraphExportLogs(prev => [...prev, `[ERROR] ${errorMessage}`]);
-      
+
       console.error('[EXPORT] Export failed:', error);
     } finally {
       setIsExportingFullGraph(false);
@@ -363,7 +364,7 @@ const SafetyDataExchange: React.FC = () => {
 
   const handleFullGraphImport = async () => {
     console.log('[DEBUG] handleFullGraphImport called');
-    
+
     if (parsedNodes.length === 0 || parsedRelationships.length === 0) {
       setFullGraphImportError('No parsed graph data available. Please select a folder first.');
       return;
@@ -372,7 +373,7 @@ const SafetyDataExchange: React.FC = () => {
     setIsImportingFullGraph(true);
     // Keep existing logs, just add new ones
     setFullGraphImportLogs(prev => [
-      ...prev, 
+      ...prev,
       '[INFO] Starting database import operation...',
       '[WARNING] This operation will COMPLETELY WIPE the current database!'
     ]);
@@ -382,24 +383,24 @@ const SafetyDataExchange: React.FC = () => {
     try {
       console.log('[DEBUG] About to call importFullGraph with pre-parsed data...');
       const startTime = Date.now();
-      
+
       // Define the progress callback
       const onProgress = (message: string) => {
         setFullGraphImportLogs(prev => [...prev, message]);
       };
-      
+
       // Call the import function directly with the pre-parsed data and the callback
       const result = await importFullGraph(parsedNodes, parsedRelationships, onProgress);
-      
+
       const duration = Date.now() - startTime;
       console.log(`[DEBUG] importFullGraph completed in ${duration}ms`);
       console.log('[DEBUG] importFullGraph result:', result);
-      
+
       if (!result.success) {
         console.log('[DEBUG] Import failed:', result);
         throw new Error(result.message || 'Import failed');
       }
-      
+
       console.log('[DEBUG] Import successful:', result);
       setFullGraphImportLogs(prev => [
         ...prev,
@@ -409,18 +410,18 @@ const SafetyDataExchange: React.FC = () => {
         `[INFO] Constraints created: ${result.stats?.constraintsCreated || 'N/A'}`,
         `[INFO] Database performance: ${result.stats?.duration || 'N/A'}ms`,
       ]);
-      
+
       // Clear selected files and parsed data after successful import
       console.log('[DEBUG] Clearing selected files and refreshing status...');
       setSelectedImportFiles([]);
       setParsedNodes([]);
       setParsedRelationships([]);
-      
+
       // Refresh database status
       if (statusDBRef.current) {
         statusDBRef.current.refresh();
       }
-      
+
       // Show success modal
       setTimeout(() => {
         Modal.success({
@@ -439,7 +440,7 @@ const SafetyDataExchange: React.FC = () => {
           ),
         });
       }, 1000);
-      
+
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('[DEBUG] Import error:', error);
@@ -455,32 +456,32 @@ const SafetyDataExchange: React.FC = () => {
   const handleImportFileSelect = async (fileList: any[]) => {
     console.log('[DEBUG] handleImportFileSelect called with fileList.length:', fileList.length);
     const startTime = Date.now();
-  
+
     // The modal is already visible, now we process the files
     const files = fileList.map(f => f.originFileObj!).filter(Boolean);
     console.log('[DEBUG] Filtered files count:', files.length);
-    
+
     setSelectedImportFiles(files);
     setParsedNodes([]);
     setParsedRelationships([]);
     setFullGraphImportError(null);
     setFullGraphImportLogs([`[INFO] Analyzing and parsing ${files.length} selected files...`]);
-  
+
     if (files.length === 0) {
       console.log('[DEBUG] No files selected');
       setFullGraphImportLogs([]);
       setIsImportingFullGraph(false);
       return;
     }
-  
+
     // Asynchronous validation and parsing in batches to prevent UI freeze
     console.log('[DEBUG] Starting async batched file parsing...');
-    
+
     let hasRelationships = false;
     const allParsedNodes: any[] = [];
     let tempRelationships: any[] = [];
     const batchSize = 100; // Smaller batch size for parsing
-  
+
     for (let i = 0; i < files.length; i += batchSize) {
       const batch = files.slice(i, i + batchSize);
       const promises = batch.map(async (file) => {
@@ -520,7 +521,7 @@ const SafetyDataExchange: React.FC = () => {
       // Flatten the results, as some items in parsedBatchResults might be arrays of nodes
       const newNodes = parsedBatchResults.flat().filter(Boolean);
       allParsedNodes.push(...newNodes);
-  
+
       // Update progress and yield to the main thread
       const processedCount = Math.min(i + batchSize, files.length);
       const progressMessage = `[INFO] Parsed ${processedCount} / ${files.length} files...`;
@@ -533,15 +534,15 @@ const SafetyDataExchange: React.FC = () => {
         }
         return newLogs;
       });
-      
+
       // Yield to the event loop to allow UI updates
-      await new Promise(resolve => setTimeout(resolve, 0)); 
+      await new Promise(resolve => setTimeout(resolve, 0));
     }
-    
+
     setParsedNodes(allParsedNodes);
     setParsedRelationships(tempRelationships);
     const validationTime = Date.now() - startTime;
-    
+
     if (!hasRelationships) {
       console.log('[DEBUG] Missing relationships.json');
       setFullGraphImportError('Missing relationships.json file. Please select the complete graph export folder.');
@@ -560,7 +561,7 @@ const SafetyDataExchange: React.FC = () => {
         '[READY] Click "Import Complete Graph" to proceed with wipe-and-load operation.'
       ]);
     }
-    
+
     // Stop the spinner after validation is complete
     setIsImportingFullGraph(false);
     console.log(`[DEBUG] handleImportFileSelect completed in ${Date.now() - startTime}ms`);
@@ -741,7 +742,7 @@ const SafetyDataExchange: React.FC = () => {
     setUploadLogs([]);
     setUploadError(null);
     setShowPostImportStats(false);
-    
+
     try {
       const response = await fetch('/api/safety-graph/import', {
         method: 'POST',
@@ -756,14 +757,14 @@ const SafetyDataExchange: React.FC = () => {
         setImportedData(null); // Clear preview after successful upload
         setImportedFileName(null);
         setShowPostImportStats(true);
-        
+
         // Trigger StatusDB refresh after successful import
         if (statusDBRef.current) {
           statusDBRef.current.refresh();
         }
       } else {
         setUploadError(result.message || 'Failed to upload data to Neo4j.');
-        if(result.logs) {
+        if (result.logs) {
           setUploadLogs(result.logs);
         }
       }
@@ -803,17 +804,17 @@ const SafetyDataExchange: React.FC = () => {
           <Card title="Full Graph Export (ZIP Archive)">
             <Space direction="vertical" style={{ width: '100%' }}>
               <div>
-                <Button 
-                  type="primary" 
-                  icon={<ExportOutlined />} 
-                  onClick={handleFullGraphExport} 
+                <Button
+                  type="primary"
+                  icon={<ExportOutlined />}
+                  onClick={handleFullGraphExport}
                   loading={isExportingFullGraph}
                 >
                   Export Complete Graph as ZIP
                 </Button>
               </div>
               <Paragraph style={{ margin: 0, fontSize: '14px', color: '#666' }}>
-                Exports the entire Neo4j graph as a ZIP archive containing organized files by node labels and relationships. 
+                Exports the entire Neo4j graph as a ZIP archive containing organized files by node labels and relationships.
                 Fast server-side processing with a single download. Works in all browsers.
                 Uses optimized queries and parallel file writing for better performance.
                 Creates a Git-friendly structure for version control and collaborative editing.
@@ -825,8 +826,8 @@ const SafetyDataExchange: React.FC = () => {
             <Space direction="vertical" style={{ width: '100%' }}>
               <div>
                 <Button icon={<UploadOutlined />} disabled={isImportingFullGraph} onClick={handleFolderSelect}>
-                  {selectedImportFiles.length > 0 
-                    ? `Selected ${selectedImportFiles.length} files` 
+                  {selectedImportFiles.length > 0
+                    ? `Selected ${selectedImportFiles.length} files`
                     : "Select Graph Export Folder (unzip archive first)"}
                 </Button>
                 <input
@@ -842,7 +843,7 @@ const SafetyDataExchange: React.FC = () => {
                     setShowFullGraphImportModal(true);
                     setIsImportingFullGraph(true);
                     setFullGraphImportLogs(['[INFO] Preparing file list... This may take a moment for large folders.']);
-                    
+
                     const antdFileList = Array.from(e.target.files).map(file => ({ originFileObj: file }));
 
                     setTimeout(() => {
@@ -867,12 +868,12 @@ const SafetyDataExchange: React.FC = () => {
                 Select the folder that contains the &ldquo;nodes/&rdquo; directory and &ldquo;relationships.json&rdquo; file from a previous export.
                 This is a three-phase atomic operation: (1) Wipe database, (2) Create nodes, (3) Create relationships.
               </Paragraph>
-                <Paragraph style={{ margin: 0, fontSize: '14px', color: '#666' }}>
+              <Paragraph style={{ margin: 0, fontSize: '14px', color: '#666' }}>
                 <strong>Note:</strong> To extract the ZIP file, you can use the commands shown here.
                 <Popover content={unzipHelpContent} title="Extraction Commands" trigger="hover">
                   <InfoCircleOutlined style={{ marginLeft: 8, color: '#1677ff', cursor: 'pointer' }} />
                 </Popover>
-                </Paragraph>
+              </Paragraph>
               {fullGraphImportError && (
                 <Alert message={fullGraphImportError} type="error" showIcon style={{ marginTop: 8 }} />
               )}
@@ -885,15 +886,25 @@ const SafetyDataExchange: React.FC = () => {
       key: 'safety-csv',
       label: 'Safety Analysis Reports',
       children: (
-        <Card title="Export Safety Analysis to CSV">
-          <Space direction="vertical" style={{ width: '100%' }}>
-            <SafetyAnalysisExport />
-            <Paragraph style={{ margin: 0, fontSize: '14px', color: '#666' }}>
-              Exports safety analysis data for all SW components to a CSV file. 
-              This includes component safety notes, failure modes, risk ratings, and associated tasks.
-            </Paragraph>
-          </Space>
-        </Card>
+        <Space direction="vertical" style={{ width: '100%' }} size={24}>
+          <Card title="Export Safety Analysis to CSV">
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <SafetyAnalysisExport />
+              <Paragraph style={{ margin: 0, fontSize: '14px', color: '#666' }}>
+                Exports safety analysis data for all SW components to a CSV file. 
+                This includes component safety notes, failure modes, risk ratings, and associated tasks.
+              </Paragraph>
+            </Space>
+          </Card>
+          <Card title="Safety Analysis Statistics">
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Paragraph style={{ margin: 0, fontSize: '14px', color: '#666' }}>
+                Status for the safety analysis
+              </Paragraph>
+              <SafetyStatistics />
+            </Space>
+          </Card>
+        </Space>
       ),
     },
     {
@@ -967,13 +978,13 @@ const SafetyDataExchange: React.FC = () => {
                 />
               </Card>
             )}
-            
+
             {/* Show updated database status after successful import */}
             {showPostImportStats && uploadLogs.length > 0 && (
-              <Alert 
-                message="Import completed successfully! Click 'DB Status and Info' to view updated database statistics." 
-                type="success" 
-                showIcon 
+              <Alert
+                message="Import completed successfully! Click 'DB Status and Info' to view updated database statistics."
+                type="success"
+                showIcon
                 style={{ marginTop: 16 }}
               />
             )}
@@ -987,9 +998,9 @@ const SafetyDataExchange: React.FC = () => {
       children: (
         <Card title="ARXML Import for SW Safety Analysis">
           <Typography.Paragraph>
-            <strong>Upload your ARXML files</strong><br/>
-            To prepare for SW Safety Analysis, upload your ARXML files here. This step extracts the main software architecture data, including SW Components and Interfaces.<br/>
-            <br/>
+            <strong>Upload your ARXML files</strong><br />
+            To prepare for SW Safety Analysis, upload your ARXML files here. This step extracts the main software architecture data, including SW Components and Interfaces.<br />
+            <br />
             <strong>When to re-import:</strong> If you update your ARXML files, you must re-import them. After re-importing, use the <strong>Graph-as-Code</strong> export to save the updated graph for version control (e.g., with git). You can then reload the graph-as-code files to restore the full state.
           </Typography.Paragraph>
           <Typography.Paragraph type="secondary">
@@ -1017,9 +1028,9 @@ const SafetyDataExchange: React.FC = () => {
 
       {/* DB Status Button */}
       <div style={{ marginBottom: 16 }}>
-        <Button 
-          type="default" 
-          icon={<DatabaseOutlined />} 
+        <Button
+          type="default"
+          icon={<DatabaseOutlined />}
           onClick={handleOpenStatusModal}
         >
           DB Status and Info
@@ -1059,17 +1070,17 @@ const SafetyDataExchange: React.FC = () => {
             </Spin>
           </div>
         )}
-        
+
         {fullGraphExportError && (
-          <Alert 
-            message="Export Failed" 
-            description={fullGraphExportError} 
-            type="error" 
-            showIcon 
-            style={{ marginBottom: 16 }} 
+          <Alert
+            message="Export Failed"
+            description={fullGraphExportError}
+            type="error"
+            showIcon
+            style={{ marginBottom: 16 }}
           />
         )}
-        
+
         {fullGraphExportLogs.length > 0 && (
           <Card title="Export Logs" size="small">
             <Input.TextArea
@@ -1100,17 +1111,17 @@ const SafetyDataExchange: React.FC = () => {
             </Spin>
           </div>
         )}
-        
+
         {fullGraphImportError && (
-          <Alert 
-            message="Import Failed" 
-            description={fullGraphImportError} 
-            type="error" 
-            showIcon 
-            style={{ marginBottom: 16 }} 
+          <Alert
+            message="Import Failed"
+            description={fullGraphImportError}
+            type="error"
+            showIcon
+            style={{ marginBottom: 16 }}
           />
         )}
-        
+
         {fullGraphImportLogs.length > 0 && (
           <Card title="Import Logs" size="small">
             <Input.TextArea
