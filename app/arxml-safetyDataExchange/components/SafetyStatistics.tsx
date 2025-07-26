@@ -8,6 +8,7 @@ import { getAllPortsForComponents } from '@/app/services/neo4j/queries/ports';
 import { getFailuresAndCountsForPorts } from '@/app/services/neo4j/queries/safety/failureModes';
 import type { Key } from 'react';
 import { theme } from 'antd';
+import { getAsilColor } from '@/app/components/asilColors';
 
 const SafetyStatistics: React.FC = () => {
     const [data, setData] = useState<any[]>([]);
@@ -87,6 +88,7 @@ const SafetyStatistics: React.FC = () => {
                         portCount: (portsByComponent[comp.uuid]?.receiver || 0) + (portsByComponent[comp.uuid]?.provider || 0),
                         missingFM: missingFMByComponent[comp.uuid] || 0,
                         riskScore: 0,
+                        maxAsil: '',
                     };
                 });
                 componentFMstatistics.data.forEach((fm: any) => {
@@ -103,6 +105,16 @@ const SafetyStatistics: React.FC = () => {
                         const det = Number(fm.Detection);
                         if (!isNaN(sev) && !isNaN(occ) && !isNaN(det)) {
                             statsMap[fm.swComponentUuid].riskScore += sev * occ * det;
+                        }
+                        // Track maximum ASIL
+                        const currentAsil = fm.asil;
+                        if (currentAsil) {
+                            const asilOrder = { 'QM': 0, 'TBC': 0, 'A': 1, 'B': 2, 'C': 3, 'D': 4 };
+                            const currentOrder = asilOrder[currentAsil as keyof typeof asilOrder] ?? -1;
+                            const maxOrder = asilOrder[statsMap[fm.swComponentUuid].maxAsil as keyof typeof asilOrder] ?? -1;
+                            if (currentOrder > maxOrder) {
+                                statsMap[fm.swComponentUuid].maxAsil = currentAsil;
+                            }
                         }
                     }
                 });
@@ -194,6 +206,21 @@ const SafetyStatistics: React.FC = () => {
             sorter: (a, b) => a.name.localeCompare(b.name),
         },
         {
+            title: 'ASIL Max',
+            dataIndex: 'maxAsil',
+            key: 'maxAsil',
+            sorter: (a, b) => {
+                const asilOrder = { 'QM': 0, 'TBC': 0, 'A': 1, 'B': 2, 'C': 3, 'D': 4 };
+                const aOrder = asilOrder[a.maxAsil as keyof typeof asilOrder] ?? -1;
+                const bOrder = asilOrder[b.maxAsil as keyof typeof asilOrder] ?? -1;
+                return aOrder - bOrder;
+            },
+            render: (asil: string) => {
+                if (!asil) return <span>-</span>;
+                return <Tag style={{ background: getAsilColor(asil), color: '#fff', border: 0 }}>{asil}</Tag>;
+            },
+        },
+        {
             title: 'Functional FM',
             dataIndex: 'FunctionFM',
             key: 'FunctionFM',
@@ -235,21 +262,11 @@ const SafetyStatistics: React.FC = () => {
             }
         },
         {
-            title: 'Open Safety Tasks',
-            dataIndex: 'openSafetyTasks',
-            key: 'openSafetyTasks',
-            sorter: (a, b) => a.openSafetyTasks - b.openSafetyTasks,
-            render: (count: number) => {
-                if (count === 0) {
-                    return <span>{count}</span>;
-                } else {
-                    return <Tag color="red">{count}</Tag>;
-                }
-            }
+            title: 'SafetyNote',
+            dataIndex: 'SafetyNote',
+            key: 'SafetyNote',
+            sorter: (a, b) => a.SafetyNote - b.SafetyNote,
         },
-
-
-        { title: 'SafetyNote', dataIndex: 'SafetyNote', key: 'SafetyNote', sorter: (a, b) => a.SafetyNote - b.SafetyNote },
         {
             title: 'Risk Score',
             dataIndex: 'riskScore',
@@ -270,7 +287,13 @@ const SafetyStatistics: React.FC = () => {
             title: 'Missing FM for ports',
             dataIndex: 'missingFM',
             key: 'missingFM',
-            render: (count: number) => <Tag color="red">{count}</Tag>,
+            render: (count: number) => {
+                if (count === 0) {
+                    return <Tag color="green">{count}</Tag>;
+                } else {
+                    return <Tag color="red">{count}</Tag>;
+                }
+            },
             sorter: (a, b) => a.missingFM - b.missingFM,
         },
     ];
