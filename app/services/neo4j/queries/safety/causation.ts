@@ -335,3 +335,149 @@ export const getCauseFailureModes = async (
     await session.close();
   }
 };
+
+/**
+ * Check ASIL matches and mismatches in causation relationships
+ * Returns all causations with their cause and effect failure modes, including ASIL levels
+ * and a status indicating whether the ASIL levels match, are a low-to-high escalation, are TBC, or are another type of mismatch.
+ * The logic is as follows:
+ *   - If ASILs are equal: MATCH
+ *   - If effect is D and cause is QM/A/B/C: LOWTOHIGH
+ *   - If effect is C and cause is QM/A/B: LOWTOHIGH
+ *   - If effect is B and cause is QM/A: LOWTOHIGH
+ *   - If effect is A and cause is QM: LOWTOHIGH
+ *   - If either ASIL is TBC: TBC
+ *   - If effect equals cause: MATCH
+ *   - Otherwise: OTHERMISMATCH
+ * @returns Promise with success status and data containing causation details with ASIL status
+ */
+export const checkASIL = async (): Promise<{
+  success: boolean;
+  data?: Array<{
+    causationUUID: string;
+    causationName: string | null;
+    causesFMName: string | null;
+    causesFMUUID: string;
+    causesFMASIL: string | null;
+    causeOccuranceName: string | null;
+    causeOccuranceUUID: string;
+    causeOccuranceType: string;
+    containingElementCauseName: string | null;
+    containingElementCauseUUID: string | null;
+    containingElementCauseType: string | null;
+    effectsFMName: string | null;
+    effectsFMUUID: string;
+    effectsFMASIL: string | null;
+    effectsOccuranceName: string | null;
+    effectsOccuranceUUID: string;
+    effectsOccuranceType: string;
+    containingElementEffectName: string | null;
+    containingElementEffectUUID: string | null;
+    containingElementEffectType: string | null;
+    asilStatus: 'MATCH' | 'LOWTOHIGH' | 'TBC' | 'OTHERMISMATCH';
+  }>;
+  message?: string;
+  error?: string;
+}> => {
+  const session = driver.session();
+  
+  try {
+    const result = await session.run(
+      `MATCH (causation:CAUSATION)
+       MATCH (causation)-[:FIRST]->(causesFM)
+       MATCH (causation)-[:THEN]->(effectsFM)
+       MATCH (causesFM)-[:OCCURRENCE]->(causeOccurance)
+       OPTIONAL MATCH (causeOccurance)<-[:CONTAINS]-(containingElementCause)
+       MATCH (effectsFM)-[:OCCURRENCE]->(effectsOccurance)
+       OPTIONAL MATCH (effectsOccurance)<-[:CONTAINS]-(containingElementEffect)
+       WHERE causesFM.asil IS NOT NULL AND effectsFM.asil IS NOT NULL
+       RETURN
+         causation.uuid as causationUUID,
+         causation.name as causationName,
+         causesFM.name as causesFMName,
+         causesFM.uuid as causesFMUUID,
+         causesFM.asil as causesFMASIL,
+         causeOccurance.name as causeOccuranceName,
+         causeOccurance.uuid as causeOccuranceUUID,
+         labels(causeOccurance)[0] as causeOccuranceType,
+         containingElementCause.name AS containingElementCauseName,
+         containingElementCause.uuid AS containingElementCauseUUID,
+         labels(containingElementCause)[0] as containingElementCauseType,
+         effectsFM.name as effectsFMName,
+         effectsFM.uuid as effectsFMUUID,
+         effectsFM.asil as effectsFMASIL,
+         effectsOccurance.name as effectsOccuranceName,
+         effectsOccurance.uuid as effectsOccuranceUUID,
+         labels(effectsOccurance)[0] as effectsOccuranceType,
+         containingElementEffect.name AS containingElementEffectName,
+         containingElementEffect.uuid AS containingElementEffectUUID,
+         labels(containingElementEffect)[0] as containingElementEffectType,
+         CASE
+           WHEN causesFM.asil = effectsFM.asil THEN 'MATCH'
+           WHEN effectsFM.asil = 'D' AND causesFM.asil IN ['QM','A','B','C'] THEN 'LOWTOHIGH'
+           WHEN effectsFM.asil = 'C' AND causesFM.asil IN ['QM','A','B'] THEN 'LOWTOHIGH'
+           WHEN effectsFM.asil = 'B' AND causesFM.asil IN ['QM','A'] THEN 'LOWTOHIGH'
+           WHEN effectsFM.asil = 'A' AND causesFM.asil = 'QM' THEN 'LOWTOHIGH'
+           WHEN effectsFM.asil = 'TBC' OR causesFM.asil = 'TBC' THEN 'TBC'
+           WHEN effectsFM.asil = causesFM.asil THEN 'MATCH'
+           ELSE 'OTHERMISMATCH'
+         END as asilStatus
+       ORDER BY asilStatus ASC, causesFM.asil, effectsFM.asil`
+    );
+
+    if (result.records.length === 0) {
+      return {
+        success: true,
+        data: [],
+        message: 'No causations found with valid ASIL levels for both cause and effect failure modes.',
+      };
+    }
+
+    const causations = result.records.map(record => ({
+      causationUUID: record.get('causationUUID'),
+      causationName: record.get('causationName'),
+      causesFMName: record.get('causesFMName'),
+      causesFMUUID: record.get('causesFMUUID'),
+      causesFMASIL: record.get('causesFMASIL'),
+      causeOccuranceName: record.get('causeOccuranceName'),
+      causeOccuranceUUID: record.get('causeOccuranceUUID'),
+      causeOccuranceType: record.get('causeOccuranceType'),
+      containingElementCauseName: record.get('containingElementCauseName'),
+      containingElementCauseUUID: record.get('containingElementCauseUUID'),
+      containingElementCauseType: record.get('containingElementCauseType'),
+      effectsFMName: record.get('effectsFMName'),
+      effectsFMUUID: record.get('effectsFMUUID'),
+      effectsFMASIL: record.get('effectsFMASIL'),
+      effectsOccuranceName: record.get('effectsOccuranceName'),
+      effectsOccuranceUUID: record.get('effectsOccuranceUUID'),
+      effectsOccuranceType: record.get('effectsOccuranceType'),
+      containingElementEffectName: record.get('containingElementEffectName'),
+      containingElementEffectUUID: record.get('containingElementEffectUUID'),
+      containingElementEffectType: record.get('containingElementEffectType'),
+      asilStatus: record.get('asilStatus') as 'MATCH' | 'LOWTOHIGH' | 'TBC' | 'OTHERMISMATCH',
+    }));
+
+    const matchCount = causations.filter(c => c.asilStatus === 'MATCH').length;
+    const lowToHighCount = causations.filter(c => c.asilStatus === 'LOWTOHIGH').length;
+    const tbcCount = causations.filter(c => c.asilStatus === 'TBC').length;
+    const otherMismatchCount = causations.filter(c => c.asilStatus === 'OTHERMISMATCH').length;
+
+    return {
+      success: true,
+      data: causations,
+      message: `Found ${causations.length} causations with ASIL analysis: ${matchCount} matches, ${lowToHighCount} low-to-high escalations, ${tbcCount} TBC, ${otherMismatchCount} other mismatches.`,
+    };
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error(`❌ Error checking ASIL in causations:`, error);
+    
+    return {
+      success: false,
+      message: "Error checking ASIL in causations.",
+      error: errorMessage,
+    };
+  } finally {
+    await session.close();
+  }
+};
