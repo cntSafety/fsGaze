@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Table, Tag, Space, Typography, Modal } from 'antd';
+import { Table, Tag, Space, Typography, Modal, Button, message, Popconfirm } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { getAsilColor } from '@/app/components/asilColors';
 import Link from 'next/link';
+import { deleteCausationNode } from '@/app/services/neo4j/queries/safety/causation';
 
 const { Text } = Typography;
 
@@ -33,15 +34,43 @@ export interface ASILMismatchData {
 interface MismatchTableProps {
   data: ASILMismatchData[];
   loading: boolean;
+  onDataRefresh?: () => void;
 }
 
-const MismatchTable: React.FC<MismatchTableProps> = ({ data, loading }) => {
+const MismatchTable: React.FC<MismatchTableProps> = ({ data, loading, onDataRefresh }) => {
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedCausation, setSelectedCausation] = useState<ASILMismatchData | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const handleRowClick = (record: ASILMismatchData) => {
     setSelectedCausation(record);
     setModalVisible(true);
+  };
+
+  const handleDeleteCausation = async () => {
+    if (!selectedCausation) return;
+    
+    setDeleteLoading(true);
+    try {
+      const result = await deleteCausationNode(selectedCausation.causationUUID);
+      
+      if (result.success) {
+        message.success(result.message);
+        setModalVisible(false);
+        setSelectedCausation(null);
+        // Refresh the data if callback is provided
+        if (onDataRefresh) {
+          onDataRefresh();
+        }
+      } else {
+        message.error(result.message || 'Failed to delete causation');
+      }
+    } catch (error) {
+      console.error('Error deleting causation:', error);
+      message.error('An error occurred while deleting the causation');
+    } finally {
+      setDeleteLoading(false);
+    }
   };
 
   const isValidComponentType = (type: string | null): boolean => {
@@ -210,7 +239,28 @@ const MismatchTable: React.FC<MismatchTableProps> = ({ data, loading }) => {
         title="Causation Details"
         open={modalVisible}
         onCancel={() => setModalVisible(false)}
-        footer={null}
+        footer={[
+          <Button key="cancel" onClick={() => setModalVisible(false)}>
+            Close
+          </Button>,
+          <Popconfirm
+            key="delete"
+            title="Delete Causation"
+            description="Are you sure you want to delete this causation? This action cannot be undone."
+            onConfirm={handleDeleteCausation}
+            okText="Yes"
+            cancelText="No"
+            okType="danger"
+          >
+            <Button 
+              type="primary" 
+              danger 
+              loading={deleteLoading}
+            >
+              Delete Causation
+            </Button>
+          </Popconfirm>
+        ]}
         width={500}
       >
         {selectedCausation && (

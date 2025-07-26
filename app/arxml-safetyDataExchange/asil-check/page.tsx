@@ -126,7 +126,7 @@ const ASILCheckPage: React.FC = () => {
         </Card>
 
         <Card title="Causation Analysis Results">
-          <MismatchTable data={data} loading={loading} />
+          <MismatchTable data={data} loading={loading} onDataRefresh={fetchASILData} />
         </Card>
       </Space>
     </div>
