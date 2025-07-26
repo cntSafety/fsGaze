@@ -476,8 +476,12 @@ export const getFailuresAndCountsForComponents = async (
         failureMode.created AS created,
         count(DISTINCT rr) AS riskRatingCount,
         count(DISTINCT t) AS safetyTaskCount,
+        count(DISTINCT CASE WHEN t.status = 'finished' THEN t END) AS finishedTaskCount,
         count(DISTINCT req) AS safetyReqCount,
-        count(DISTINCT n) AS safetyNoteCount
+        count(DISTINCT n) AS safetyNoteCount,
+         rr.Severity as Severity, 
+         rr.Occurrence as Occurrence, 
+         rr.Detection as Detection
       ORDER BY swc.name, failureMode.created ASC
     `;
 
@@ -492,8 +496,12 @@ export const getFailuresAndCountsForComponents = async (
       created: record.get('created'),
       riskRatingCount: record.get('riskRatingCount').low,
       safetyTaskCount: record.get('safetyTaskCount').low,
+      finishedTaskCount: record.get('finishedTaskCount').low,
       safetyReqCount: record.get('safetyReqCount').low,
       safetyNoteCount: record.get('safetyNoteCount').low,
+      Severity: record.get('Severity'),
+      Occurrence: record.get('Occurrence'),
+      Detection: record.get('Detection'), 
     }));
     
     return { success: true, data };
