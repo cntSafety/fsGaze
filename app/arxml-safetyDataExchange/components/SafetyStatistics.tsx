@@ -52,7 +52,7 @@ const SafetyStatistics: React.FC = () => {
                 });
             }
             // Get missing FM for ports
-            let missingFMByComponent: Record<string, number> = {};
+            const missingFMByComponent: Record<string, number> = {};
             if (allPortUuids.length > 0) {
                 const portFMStats = await getFailuresAndCountsForPorts(allPortUuids);
                 if (portFMStats.success && portFMStats.data) {
@@ -193,7 +193,9 @@ const SafetyStatistics: React.FC = () => {
     };
 
     const handleReset = (clearFilters: (() => void) | undefined) => {
-        clearFilters && clearFilters();
+        if (clearFilters) {
+            clearFilters();
+        }
         setSearchText('');
     };
 
