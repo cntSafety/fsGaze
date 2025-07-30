@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Table, Tag, Button, Space, Input } from 'antd';
+import { DownloadOutlined } from '@ant-design/icons';
 import type { ColumnType, TableProps } from 'antd/es/table';
 import Link from 'next/link';
 import { getApplicationSwComponents } from '@/app/services/neo4j/queries/components';
@@ -199,6 +200,62 @@ const SafetyStatistics: React.FC = () => {
         setSearchText('');
     };
 
+    const exportToCSV = useCallback(() => {
+        if (data.length === 0) {
+            return;
+        }
+
+        // Define CSV headers
+        const headers = [
+            'Component Name',
+            'ASIL Max',
+            'Functional FM',
+            'RiskRating',
+            'SafetyReq',
+            'SafetyNote', 
+            'Risk Score',
+            'Port Count',
+            'Missing FM for Ports'
+        ];
+
+        // Convert data to CSV format
+        const csvData = data.map(row => [
+            row.name || '',
+            row.maxAsil || '',
+            row.FunctionFM || 0,
+            row.RiskRating || 0,
+            row.SafetyReq || 0,
+            row.SafetyNote || 0,
+            row.riskScore || 0,
+            row.portCount || 0,
+            row.missingFM || 0
+        ]);
+
+        // Combine headers and data
+        const csvContent = [headers, ...csvData]
+            .map(row => row.map(field => {
+                // Escape quotes and wrap in quotes if contains comma, quote, or newline
+                const stringField = String(field);
+                if (stringField.includes(',') || stringField.includes('"') || stringField.includes('\n')) {
+                    return `"${stringField.replace(/"/g, '""')}"`;
+                }
+                return stringField;
+            }).join(','))
+            .join('\n');
+
+        // Create and trigger download
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `safety_statistics_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }, [data]);
+
     const columns: TableProps<any>["columns"] = [
         {
             title: 'Component Name',
@@ -302,9 +359,19 @@ const SafetyStatistics: React.FC = () => {
 
     return (
         <Space direction="vertical" style={{ width: '100%' }} size={16}>
-            <Button onClick={fetchData} loading={loading} type="default">
-                Refresh
-            </Button>
+            <Space>
+                <Button onClick={fetchData} loading={loading} type="default">
+                    Refresh
+                </Button>
+                <Button 
+                    onClick={exportToCSV} 
+                    disabled={data.length === 0} 
+                    icon={<DownloadOutlined />}
+                    type="primary"
+                >
+                    Export to CSV
+                </Button>
+            </Space>
             <div style={{ overflowX: 'auto' }}>
                 <Table
                     columns={columns}
