@@ -1,8 +1,8 @@
 'use client';
 // Arch Viewer supports display of all ports
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
-import { TreeSelect, Spin, Typography, Card, Button, Space, Dropdown, Menu, Input, notification, Collapse, Switch, Badge, Modal, Descriptions } from 'antd';
-import { MenuFoldOutlined, MenuUnfoldOutlined, UsergroupAddOutlined, LinkOutlined, DeleteOutlined, InfoCircleOutlined, SaveOutlined, UploadOutlined, CopyOutlined, ExpandOutlined, NodeIndexOutlined } from '@ant-design/icons';
+import { TreeSelect, Spin, Typography, Card, Button, Space, Dropdown, Menu, Input, notification, Collapse } from 'antd';
+import { MenuFoldOutlined, MenuUnfoldOutlined, UsergroupAddOutlined, LinkOutlined, DeleteOutlined, InfoCircleOutlined, SaveOutlined, UploadOutlined, CopyOutlined } from '@ant-design/icons';
 import ReactFlow, {
     Controls,
     Background,
@@ -40,167 +40,73 @@ const getAsilColorWithOpacity = (asil: string, opacity: number = 0.7) => {
     return baseColor; // Fallback for any other color format
 };
 
-const CustomNode = ({ data }: { data: CondensedNodeData & { condensed?: boolean } }) => {
-    const { condensed = false } = data;
+const CustomNode = ({ data }: { data: { label: string, component: SWComponent, providerPorts: PortInfo[], receiverPorts: PortInfo[] } }) => {
+    const maxPorts = Math.max(data.providerPorts.length, data.receiverPorts.length);
+    const nodeHeight = Math.max(60, 30 + maxPorts * 15);
     
-    if (condensed) {
-        // Condensed view: single handles per side
-        return (
+    return (
+        <div style={{ 
+            width: '100%',
+            height: '100%',
+            position: 'relative',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '8px 12px',
+            boxSizing: 'border-box'
+        }}>
+            {/* Receiver ports on the left */}
+            {data.receiverPorts.map((port, index) => (
+                <Handle
+                    key={`receiver-${port.uuid}`}
+                    type="target"
+                    position={Position.Left}
+                    id={port.uuid}
+                    style={{ 
+                        top: `${25 + (index * 15)}px`,
+                        left: '-4px',
+                        background: '#6b7280',
+                        border: '2px solid #ffffff',
+                        width: '8px',
+                        height: '8px',
+                        borderRadius: '50%'
+                    }}
+                    isConnectable={true}
+                />
+            ))}
+            
             <div style={{ 
-                width: '100%',
-                height: '100%',
-                position: 'relative',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '8px 12px',
-                boxSizing: 'border-box',
-                minHeight: '60px'
+                textAlign: 'center',
+                fontSize: '12px',
+                fontWeight: 600,
+                color: 'inherit',
+                wordBreak: 'break-word',
+                lineHeight: '1.2'
             }}>
-                {/* Single input handle if component has incoming connections */}
-                {data.hasReceiverConnections && (
-                    <Handle
-                        type="target"
-                        position={Position.Left}
-                        id={`${data.component.uuid}-input`}
-                        style={{ 
-                            left: '-6px',
-                            background: '#52c41a',
-                            border: '2px solid #ffffff',
-                            width: '12px',
-                            height: '12px',
-                            borderRadius: '50%'
-                        }}
-                        isConnectable={true}
-                    />
-                )}
-                
-                {/* Component name with connection count badges */}
-                <div style={{ 
-                    textAlign: 'center',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    color: 'inherit',
-                    wordBreak: 'break-word',
-                    lineHeight: '1.2',
-                    position: 'relative'
-                }}>
-                    {data.label}
-                    {/* Connection count badges */}
-                    {(data.connectionCounts.incoming > 0 || data.connectionCounts.outgoing > 0) && (
-                        <div style={{ 
-                            position: 'absolute', 
-                            top: '-20px', 
-                            right: '-10px',
-                            display: 'flex',
-                            gap: '4px'
-                        }}>
-                            {data.connectionCounts.incoming > 0 && (
-                                <Badge 
-                                    count={data.connectionCounts.incoming} 
-                                    style={{ backgroundColor: '#52c41a', fontSize: '10px' }}
-                                    title={`${data.connectionCounts.incoming} incoming connections`}
-                                />
-                            )}
-                            {data.connectionCounts.outgoing > 0 && (
-                                <Badge 
-                                    count={data.connectionCounts.outgoing} 
-                                    style={{ backgroundColor: '#1890ff', fontSize: '10px' }}
-                                    title={`${data.connectionCounts.outgoing} outgoing connections`}
-                                />
-                            )}
-                        </div>
-                    )}
-                </div>
-                
-                {/* Single output handle if component has outgoing connections */}
-                {data.hasProviderConnections && (
-                    <Handle
-                        type="source"
-                        position={Position.Right}
-                        id={`${data.component.uuid}-output`}
-                        style={{ 
-                            right: '-6px',
-                            background: '#1890ff',
-                            border: '2px solid #ffffff',
-                            width: '12px',
-                            height: '12px',
-                            borderRadius: '50%'
-                        }}
-                        isConnectable={true}
-                    />
-                )}
+                {data.label}
             </div>
-        );
-    } else {
-        // Detailed view: individual port handles (original behavior)
-        const maxPorts = Math.max(data.providerPorts.length, data.receiverPorts.length);
-        const nodeHeight = Math.max(60, 30 + maxPorts * 15);
-        
-        return (
-            <div style={{ 
-                width: '100%',
-                height: '100%',
-                position: 'relative',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '8px 12px',
-                boxSizing: 'border-box'
-            }}>
-                {/* Receiver ports on the left */}
-                {data.receiverPorts.map((port, index) => (
-                    <Handle
-                        key={`receiver-${port.uuid}`}
-                        type="target"
-                        position={Position.Left}
-                        id={port.uuid}
-                        style={{ 
-                            top: `${25 + (index * 15)}px`,
-                            left: '-4px',
-                            background: '#6b7280',
-                            border: '2px solid #ffffff',
-                            width: '8px',
-                            height: '8px',
-                            borderRadius: '50%'
-                        }}
-                        isConnectable={true}
-                    />
-                ))}
-                
-                <div style={{ 
-                    textAlign: 'center',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    color: 'inherit',
-                    wordBreak: 'break-word',
-                    lineHeight: '1.2'
-                }}>
-                    {data.label}
-                </div>
-                
-                {/* Provider ports on the right */}
-                {data.providerPorts.map((port, index) => (
-                    <Handle
-                        key={`provider-${port.uuid}`}
-                        type="source"
-                        position={Position.Right}
-                        id={port.uuid}
-                        style={{ 
-                            top: `${25 + (index * 15)}px`,
-                            right: '-4px',
-                            background: '#6b7280',
-                            border: '2px solid #ffffff',
-                            width: '8px',
-                            height: '8px',
-                            borderRadius: '50%'
-                        }}
-                        isConnectable={true}
-                    />
-                ))}
-            </div>
-        );
-    }
+            
+            {/* Provider ports on the right */}
+            {data.providerPorts.map((port, index) => (
+                <Handle
+                    key={`provider-${port.uuid}`}
+                    type="source"
+                    position={Position.Right}
+                    id={port.uuid}
+                    style={{ 
+                        top: `${25 + (index * 15)}px`,
+                        right: '-4px',
+                        background: '#6b7280',
+                        border: '2px solid #ffffff',
+                        width: '8px',
+                        height: '8px',
+                        borderRadius: '50%'
+                    }}
+                    isConnectable={true}
+                />
+            ))}
+        </div>
+    );
 };
 
 const nodeTypes: NodeTypes = {
@@ -236,31 +142,6 @@ interface TreeNode {
   value: string;
   key: string;
   children?: TreeNode[];
-}
-
-interface ConnectionGroup {
-  sourceComponentId: string;
-  targetComponentId: string;
-  connections: Array<{
-    sourcePortId: string;
-    targetPortId: string;
-    sourcePort: PortInfo;
-    targetPort: PortInfo;
-  }>;
-  connectionCount: number;
-}
-
-interface CondensedNodeData {
-  label: string;
-  component: SWComponent;
-  providerPorts: PortInfo[];
-  receiverPorts: PortInfo[];
-  hasProviderConnections: boolean;
-  hasReceiverConnections: boolean;
-  connectionCounts: {
-    outgoing: number;
-    incoming: number;
-  };
 }
 
 const COMPOSITION_SW_COMPONENT_TYPE = 'COMPOSITION_SW_COMPONENT_TYPE';
@@ -350,7 +231,6 @@ const ArchViewerInner = () => {
   const [pendingComponentIds, setPendingComponentIds] = useState<string[]>([]);
   const [componentSelectionText, setComponentSelectionText] = useState<string>('');
   const [selectedItem, setSelectedItem] = useState<DetailViewItem>(null);
-  const [condensedView, setCondensedView] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ id: string; top: number; left: number; type: 'node' | 'edge'; edgeData?: any } | null>(null);
   const [detailsModal, setDetailsModal] = useState<{
     isVisible: boolean;
@@ -367,22 +247,6 @@ const ArchViewerInner = () => {
     componentUuid: null,
     componentName: null,
     connectionInfo: null
-  });
-  const [connectionDetailsModal, setConnectionDetailsModal] = useState<{
-    isVisible: boolean;
-    sourceComponent: SWComponent | null;
-    targetComponent: SWComponent | null;
-    connections: Array<{
-      sourcePortId: string;
-      targetPortId: string;
-      sourcePort: PortInfo;
-      targetPort: PortInfo;
-    }>;
-  }>({
-    isVisible: false,
-    sourceComponent: null,
-    targetComponent: null,
-    connections: []
   });
   const animatedEdgeIdsRef = useRef<string[]>([]);
   
@@ -728,90 +592,13 @@ const ArchViewerInner = () => {
     }
   }, [pendingComponentIds, selectedComponentIds]);
 
-  // Helper function to create condensed connections from detailed connections
-  const createCondensedConnections = useCallback((
-    allConnections: Map<string, string>,
-    selectedComponents: SWComponent[]
-  ): Map<string, ConnectionGroup> => {
-    const componentConnections = new Map<string, ConnectionGroup>();
-    const selectedComponentUuids = selectedComponents.map(c => c.uuid);
-    
-    allConnections.forEach((targetPortUuid, sourcePortUuid) => {
-      const sourcePort = allPorts.find(p => p.uuid === sourcePortUuid);
-      const targetPort = allPorts.find(p => p.uuid === targetPortUuid);
-      
-      if (!sourcePort || !targetPort) return;
-      
-      const sourceCompId = portToComponentMap.get(sourcePortUuid);
-      const targetCompId = portToComponentMap.get(targetPortUuid);
-      
-      if (!sourceCompId || !targetCompId) return;
-      if (!selectedComponentUuids.includes(sourceCompId) || !selectedComponentUuids.includes(targetCompId)) return;
-      if (sourceCompId === targetCompId) return;
-      
-      // Determine correct direction based on port types
-      let providerCompId: string, receiverCompId: string;
-      let providerPort: PortInfo, receiverPort: PortInfo;
-      
-      if (sourcePort.type === 'P_PORT_PROTOTYPE' && targetPort.type === 'R_PORT_PROTOTYPE') {
-        providerCompId = sourceCompId;
-        receiverCompId = targetCompId;
-        providerPort = sourcePort;
-        receiverPort = targetPort;
-      } else if (sourcePort.type === 'R_PORT_PROTOTYPE' && targetPort.type === 'P_PORT_PROTOTYPE') {
-        providerCompId = targetCompId;
-        receiverCompId = sourceCompId;
-        providerPort = targetPort;
-        receiverPort = sourcePort;
-      } else {
-        return; // Skip invalid connections
-      }
-      
-      const connectionKey = `${providerCompId}->${receiverCompId}`;
-      
-      if (!componentConnections.has(connectionKey)) {
-        componentConnections.set(connectionKey, {
-          sourceComponentId: providerCompId,
-          targetComponentId: receiverCompId,
-          connections: [],
-          connectionCount: 0
-        });
-      }
-      
-      const group = componentConnections.get(connectionKey)!;
-      group.connections.push({
-        sourcePortId: sourcePortUuid,
-        targetPortId: targetPortUuid,
-        sourcePort: providerPort,
-        targetPort: receiverPort
-      });
-      group.connectionCount++;
-    });
-    
-    return componentConnections;
-  }, [allPorts, portToComponentMap]);
-
-  // Helper function to calculate connection counts for condensed nodes
-  const calculateConnectionCounts = useCallback((
-    componentId: string,
-    connectionGroups: Map<string, ConnectionGroup>
-  ) => {
-    let outgoing = 0;
-    let incoming = 0;
-    
-    connectionGroups.forEach((group) => {
-      if (group.sourceComponentId === componentId) {
-        outgoing += group.connectionCount;
-      }
-      if (group.targetComponentId === componentId) {
-        incoming += group.connectionCount;
-      }
-    });
-    
-    return { outgoing, incoming };
-  }, []);
-
   const createVisualization = useCallback(() => {
+    // console.log('Creating visualization...');
+    // console.log('Total components:', allComponents.length);
+    // console.log('Selected components:', selectedComponentIds.length);
+    // console.log('Total ports:', allPorts.length);
+    // console.log('Total connections:', connections.size);
+
     // Filter to only show selected components
     const selectedComponents: SWComponent[] = allComponents.filter((c: SWComponent) => selectedComponentIds.includes(c.uuid));
     
@@ -820,6 +607,14 @@ const ArchViewerInner = () => {
       setEdges([]);
       return;
     }
+
+    // Debug: Log all connections to see the pattern
+    // console.log('All connections:');
+    // Array.from(connections.entries()).slice(0, 10).forEach(([source, target]) => {
+    //   const sourcePort = allPorts.find(p => p.uuid === source);
+    //   const targetPort = allPorts.find(p => p.uuid === target);
+    //   console.log(`${source} (${sourcePort?.type}) -> ${target} (${targetPort?.type})`);
+    // });
 
     const componentPorts = new Map<string, { provider: PortInfo[], receiver: PortInfo[] }>();
     
@@ -837,100 +632,7 @@ const ArchViewerInner = () => {
         });
     }
 
-    if (condensedView) {
-      // Create condensed view
-      const connectionGroups = createCondensedConnections(connections, selectedComponents);
-      
-      const newNodes: Node[] = selectedComponents.map((c: SWComponent) => {
-        const backgroundColor = getAsilColorWithOpacity(c.asil);
-        const ports = componentPorts.get(c.uuid) || { provider: [], receiver: [] };
-        const connectionCounts = calculateConnectionCounts(c.uuid, connectionGroups);
-        
-        // Check if component has connections
-        const hasProviderConnections = Array.from(connectionGroups.values())
-          .some(group => group.sourceComponentId === c.uuid);
-        const hasReceiverConnections = Array.from(connectionGroups.values())
-          .some(group => group.targetComponentId === c.uuid);
-        
-        const nodeWidth = Math.max(150, c.name.length * 8 + 60); // Extra space for badges
-        const nodeHeight = 80; // Fixed height for condensed view
-        
-        return {
-          id: c.uuid,
-          type: 'custom',
-          data: { 
-            label: c.name, 
-            component: c,
-            providerPorts: ports.provider,
-            receiverPorts: ports.receiver,
-            hasProviderConnections,
-            hasReceiverConnections,
-            connectionCounts,
-            condensed: true
-          } as CondensedNodeData & { condensed: boolean },
-          position: { x: 0, y: 0 },
-          style: {
-            backgroundColor: backgroundColor,
-            color: getTextColorForBackground(backgroundColor),
-            border: '2px solid rgba(255, 255, 255, 0.8)',
-            borderRadius: '8px',
-            width: nodeWidth,
-            height: nodeHeight,
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-            fontSize: '12px',
-            fontWeight: '600'
-          }
-        };
-      });
-
-      // Create condensed edges
-      const newEdges: Edge[] = Array.from(connectionGroups.values()).map((group) => {
-        const strokeWidth = Math.min(2 + group.connectionCount * 0.5, 8);
-        const strokeColor = group.connectionCount > 5 ? '#ff4d4f' : 
-                           group.connectionCount > 2 ? '#faad14' : '#52c41a';
-        
-        return {
-          id: `${group.sourceComponentId}->${group.targetComponentId}`,
-          source: group.sourceComponentId,
-          target: group.targetComponentId,
-          sourceHandle: `${group.sourceComponentId}-output`,
-          targetHandle: `${group.targetComponentId}-input`,
-          style: {
-            strokeWidth,
-            stroke: strokeColor,
-            opacity: Math.min(0.7 + group.connectionCount * 0.05, 1)
-          },
-          label: `${group.connectionCount}`,
-          labelStyle: {
-            fontSize: '10px',
-            backgroundColor: 'white',
-            padding: '2px 6px',
-            borderRadius: '3px',
-            border: `1px solid ${strokeColor}`,
-            fontWeight: 'bold'
-          },
-          data: {
-            connectionGroup: group,
-            isCondensed: true
-          },
-          animated: true
-        };
-      });
-
-      elkLayout(newNodes, newEdges).then(({nodes: layoutedNodes, edges: layoutedEdges}) => {
-        setNodes(layoutedNodes);
-        setEdges(layoutedEdges);
-        
-        setTimeout(() => {
-          if (layoutedNodes.length > 0) {
-            fitView({ padding: 0.1, duration: 800 });
-          }
-        }, 100);
-      });
-
-    } else {
-      // Create detailed view (original behavior)
-      const newNodes: Node[] = selectedComponents.map((c: SWComponent) => {
+    const newNodes: Node[] = selectedComponents.map((c: SWComponent) => {
         const backgroundColor = getAsilColorWithOpacity(c.asil);
         const ports = componentPorts.get(c.uuid) || { provider: [], receiver: [] };
         const maxPorts = Math.max(ports.provider.length, ports.receiver.length);
@@ -938,111 +640,175 @@ const ArchViewerInner = () => {
         const nodeWidth = Math.max(150, c.name.length * 8 + 40);
         
         return {
-          id: c.uuid,
-          type: 'custom',
-          data: { 
-            label: c.name, 
-            component: c,
-            providerPorts: ports.provider,
-            receiverPorts: ports.receiver,
-            hasProviderConnections: false,
-            hasReceiverConnections: false,
-            connectionCounts: { incoming: 0, outgoing: 0 },
-            condensed: false
-          } as CondensedNodeData & { condensed: boolean },
-          position: { x: 0, y: 0 },
-          style: {
-            backgroundColor: backgroundColor,
-            color: getTextColorForBackground(backgroundColor),
-            border: '2px solid rgba(255, 255, 255, 0.8)',
-            borderRadius: '8px',
-            width: nodeWidth,
-            height: nodeHeight,
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-            fontSize: '12px',
-            fontWeight: '600'
-          }
-        };
-      });
-      
-      // Create detailed edges (original logic)
-      const selectedComponentUuids: string[] = selectedComponents.map((c: SWComponent) => c.uuid);
-      const newEdges: Edge[] = [];
-      let edgeCount = 0;
-      const processedConnections = new Set<string>();
-      
-      connections.forEach((targetPortUuid, sourcePortUuid) => {
+            id: c.uuid,
+            type: 'custom',
+            data: { 
+                label: c.name, 
+                component: c,
+                providerPorts: ports.provider,
+                receiverPorts: ports.receiver
+            },
+            position: { x: 0, y: 0 },
+            style: {
+                backgroundColor: backgroundColor,
+                color: getTextColorForBackground(backgroundColor),
+                border: '2px solid rgba(255, 255, 255, 0.8)',
+                borderRadius: '8px',
+                width: nodeWidth,
+                height: nodeHeight,
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                fontSize: '12px',
+                fontWeight: '600'
+            }
+        }
+    });
+    
+    // Create direct port-to-port connections only between selected components
+    const selectedComponentUuids: string[] = selectedComponents.map((c: SWComponent) => c.uuid);
+    const newEdges: Edge[] = [];
+    let edgeCount = 0;
+    const processedConnections = new Set<string>(); // Track unique connections to prevent duplicates
+    
+    // console.log('Processing connections...');
+    connections.forEach((targetPortUuid, sourcePortUuid) => {
         const sourcePort = allPorts.find(p => p.uuid === sourcePortUuid);
         const targetPort = allPorts.find(p => p.uuid === targetPortUuid);
 
-        if (!sourcePort || !targetPort) return;
+        if (!sourcePort || !targetPort) {
+            // console.log('Missing port:', { sourcePortUuid, targetPortUuid, sourcePort: !!sourcePort, targetPort: !!targetPort });
+            return;
+        }
         
+        // Determine the correct direction: Provider -> Receiver
         let providerPort: PortInfo;
         let receiverPort: PortInfo;
         let providerPortUuid: string;
         let receiverPortUuid: string;
         
         if (sourcePort.type === 'P_PORT_PROTOTYPE' && targetPort.type === 'R_PORT_PROTOTYPE') {
-          providerPort = sourcePort;
-          receiverPort = targetPort;
-          providerPortUuid = sourcePortUuid;
-          receiverPortUuid = targetPortUuid;
+            // Normal direction: source is provider, target is receiver
+            providerPort = sourcePort;
+            receiverPort = targetPort;
+            providerPortUuid = sourcePortUuid;
+            receiverPortUuid = targetPortUuid;
         } else if (sourcePort.type === 'R_PORT_PROTOTYPE' && targetPort.type === 'P_PORT_PROTOTYPE') {
-          providerPort = targetPort;
-          receiverPort = sourcePort;
-          providerPortUuid = targetPortUuid;
-          receiverPortUuid = sourcePortUuid;
+            // Reverse direction: target is provider, source is receiver
+            // console.log('Reversing connection direction:', {
+            //     sourcePortUuid,
+            //     targetPortUuid
+            // });
+            providerPort = targetPort;
+            receiverPort = sourcePort;
+            providerPortUuid = targetPortUuid;
+            receiverPortUuid = sourcePortUuid;
         } else {
-          return;
+            //Skip connections that don't match expected port types
+            const sourceComponentUuid = portToComponentMap.get(sourcePortUuid);
+            const targetComponentUuid = portToComponentMap.get(targetPortUuid);
+            const sourceComponent = allComponents.find(c => c.uuid === sourceComponentUuid);
+            const targetComponent = allComponents.find(c => c.uuid === targetComponentUuid);
+            
+            // console.log('Unexpected port types:', { 
+            //     sourceType: sourcePort.type, 
+            //     targetType: targetPort.type,
+            //     sourcePortUuid: sourcePortUuid,
+            //     targetPortUuid: targetPortUuid,
+            //     sourcePortName: sourcePort.name,
+            //     targetPortName: targetPort.name,
+            //     sourceComponent: sourceComponent?.name || 'Unknown',
+            //     targetComponent: targetComponent?.name || 'Unknown',
+            //     sourceComponentUuid: sourceComponentUuid,
+            //     targetComponentUuid: targetComponentUuid
+            // });
+            return;
         }
 
+        // Create bidirectional connection ID to prevent duplicates
+        // Always put the lexicographically smaller UUID first to ensure consistency
         const sortedIds = [providerPortUuid, receiverPortUuid].sort();
         const connectionId = `${sortedIds[0]}<->${sortedIds[1]}`;
         
-        if (processedConnections.has(connectionId)) return;
+        if (processedConnections.has(connectionId)) {
+            // console.log('Duplicate connection skipped:', {
+            //     connectionId,
+            //     originalMapping: `${sourcePortUuid}->${targetPortUuid}`,
+            //     providerPort: providerPort.name,
+            //     receiverPort: receiverPort.name
+            // });
+            return;
+        }
+        
         processedConnections.add(connectionId);
 
         const providerComponentUuid = portToComponentMap.get(providerPortUuid);
         const receiverComponentUuid = portToComponentMap.get(receiverPortUuid);
 
-        if (!providerComponentUuid || !receiverComponentUuid) return;
-        if (!selectedComponentUuids.includes(providerComponentUuid) || !selectedComponentUuids.includes(receiverComponentUuid)) return;
-        if (providerComponentUuid === receiverComponentUuid) return;
+        if (!providerComponentUuid || !receiverComponentUuid) {
+            // console.log('Missing component mapping:', { providerPortUuid, receiverPortUuid, providerComponentUuid, receiverComponentUuid });
+            return;
+        }
+
+        // Only show connections between selected components
+        if (!selectedComponentUuids.includes(providerComponentUuid) || !selectedComponentUuids.includes(receiverComponentUuid)) {
+            return;
+        }
+
+        if (providerComponentUuid === receiverComponentUuid) {
+            // console.log('Self connection skipped:', { providerComponentUuid, receiverComponentUuid });
+            return;
+        }
         
         edgeCount++;
         const edge = {
-          id: `${providerComponentUuid}->${receiverComponentUuid}-${edgeCount}`,
-          source: providerComponentUuid,
-          target: receiverComponentUuid,
-          sourceHandle: providerPortUuid,
-          targetHandle: receiverPortUuid,
-          animated: true,
-          style: {
-            strokeWidth: 1.5
-          },
-          data: {
-            sourcePort: providerPort,
-            targetPort: receiverPort,
-            connectionMapping: `${sourcePortUuid}->${targetPortUuid}`,
-            isCondensed: false
-          }
+            id: `${providerComponentUuid}->${receiverComponentUuid}-${edgeCount}`, // Include edge count to make truly unique
+            source: providerComponentUuid,
+            target: receiverComponentUuid,
+            sourceHandle: providerPortUuid,
+            targetHandle: receiverPortUuid,
+            animated: true,
+            style: {
+                strokeWidth: 1.5
+            },
+            data: {
+                sourcePort: providerPort,
+                targetPort: receiverPort,
+                connectionMapping: `${sourcePortUuid}->${targetPortUuid}`
+            }
         };
         
         newEdges.push(edge);
-      });
+        
+        // if (edgeCount <= 10) { // Log first 10 edges for debugging
+        //     console.log(`Edge ${edgeCount}:`, {
+        //         id: edge.id,
+        //         source: providerComponentUuid,
+        //         target: receiverComponentUuid,
+        //         sourceHandle: providerPortUuid,
+        //         targetHandle: receiverPortUuid,
+        //         providerComponent: allComponents.find(c => c.uuid === providerComponentUuid)?.name,
+        //         receiverComponent: allComponents.find(c => c.uuid === receiverComponentUuid)?.name,
+        //         originalMapping: `${sourcePortUuid}->${targetPortUuid}`,
+        //         connectionId
+        //     });
+        // }
+    });
 
-      elkLayout(newNodes, newEdges).then(({nodes: layoutedNodes, edges: layoutedEdges}) => {
+    // console.log(`Created ${edgeCount} edges from ${connections.size} connections`);
+    // console.log(`Processed connections size: ${processedConnections.size}`);
+
+    elkLayout(newNodes, newEdges).then(({nodes: layoutedNodes, edges: layoutedEdges}) => {
+        // console.log('Layout complete:', { nodes: layoutedNodes.length, edges: layoutedEdges.length });
         setNodes(layoutedNodes);
         setEdges(layoutedEdges);
         
+        // Fit view to new nodes after a short delay to ensure rendering is complete
         setTimeout(() => {
           if (layoutedNodes.length > 0) {
             fitView({ padding: 0.1, duration: 800 });
           }
         }, 100);
-      });
-    }
-  }, [allComponents, allPorts, connections, portToComponentMap, selectedComponentIds, condensedView, createCondensedConnections, calculateConnectionCounts, setNodes, setEdges, fitView]);
+    });
+  }, [allComponents, allPorts, connections, portToComponentMap, selectedComponentIds, setNodes, setEdges, fitView]);
 
   // Auto-create visualization when component selection changes and data is loaded
   useEffect(() => {
@@ -1053,7 +819,7 @@ const ArchViewerInner = () => {
       setNodes([]);
       setEdges([]);
     }
-  }, [allComponents, allPorts, connections, selectedComponentIds, condensedView, createVisualization]);
+  }, [allComponents, allPorts, connections, selectedComponentIds, createVisualization]);
 
   const onNodeClick: NodeMouseHandler = useCallback((event, node) => {
       const component = allComponents.find((c: SWComponent) => c.uuid === node.id);
@@ -1090,20 +856,6 @@ const ArchViewerInner = () => {
   }, [allComponents, edges, setNodes, setEdges]);
 
   const onEdgeClick: EdgeMouseHandler = useCallback((event, edge) => {
-      // Check if this is a condensed edge
-      if (edge.data?.isCondensed) {
-        const group = edge.data.connectionGroup as ConnectionGroup;
-        
-        // Show detailed connection modal for condensed edge
-        setConnectionDetailsModal({
-          isVisible: true,
-          sourceComponent: allComponents.find(c => c.uuid === group.sourceComponentId) || null,
-          targetComponent: allComponents.find(c => c.uuid === group.targetComponentId) || null,
-          connections: group.connections
-        });
-      }
-
-      // Standard edge highlighting behavior
       setEdges((eds: Edge[]) =>
           eds.map((e: Edge) => {
               const isSelected = e.id === edge.id;
@@ -1134,7 +886,7 @@ const ArchViewerInner = () => {
           })
       );
       setSelectedItem(null);
-  }, [setEdges, setNodes, allComponents]);
+  }, [setEdges, setNodes]);
 
 
 
@@ -1380,51 +1132,18 @@ const ArchViewerInner = () => {
         }
       ];
     } else if (contextMenu.type === 'edge') {
-      const isCondensed = contextMenu.edgeData?.isCondensed;
-      
-      if (isCondensed) {
-        return [
-          {
-            key: 'expand-connections',
-            icon: <ExpandOutlined />,
-            label: 'Show Individual Connections',
-            onClick: () => {
-              if (contextMenu.edgeData?.connectionGroup) {
-                const group = contextMenu.edgeData.connectionGroup as ConnectionGroup;
-                setConnectionDetailsModal({
-                  isVisible: true,
-                  sourceComponent: allComponents.find(c => c.uuid === group.sourceComponentId) || null,
-                  targetComponent: allComponents.find(c => c.uuid === group.targetComponentId) || null,
-                  connections: group.connections
-                });
-              }
-              setContextMenu(null);
-            }
-          },
-          {
-            key: 'switch-to-detailed',
-            icon: <NodeIndexOutlined />,
-            label: 'Switch to Detailed View',
-            onClick: () => {
-              setCondensedView(false);
-              setContextMenu(null);
-            }
-          }
-        ];
-      } else {
-        return [
-          {
-            key: 'show-connection-details',
-            icon: <InfoCircleOutlined />,
-            label: 'Show Connection Details',
-            onClick: handleShowConnectionDetails
-          }
-        ];
-      }
+      return [
+        {
+          key: 'show-connection-details',
+          icon: <InfoCircleOutlined />,
+          label: 'Show Connection Details',
+          onClick: handleShowConnectionDetails
+        }
+      ];
     }
     
     return [];
-  }, [contextMenu, handleShowPartners, handleShowComponentDetails, handleRemoveComponent, handleShowConnectionDetails, allComponents, setCondensedView]);
+  }, [contextMenu, handleShowPartners, handleShowComponentDetails, handleRemoveComponent, handleShowConnectionDetails]);
 
   const onNodeContextMenu: NodeMouseHandler = useCallback((event, node) => {
     event.preventDefault();
@@ -1594,27 +1313,6 @@ const ArchViewerInner = () => {
                             )}
                         </>
                     )}
-                </Card>
-                
-                {/* View Mode Controls */}
-                <Card title="View Options" size="small" style={{ marginBottom: '16px' }}>
-                    <Space direction="vertical" style={{ width: '100%' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <Text>Condensed View:</Text>
-                            <Switch 
-                                checked={condensedView} 
-                                onChange={setCondensedView}
-                                size="small"
-                                disabled={loadingData || selectedComponentIds.length === 0}
-                            />
-                        </div>
-                        <Text type="secondary" style={{ fontSize: '11px' }}>
-                            {condensedView 
-                                ? 'Connections grouped by component pairs with count labels'
-                                : 'Individual port-to-port connections shown'
-                            }
-                        </Text>
-                    </Space>
                 </Card>
                 
                 <div style={{ marginBottom: '16px' }}>
@@ -1840,127 +1538,6 @@ const ArchViewerInner = () => {
             isVisible={detailsModal.isVisible}
             onClose={handleCloseDetailsModal}
         />
-        
-        {/* Connection Details Modal for Condensed View */}
-        <Modal
-            title={`Connection Details: ${connectionDetailsModal.sourceComponent?.name || 'Unknown'} → ${connectionDetailsModal.targetComponent?.name || 'Unknown'}`}
-            open={connectionDetailsModal.isVisible}
-            onCancel={() => setConnectionDetailsModal({
-                isVisible: false,
-                sourceComponent: null,
-                targetComponent: null,
-                connections: []
-            })}
-            footer={[
-                <Button 
-                    key="close" 
-                    onClick={() => setConnectionDetailsModal({
-                        isVisible: false,
-                        sourceComponent: null,
-                        targetComponent: null,
-                        connections: []
-                    })}
-                >
-                    Close
-                </Button>
-            ]}
-            width={800}
-            style={{ top: 20 }}
-        >
-            {connectionDetailsModal.sourceComponent && connectionDetailsModal.targetComponent && (
-                <Space direction="vertical" style={{ width: '100%' }} size="large">
-                    {/* Component Information */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                        <Card 
-                            title="Source Component" 
-                            size="small"
-                            headStyle={{ backgroundColor: '#e6f7ff' }}
-                        >
-                            <Descriptions column={1} size="small">
-                                <Descriptions.Item label="Name">
-                                    <Text strong>{connectionDetailsModal.sourceComponent.name}</Text>
-                                </Descriptions.Item>
-                                <Descriptions.Item label="Type">
-                                    {connectionDetailsModal.sourceComponent.componentType}
-                                </Descriptions.Item>
-                                <Descriptions.Item label="ASIL">
-                                    <Badge 
-                                        color={getAsilColor(connectionDetailsModal.sourceComponent.asil)}
-                                        text={connectionDetailsModal.sourceComponent.asil}
-                                    />
-                                </Descriptions.Item>
-                            </Descriptions>
-                        </Card>
-                        
-                        <Card 
-                            title="Target Component" 
-                            size="small"
-                            headStyle={{ backgroundColor: '#f6ffed' }}
-                        >
-                            <Descriptions column={1} size="small">
-                                <Descriptions.Item label="Name">
-                                    <Text strong>{connectionDetailsModal.targetComponent.name}</Text>
-                                </Descriptions.Item>
-                                <Descriptions.Item label="Type">
-                                    {connectionDetailsModal.targetComponent.componentType}
-                                </Descriptions.Item>
-                                <Descriptions.Item label="ASIL">
-                                    <Badge 
-                                        color={getAsilColor(connectionDetailsModal.targetComponent.asil)}
-                                        text={connectionDetailsModal.targetComponent.asil}
-                                    />
-                                </Descriptions.Item>
-                            </Descriptions>
-                        </Card>
-                    </div>
-                    
-                    {/* Connection Details */}
-                    <Card 
-                        title={`Port-to-Port Connections (${connectionDetailsModal.connections.length})`}
-                        size="small"
-                    >
-                        <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                            {connectionDetailsModal.connections.map((connection, index) => (
-                                <Card 
-                                    key={index}
-                                    size="small"
-                                    style={{ 
-                                        marginBottom: '8px',
-                                        backgroundColor: index % 2 === 0 ? '#fafafa' : '#ffffff'
-                                    }}
-                                >
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '16px', alignItems: 'center' }}>
-                                        <div>
-                                            <Text strong>Provider Port:</Text>
-                                            <br />
-                                            <Text code>{connection.sourcePort.name}</Text>
-                                            <br />
-                                            <Text type="secondary" style={{ fontSize: '11px' }}>
-                                                {connection.sourcePort.type}
-                                            </Text>
-                                        </div>
-                                        
-                                        <div style={{ textAlign: 'center' }}>
-                                            <Text type="secondary">→</Text>
-                                        </div>
-                                        
-                                        <div>
-                                            <Text strong>Receiver Port:</Text>
-                                            <br />
-                                            <Text code>{connection.targetPort.name}</Text>
-                                            <br />
-                                            <Text type="secondary" style={{ fontSize: '11px' }}>
-                                                {connection.targetPort.type}
-                                            </Text>
-                                        </div>
-                                    </div>
-                                </Card>
-                            ))}
-                        </div>
-                    </Card>
-                </Space>
-            )}
-        </Modal>
     </div>
   );
 };
