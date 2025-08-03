@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { message, Table, Card, Tag, Button, Space } from 'antd';
-import { PlusSquareOutlined, MinusSquareOutlined } from '@ant-design/icons';
+import { PlusSquareOutlined, MinusSquareOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { ColumnType } from 'antd/es/table';
 import { getApplicationSwComponents, getAppForComposition } from '../services/neo4j/queries/components';
 import { getFailuresAndCountsForComponents } from '../services/neo4j/queries/safety/failureModes';
@@ -165,6 +165,10 @@ export default function ArxmlSafetyAnalysisTable() {
     setExpandedKeys([]);
   };
 
+  const handleRefresh = () => {
+    loadData();
+  };
+
   const handleExpandedRowsChange = (keys: readonly React.Key[]) => {
     setExpandedKeys([...keys]);
   };
@@ -240,6 +244,9 @@ export default function ArxmlSafetyAnalysisTable() {
         </Button>
         <Button onClick={handleCollapseAll} icon={<MinusSquareOutlined />}>
           Collapse All
+        </Button>
+        <Button onClick={handleRefresh} icon={<ReloadOutlined />} loading={loading}>
+          Refresh
         </Button>
       </Space>
       <Table
