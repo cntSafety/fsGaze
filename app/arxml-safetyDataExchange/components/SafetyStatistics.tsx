@@ -80,6 +80,7 @@ const SafetyStatistics: React.FC = () => {
                     statsMap[comp.uuid] = {
                         uuid: comp.uuid,
                         name: comp.name,
+                        componentType: comp.componentType,
                         FunctionFM: 0,
                         RiskRating: 0,
                         SafetyTask: 0,
@@ -180,10 +181,12 @@ const SafetyStatistics: React.FC = () => {
         render: (text: string, record: any) =>
             searchedColumn === dataIndex ? (
                 <span style={{ backgroundColor: '#ffc069', padding: 0 }}>{text}</span>
-            ) : (
+            ) : dataIndex === 'name' ? (
                 <Link href={`/arxml-safety/${record.uuid}`} legacyBehavior passHref>
                     <a target="_blank" rel="noopener noreferrer">{text}</a>
                 </Link>
+            ) : (
+                text
             ),
     });
 
@@ -208,6 +211,7 @@ const SafetyStatistics: React.FC = () => {
         // Define CSV headers
         const headers = [
             'Component Name',
+            'Component Type',
             'ASIL Max',
             'Functional FM',
             'RiskRating',
@@ -221,6 +225,7 @@ const SafetyStatistics: React.FC = () => {
         // Convert data to CSV format
         const csvData = data.map(row => [
             row.name || '',
+            row.componentType || '',
             row.maxAsil || '',
             row.FunctionFM || 0,
             row.RiskRating || 0,
@@ -263,6 +268,31 @@ const SafetyStatistics: React.FC = () => {
             key: 'name',
             ...getColumnSearchProps('name'),
             sorter: (a, b) => a.name.localeCompare(b.name),
+        },
+        {
+            title: 'Component Type',
+            dataIndex: 'componentType',
+            key: 'componentType',
+            ...getColumnSearchProps('componentType'),
+            sorter: (a, b) => a.componentType.localeCompare(b.componentType),
+            render: (type: string) => {
+                const typeColors: Record<string, string> = {
+                    'APPLICATION_SW_COMPONENT_TYPE': 'blue',
+                    'SERVICE_SW_COMPONENT_TYPE': 'green',
+                    'ECU_ABSTRACTION_SW_COMPONENT_TYPE': 'orange',
+                    'COMPOSITION_SW_COMPONENT_TYPE': 'purple'
+                };
+                const displayText = type?.replace('_SW_COMPONENT_TYPE', '').replace('_', ' ');
+                
+                if (searchedColumn === 'componentType') {
+                    return (
+                        <Tag color={typeColors[type] || 'default'}>
+                            <span style={{ backgroundColor: '#ffc069', padding: 0 }}>{displayText}</span>
+                        </Tag>
+                    );
+                }
+                return <Tag color={typeColors[type] || 'default'}>{displayText}</Tag>;
+            },
         },
         {
             title: 'ASIL Max',
