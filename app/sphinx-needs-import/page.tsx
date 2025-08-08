@@ -1,8 +1,36 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { 
+    Table, 
+    Card, 
+    Button, 
+    Upload, 
+    Alert, 
+    Spin, 
+    Typography, 
+    Space, 
+    Tag, 
+    Divider,
+    message
+} from 'antd';
+import { UploadOutlined, DownOutlined, RightOutlined } from '@ant-design/icons';
+import type { ColumnsType } from 'antd/es/table';
 import { executeNeo4jQuery } from '../services/KerMLToNeoService';
 import { importSphinxNeedsToNeo4j } from '../services/SphinxNeedsImport';
+
+const { Title, Text } = Typography;
+
+interface RequirementData {
+    key: string;
+    declaredName: string;
+    elementId: string;
+    qualifiedName: string;
+    sphinxNeedsId?: string;
+    asilValue?: string;
+    safetyReqType?: string;
+    isLoadingSphinxId?: boolean;
+}
 
 const Requirements: React.FC = () => {
     const [requirements, setRequirements] = useState<any[]>([]);
@@ -27,13 +55,9 @@ const Requirements: React.FC = () => {
         reqUsageRelationshipCount?: number;
         error?: string | null;
     } | null>(null);
-    const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Function to handle file selection
-    const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
-
+    const handleFileSelect = async (file: File) => {
         setImportLoading(true);
         setImportResults(null);
 
@@ -47,7 +71,10 @@ const Requirements: React.FC = () => {
 
             // If import was successful, refresh requirements list
             if (results.success) {
+                message.success('Sphinx Needs data imported successfully!');
                 fetchRequirements();
+            } else {
+                message.error('Failed to import Sphinx Needs data');
             }
         } catch (err: any) {
             setImportResults({
@@ -55,13 +82,12 @@ const Requirements: React.FC = () => {
                 error: err.message || 'An error occurred during file import',
                 message: 'Import failed'
             });
+            message.error('Import failed: ' + (err.message || 'Unknown error'));
         } finally {
             setImportLoading(false);
-            // Reset file input
-            if (fileInputRef.current) {
-                fileInputRef.current.value = '';
-            }
         }
+        
+        return false; // Prevent default upload behavior
     };
 
     // Function to read file content
@@ -79,10 +105,11 @@ const Requirements: React.FC = () => {
     };
 
     // Function to trigger file input click
-    const triggerFileInput = () => {
-        if (fileInputRef.current) {
-            fileInputRef.current.click();
-        }
+    const uploadProps = {
+        beforeUpload: handleFileSelect,
+        accept: '.json',
+        showUploadList: false,
+        disabled: importLoading
     };
 
     const toggleRequirementExpand = (elementId: string) => {
@@ -184,172 +211,208 @@ const Requirements: React.FC = () => {
         fetchRequirements();
     }, []);
 
-    return (
-        <div className="w-full rounded bg-white p-4 shadow-md dark:bg-gray-800 dark:shadow-gray-700">
-            <h2 className="mb-4 text-xl font-bold dark:text-white">SysML-v2 Requirements</h2>
+    // Prepare data for Ant Design table
+    const tableData: RequirementData[] = requirements.map((result, index) => {
+        const req = result.req;
+        const elementId = req?.properties?.elementId || 'No ID';
+        return {
+            key: index.toString(),
+            declaredName: req?.properties?.declaredName || 'Unnamed Requirement',
+            elementId,
+            qualifiedName: req?.properties?.qualifiedName || 'No qualified name',
+            sphinxNeedsId: requirementSphinxNeeds[elementId],
+            asilValue: requirementAsils[elementId],
+            safetyReqType: requirementSafetyTypes[elementId],
+            isLoadingSphinxId: loadingSphinxIds[elementId] || false
+        };
+    });
 
-            {error && (
-                <div className="mb-4 rounded border border-red-400 bg-red-100 p-2 text-red-700 dark:border-red-700 dark:bg-red-900 dark:text-red-200">
-                    Error: {error}
-                </div>
-            )}
-
-            {loading ? (
-                <div className="py-4 text-center dark:text-gray-300">Loading requirements...</div>
-            ) : requirements.length > 0 ? (
-                <div className="overflow-x-auto">
-                    <table className="min-w-full border border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-700">
-                        <thead>
-                            <tr className="bg-gray-100 dark:bg-gray-800">
-                                <th className="border-b border-gray-300 px-4 py-2 text-left dark:border-gray-600 dark:text-white">Req. Name SysML</th>
-                                <th className="border-b border-gray-300 px-4 py-2 text-left dark:border-gray-600 dark:text-white">Sphinx Needs ID</th>
-                                <th className="border-b border-gray-300 px-4 py-2 text-left dark:border-gray-600 dark:text-white">ASIL from SN</th>
-                                <th className="border-b border-gray-300 px-4 py-2 text-left dark:border-gray-600 dark:text-white">Safety Req Type from SN</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {requirements.map((result, index) => {
-                                const req = result.req;
-                                const declaredName = req?.properties?.declaredName || 'Unnamed Requirement';
-                                const elementId = req?.properties?.elementId || 'No ID';
-                                const qualifiedName = req?.properties?.qualifiedName || 'No qualified name';
-                                const isLoadingSphinxId = loadingSphinxIds[elementId] || false;
-                                const sphinxNeedsId = requirementSphinxNeeds[elementId];
-                                const isExpanded = expandedRequirements[elementId] || false;
-                                // Get ASIL value for this requirement
-                                const asilValue = requirementAsils[elementId];
-                                // Get Safety Requirements Type for this requirement
-                                const safetyReqType = requirementSafetyTypes[elementId];
-
-                                return (
-                                    <React.Fragment key={index}>
-                                        <tr className="hover:bg-gray-50 dark:hover:bg-gray-600">
-                                            <td
-                                                className="cursor-pointer border-b border-gray-300 px-4 py-2 dark:border-gray-600 dark:text-white"
-                                                onClick={() => toggleRequirementExpand(elementId)}
-                                            >
-                                                <div className="flex items-center">
-                                                    <span className="mr-2">
-                                                        {isExpanded ? '▼' : '▶'}
-                                                    </span>
-                                                    {declaredName}
-                                                </div>
-                                            </td>
-                                            <td className="border-b border-gray-300 px-4 py-2 dark:border-gray-600 dark:text-white">
-                                                {isLoadingSphinxId ? (
-                                                    <span className="text-gray-500 dark:text-gray-400">Loading...</span>
-                                                ) : sphinxNeedsId ? (
-                                                    sphinxNeedsId
-                                                ) : (
-                                                    <span className="text-gray-400 dark:text-gray-500">Not found</span>
-                                                )}
-                                            </td>
-                                            <td className="border-b border-gray-300 px-4 py-2 dark:border-gray-600 dark:text-white">
-                                                {sphinxNeedsId ? (
-                                                    asilValue ? (
-                                                        asilValue
-                                                    ) : (
-                                                        <span className="text-gray-500 dark:text-gray-400">Import needs.json...</span>
-                                                    )
-                                                ) : (
-                                                    <span className="text-gray-400 dark:text-gray-500">N/A</span>
-                                                )}
-                                            </td>
-                                            <td className="border-b border-gray-300 px-4 py-2 dark:border-gray-600 dark:text-white">
-                                                {sphinxNeedsId ? (
-                                                    safetyReqType ? (
-                                                        safetyReqType
-                                                    ) : (
-                                                        <span className="text-gray-500 dark:text-gray-400">Import needs.json...</span>
-                                                    )
-                                                ) : (
-                                                    <span className="text-gray-400 dark:text-gray-500">N/A</span>
-                                                )}
-                                            </td>
-                                        </tr>
-                                        {isExpanded && (
-                                            <tr className="bg-gray-50 dark:bg-gray-600">
-                                                <td colSpan={4} className="border-b border-gray-300 px-4 py-2 dark:border-gray-600">
-                                                    <div className="px-4 py-2">
-                                                        <div className="mb-2">
-                                                            <span className="font-semibold dark:text-white">ID:</span>
-                                                            <span className="ml-2 dark:text-gray-200">{elementId}</span>
-                                                        </div>
-                                                        <div>
-                                                            <span className="font-semibold dark:text-white">Qualified Name:</span>
-                                                            <span className="ml-2 dark:text-gray-200">{qualifiedName}</span>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        )}
-                                    </React.Fragment>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
-            ) : (
-                <div className="py-4 text-center text-gray-500 dark:text-gray-400">
-                    No requirements found.
-                </div>
-            )}
-
-            {/* Sphinx Needs Import Section - Now appears after the table */}
-            <div className="mt-8 rounded-md border border-gray-200 p-4 dark:border-gray-700">
-                <h3 className="mb-2 text-lg font-semibold dark:text-white">Import Sphinx Needs Data to the Graph DB to get the Req. Attributes</h3>
-
-                <div className="mb-4 flex items-center">
-                    <input
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={handleFileSelect}
-                        accept=".json"
-                        className="hidden"
+    // Define table columns
+    const columns: ColumnsType<RequirementData> = [
+        {
+            title: 'Req. Name SysML',
+            dataIndex: 'declaredName',
+            key: 'declaredName',
+            render: (text: string, record: RequirementData) => (
+                <Space>
+                    <Button
+                        type="text"
+                        size="small"
+                        icon={expandedRequirements[record.elementId] ? <DownOutlined /> : <RightOutlined />}
+                        onClick={() => toggleRequirementExpand(record.elementId)}
                     />
-                    <button
-                        onClick={triggerFileInput}
-                        disabled={importLoading}
-                        className={`rounded-md px-4 py-2 font-medium ${importLoading
-                            ? 'cursor-not-allowed bg-gray-400 dark:bg-gray-600'
-                            : 'bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-800 dark:hover:bg-blue-900'
-                            }`}
-                    >
-                        {importLoading ? 'Importing...' : 'Import Sphinx Needs JSON File'}
-                    </button>
+                    <Text strong>{text}</Text>
+                </Space>
+            ),
+        },
+        {
+            title: 'Sphinx Needs ID',
+            dataIndex: 'sphinxNeedsId',
+            key: 'sphinxNeedsId',
+            render: (text: string, record: RequirementData) => {
+                if (record.isLoadingSphinxId) {
+                    return <Spin size="small" />;
+                }
+                return text ? <Tag color="blue">{text}</Tag> : <Text type="secondary">Not found</Text>;
+            },
+        },
+        {
+            title: 'ASIL from SN',
+            dataIndex: 'asilValue',
+            key: 'asilValue',
+            render: (text: string, record: RequirementData) => {
+                if (record.sphinxNeedsId) {
+                    if (text) {
+                        const getAsilColor = (asil: string) => {
+                            switch (asil?.toUpperCase()) {
+                                case 'A': return 'red';
+                                case 'B': return 'orange';
+                                case 'C': return 'gold';
+                                case 'D': return 'green';
+                                case 'QM': return 'blue';
+                                default: return 'default';
+                            }
+                        };
+                        return <Tag color={getAsilColor(text)}>{text}</Tag>;
+                    }
+                    return <Text type="secondary">Import needs.json...</Text>;
+                }
+                return <Text type="secondary">N/A</Text>;
+            },
+        },
+        {
+            title: 'Safety Req Type from SN',
+            dataIndex: 'safetyReqType',
+            key: 'safetyReqType',
+            render: (text: string, record: RequirementData) => {
+                if (record.sphinxNeedsId) {
+                    if (text) {
+                        return <Tag color="purple">{text}</Tag>;
+                    }
+                    return <Text type="secondary">Import needs.json...</Text>;
+                }
+                return <Text type="secondary">N/A</Text>;
+            },
+        },
+    ];
+
+    // Expandable row render
+    const expandedRowRender = (record: RequirementData) => (
+        <div style={{ padding: '16px', backgroundColor: 'rgba(0, 0, 0, 0.02)' }}>
+            <Space direction="vertical" size="small">
+                <div>
+                    <Text strong>ID: </Text>
+                    <Text code>{record.elementId}</Text>
                 </div>
+                <div>
+                    <Text strong>Qualified Name: </Text>
+                    <Text>{record.qualifiedName}</Text>
+                </div>
+            </Space>
+        </div>
+    );
 
-                {/* Import Results */}
-                {importResults && (
-                    <div className={`rounded-md p-3 ${importResults.success
-                        ? 'border border-green-400 bg-green-100 dark:border-green-700 dark:bg-green-900'
-                        : 'border border-red-400 bg-red-100 dark:border-red-700 dark:bg-red-900'
-                        }`}>
-                        <p className={`font-semibold ${importResults.success
-                            ? 'text-green-700 dark:text-green-300'
-                            : 'text-red-700 dark:text-red-300'
-                            }`}>
-                            {importResults.message}
-                        </p>
+    return (
+        <div style={{ padding: '24px' }}>
+            <Card>
+                <Title level={2}>SysML-v2 Requirements</Title>
 
-                        {importResults.success && (
-                            <div className="mt-2 text-sm">
-                                {importResults.project && (
-                                    <p className="dark:text-gray-300">Project: <span className="font-medium">{importResults.project}</span></p>
-                                )}
-                                <p className="dark:text-gray-300">Imported nodes: <span className="font-medium">{importResults.nodeCount}</span></p>
-                                <p className="dark:text-gray-300">Created relationships: <span className="font-medium">{importResults.relationshipCount}</span></p>
-                            </div>
-                        )}
+                {error && (
+                    <Alert
+                        message="Error"
+                        description={error}
+                        type="error"
+                        showIcon
+                        style={{ marginBottom: '16px' }}
+                    />
+                )}
 
-                        {importResults.error && (
-                            <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                                Error: {importResults.error}
-                            </p>
-                        )}
+                {loading ? (
+                    <div style={{ textAlign: 'center', padding: '40px' }}>
+                        <Spin size="large" />
+                        <div style={{ marginTop: '16px' }}>
+                            <Text>Loading requirements...</Text>
+                        </div>
+                    </div>
+                ) : requirements.length > 0 ? (
+                    <Table
+                        columns={columns}
+                        dataSource={tableData}
+                        pagination={{
+                            pageSize: 10,
+                            showSizeChanger: true,
+                            showQuickJumper: true,
+                            showTotal: (total, range) =>
+                                `${range[0]}-${range[1]} of ${total} requirements`,
+                        }}
+                        expandable={{
+                            expandedRowRender,
+                            expandedRowKeys: Object.keys(expandedRequirements).filter(
+                                key => expandedRequirements[key]
+                            ),
+                            onExpand: (expanded, record) => {
+                                toggleRequirementExpand(record.elementId);
+                            },
+                            showExpandColumn: false,
+                        }}
+                        scroll={{ x: 800 }}
+                    />
+                ) : (
+                    <div style={{ textAlign: 'center', padding: '40px' }}>
+                        <Text type="secondary">No requirements found.</Text>
                     </div>
                 )}
-            </div>
+
+                <Divider />
+
+                {/* Sphinx Needs Import Section */}
+                <Card 
+                    title="Import Sphinx Needs Data to the Graph DB to get the Req. Attributes"
+                    style={{ marginTop: '24px' }}
+                >
+                    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+                        <Upload {...uploadProps}>
+                            <Button 
+                                icon={<UploadOutlined />} 
+                                loading={importLoading}
+                                size="large"
+                            >
+                                {importLoading ? 'Importing...' : 'Import Sphinx Needs JSON File'}
+                            </Button>
+                        </Upload>
+
+                        {/* Import Results */}
+                        {importResults && (
+                            <Alert
+                                message={importResults.message}
+                                type={importResults.success ? 'success' : 'error'}
+                                showIcon
+                                description={
+                                    importResults.success ? (
+                                        <Space direction="vertical" size="small">
+                                            {importResults.project && (
+                                                <Text>
+                                                    Project: <Text strong>{importResults.project}</Text>
+                                                </Text>
+                                            )}
+                                            <Text>
+                                                Imported nodes: <Text strong>{importResults.nodeCount}</Text>
+                                            </Text>
+                                            <Text>
+                                                Created relationships: <Text strong>{importResults.relationshipCount}</Text>
+                                            </Text>
+                                        </Space>
+                                    ) : (
+                                        importResults.error && (
+                                            <Text>Error: {importResults.error}</Text>
+                                        )
+                                    )
+                                }
+                            />
+                        )}
+                    </Space>
+                </Card>
+            </Card>
         </div>
     );
 };
