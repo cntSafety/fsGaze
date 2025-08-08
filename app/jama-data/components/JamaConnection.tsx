@@ -245,9 +245,9 @@ const JamaConnection: React.FC<JamaConnectionProps> = ({
                                     To use OAuth authentication, you need to create API credentials in your Jama user profile:
                                     <ol style={{ marginTop: 8, marginBottom: 0 }}>
                                         <li>Go to your Jama user profile</li>
-                                        <li>Click "Set API Credentials"</li>
+                                        <li>Click &quot;Set API Credentials&quot;</li>
                                         <li>Enter a name for your application</li>
-                                        <li>Click "Create API Credentials"</li>
+                                        <li>Click &quot;Create API Credentials&quot;</li>
                                         <li>Copy the Client ID and Secret (secret shown only once!)</li>
                                     </ol>
                                 </div>
