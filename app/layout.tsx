@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Navbar } from "./components/Navbar";
 import { LoadingProvider } from "./components/LoadingProvider";
+import { JamaConnectionProvider } from "./components/JamaConnectionProvider";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import 'antd/dist/reset.css';
@@ -49,11 +50,13 @@ export default function RootLayout({
       >
         <ThemeProvider>
           <App>
-            <LoadingProvider>
-              <Navbar>
-                {children}
-              </Navbar>
-            </LoadingProvider>
+            <JamaConnectionProvider>
+              <LoadingProvider>
+                <Navbar>
+                  {children}
+                </Navbar>
+              </LoadingProvider>
+            </JamaConnectionProvider>
           </App>
         </ThemeProvider>
       </body>

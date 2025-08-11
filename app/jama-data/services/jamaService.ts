@@ -147,6 +147,24 @@ export class JamaService {
     }
 
     /**
+     * Get picklist option by ID
+     */
+    async getPicklistOption(optionId: number): Promise<any> {
+        const response = await this.makeApiCall(`/picklistoptions/${optionId}`);
+        const data = await response.json() as JamaApiResponse<any>;
+        return data.data;
+    }
+
+    /**
+     * Get item type by ID
+     */
+    async getItemType(itemTypeId: number): Promise<any> {
+        const response = await this.makeApiCall(`/itemtypes/${itemTypeId}`);
+        const data = await response.json() as JamaApiResponse<any>;
+        return data.data;
+    }
+
+    /**
      * Search items using abstract items endpoint
      */
     async searchItems(filters: RequirementSearchFilters): Promise<JamaItem[]> {

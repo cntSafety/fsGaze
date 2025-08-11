@@ -10,45 +10,100 @@ import {
     Space, 
     Radio, 
     Divider,
-    Spin,
     Tag,
-    Typography 
+    Typography,
+    Badge,
+    Dropdown
 } from 'antd';
 import { 
     LinkOutlined, 
     DisconnectOutlined, 
     KeyOutlined, 
     UserOutlined,
-    CheckCircleOutlined 
+    CheckCircleOutlined,
+    ExclamationCircleOutlined,
+    ReloadOutlined,
+    SettingOutlined,
+    ClockCircleOutlined
 } from '@ant-design/icons';
-import { JamaConnectionConfig, JamaConnectionError } from '../types/jama';
-import { JamaService } from '../services/jamaService';
+import type { MenuProps } from 'antd';
+import { JamaConnectionConfig } from '../types/jama';
+import { useJamaConnection } from '../../components/JamaConnectionProvider';
 
 const { Text, Link } = Typography;
 
 interface JamaConnectionProps {
-    onConnectionSuccess: (config: JamaConnectionConfig) => void;
-    onDisconnect: () => void;
-    isConnected: boolean;
-    connectionConfig: JamaConnectionConfig | null;
+    onConnectionSuccess?: (config: JamaConnectionConfig) => void;
+    onDisconnect?: () => void;
+    showStatusOnly?: boolean;
+    showFullStatus?: boolean;
+    onOpenConnectionModal?: () => void;
+    variant?: 'full' | 'status' | 'compact';
 }
 
 const JamaConnection: React.FC<JamaConnectionProps> = ({
     onConnectionSuccess,
     onDisconnect,
-    isConnected,
-    connectionConfig
+    showStatusOnly = false,
+    showFullStatus = false,
+    onOpenConnectionModal,
+    variant = 'full'
 }) => {
+    const {
+        isConnected,
+        isConnecting,
+        connectionError,
+        connectionConfig,
+        connect,
+        disconnect,
+        testConnection,
+        isTokenValid,
+        isTokenExpiringSoon,
+    } = useJamaConnection();
+
     const [form] = Form.useForm();
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
     const [authType, setAuthType] = useState<'oauth' | 'basic'>('oauth');
-    const [testingConnection, setTestingConnection] = useState(false);
+
+    // Status helper methods
+    const getStatusColor = () => {
+        if (!isConnected) return 'default';
+        if (connectionError) return 'error';
+        if (!isTokenValid) return 'error';
+        if (isTokenExpiringSoon) return 'warning';
+        return 'success';
+    };
+
+    const getStatusText = () => {
+        if (isConnecting) return 'Connecting...';
+        if (!isConnected) return 'Not Connected';
+        if (connectionError) return 'Connection Error';
+        if (!isTokenValid) return 'Token Expired';
+        if (isTokenExpiringSoon) return 'Token Expiring Soon';
+        return 'Connected';
+    };
+
+    const getStatusIcon = () => {
+        if (isConnecting) return <ReloadOutlined spin />;
+        if (!isConnected) return <DisconnectOutlined />;
+        if (connectionError || !isTokenValid) return <ExclamationCircleOutlined />;
+        if (isTokenExpiringSoon) return <ClockCircleOutlined />;
+        return <CheckCircleOutlined />;
+    };
+
+    const formatTokenExpiry = (expiry?: number) => {
+        if (!expiry) return 'N/A';
+        
+        const expiryDate = new Date(expiry);
+        const now = new Date();
+        const minutesLeft = Math.floor((expiry - now.getTime()) / (1000 * 60));
+        
+        if (variant === 'full') {
+            return `${expiryDate.toLocaleString()} (${minutesLeft}m remaining)`;
+        }
+        return `${minutesLeft}m remaining`;
+    };
 
     const handleConnect = async (values: any) => {
-        setLoading(true);
-        setError(null);
-        
         try {
             const config: JamaConnectionConfig = {
                 baseUrl: values.baseUrl,
@@ -63,76 +118,155 @@ const JamaConnection: React.FC<JamaConnectionProps> = ({
                 config.password = values.password;
             }
 
-            const jamaService = new JamaService(config);
-
-            if (authType === 'oauth') {
-                // Exchange credentials for token
-                const tokenResponse = await jamaService.getOAuthToken(
-                    values.clientId,
-                    values.clientSecret,
-                    values.baseUrl
-                );
-                
-                config.accessToken = tokenResponse.access_token;
-                config.tokenExpiry = Date.now() + (tokenResponse.expires_in * 1000);
-            }
-
-            // Test the connection
-            const connectionSuccess = await jamaService.testConnection();
+            await connect(config);
             
-            if (connectionSuccess) {
-                // Get current user info to validate connection
-                const currentUser = await jamaService.getCurrentUser();
-                console.log('Connected as:', currentUser);
-                
+            if (onConnectionSuccess) {
                 onConnectionSuccess(config);
-                form.resetFields();
-            } else {
-                setError('Connection test failed. Please check your credentials and URL.');
             }
+            
+            form.resetFields();
             
         } catch (error: any) {
             console.error('Connection failed:', error);
-            setError(error.message || 'Failed to connect to Jama');
-        } finally {
-            setLoading(false);
         }
     };
 
     const handleDisconnect = () => {
-        onDisconnect();
-        form.resetFields();
-        setError(null);
-    };
-
-    const testConnection = async () => {
-        if (!connectionConfig) return;
+        disconnect();
         
-        setTestingConnection(true);
-        try {
-            const jamaService = new JamaService(connectionConfig);
-            const success = await jamaService.testConnection();
-            
-            if (success) {
-                setError(null);
-            } else {
-                setError('Connection test failed');
-            }
-        } catch (error: any) {
-            setError(error.message || 'Connection test failed');
-        } finally {
-            setTestingConnection(false);
+        if (onDisconnect) {
+            onDisconnect();
         }
-    };
-
-    const formatTokenExpiry = (expiry: number) => {
-        const expiryDate = new Date(expiry);
-        const now = new Date();
-        const hoursLeft = Math.floor((expiry - now.getTime()) / (1000 * 60 * 60));
         
-        return `${expiryDate.toLocaleString()} (${hoursLeft}h remaining)`;
+        form.resetFields();
     };
 
+    const handleTestConnection = async () => {
+        await testConnection();
+    };
+
+    // Menu items for dropdown
+    const menuItems: MenuProps['items'] = [
+        {
+            key: 'test',
+            label: 'Test Connection',
+            icon: <ReloadOutlined />,
+            onClick: testConnection,
+            disabled: !isConnected || isConnecting,
+        },
+        {
+            key: 'settings',
+            label: 'Connection Settings',
+            icon: <SettingOutlined />,
+            onClick: onOpenConnectionModal,
+        },
+        {
+            type: 'divider',
+        },
+        {
+            key: 'disconnect',
+            label: 'Disconnect',
+            icon: <DisconnectOutlined />,
+            onClick: disconnect,
+            disabled: !isConnected,
+            danger: true,
+        },
+    ];
+
+    // Compact variant for navbar/header
+    if (variant === 'compact') {
+        return (
+            <Dropdown 
+                menu={{ items: menuItems }} 
+                placement="bottomRight"
+                trigger={['click']}
+            >
+                <Button size="small" type="text">
+                    <Space size="small">
+                        <Badge status={getStatusColor()} />
+                        {getStatusIcon()}
+                        <Text style={{ fontSize: '12px' }}>
+                            Jama: {getStatusText()}
+                        </Text>
+                    </Space>
+                </Button>
+            </Dropdown>
+        );
+    }
+
+    // Status variant (detailed status display)
+    if (variant === 'status' || showStatusOnly || showFullStatus) {
+        return (
+            <div style={{ padding: '12px 16px', border: '1px solid #d9d9d9', borderRadius: '6px' }}>
+                <Space direction="vertical" style={{ width: '100%' }}>
+                    <Space>
+                        <Badge status={getStatusColor()} />
+                        {getStatusIcon()}
+                        <Text strong>Jama Connection: {getStatusText()}</Text>
+                    </Space>
+                    
+                    {isConnected && connectionConfig && (
+                        <>
+                            <div>
+                                <Text type="secondary">URL: </Text>
+                                <Text>{connectionConfig.baseUrl}</Text>
+                            </div>
+                            
+                            <div>
+                                <Text type="secondary">Auth: </Text>
+                                <Text>{connectionConfig.authType === 'oauth' ? 'OAuth 2.0' : 'Basic Auth'}</Text>
+                            </div>
+                            
+                            {connectionConfig.authType === 'oauth' && connectionConfig.tokenExpiry && (
+                                <div>
+                                    <Text type="secondary">Token: </Text>
+                                    <Text type={isTokenExpiringSoon ? 'warning' : undefined}>
+                                        {formatTokenExpiry(connectionConfig.tokenExpiry)}
+                                    </Text>
+                                </div>
+                            )}
+                        </>
+                    )}
+                    
+                    {connectionError && (
+                        <Text type="danger" style={{ fontSize: '12px' }}>
+                            {connectionError}
+                        </Text>
+                    )}
+                    
+                    <Divider style={{ margin: '8px 0' }} />
+                    
+                    <Space size="small">
+                        <Button 
+                            size="small" 
+                            onClick={testConnection}
+                            loading={isConnecting}
+                            disabled={!isConnected}
+                        >
+                            Test
+                        </Button>
+                        
+                        {onOpenConnectionModal && (
+                            <Button size="small" onClick={onOpenConnectionModal}>
+                                Settings
+                            </Button>
+                        )}
+                        
+                        <Button 
+                            size="small" 
+                            danger 
+                            onClick={disconnect}
+                            disabled={!isConnected}
+                        >
+                            Disconnect
+                        </Button>
+                    </Space>
+                </Space>
+            </div>
+        );
+    }
+
+    // Full variant (connection form + status)
     if (isConnected && connectionConfig) {
         return (
             <Card 
@@ -176,22 +310,21 @@ const JamaConnection: React.FC<JamaConnectionProps> = ({
 
                     <div>
                         <Button 
-                            onClick={testConnection} 
-                            loading={testingConnection}
+                            onClick={handleTestConnection} 
+                            loading={isConnecting}
                             size="small"
                         >
                             Test Connection
                         </Button>
                     </div>
 
-                    {error && (
+                    {connectionError && (
                         <Alert
                             message="Connection Error"
-                            description={error}
+                            description={connectionError}
                             type="error"
                             showIcon
                             closable
-                            onClose={() => setError(null)}
                         />
                     )}
                 </Space>
@@ -205,7 +338,7 @@ const JamaConnection: React.FC<JamaConnectionProps> = ({
                 form={form}
                 layout="vertical"
                 onFinish={handleConnect}
-                disabled={loading}
+                disabled={isConnecting}
             >
                 <Form.Item
                     name="baseUrl"
@@ -315,14 +448,13 @@ const JamaConnection: React.FC<JamaConnectionProps> = ({
                     </>
                 )}
 
-                {error && (
+                {connectionError && (
                     <Alert
                         message="Connection Error"
-                        description={error}
+                        description={connectionError}
                         type="error"
                         showIcon
                         closable
-                        onClose={() => setError(null)}
                         style={{ marginBottom: 16 }}
                     />
                 )}
@@ -331,11 +463,11 @@ const JamaConnection: React.FC<JamaConnectionProps> = ({
                     <Button 
                         type="primary" 
                         htmlType="submit" 
-                        loading={loading}
+                        loading={isConnecting}
                         icon={<LinkOutlined />}
                         block
                     >
-                        {loading ? 'Connecting...' : 'Connect to Jama'}
+                        {isConnecting ? 'Connecting...' : 'Connect to Jama'}
                     </Button>
                 </Form.Item>
             </Form>

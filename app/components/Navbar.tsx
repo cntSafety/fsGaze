@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
-import { Layout, Menu, Drawer, Button, Switch } from 'antd';
+import { Layout, Menu, Drawer, Button, Switch, Space, Modal } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   HiHome, HiCloudDownload, HiMenuAlt2, HiLightningBolt, HiOutlineDocumentReport,
@@ -14,6 +14,7 @@ import { SunOutlined, MoonOutlined } from '@ant-design/icons';
 import { IconType } from 'react-icons';
 import { useLoading } from './LoadingProvider';
 import { useTheme } from './ThemeProvider';
+import JamaConnection from '../jama-data/components/JamaConnection';
 
 // Original menu item types
 type MenuItemDef = SimpleMenuItemDef | DropdownMenuItemDef;
@@ -147,6 +148,7 @@ export function Navbar({ children }: { children: React.ReactNode }) {
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
     const [mounted, setMounted] = useState(false);
+    const [jamaModalOpen, setJamaModalOpen] = useState(false);
     
     const router = useRouter();
     const pathname = usePathname();
@@ -267,21 +269,32 @@ export function Navbar({ children }: { children: React.ReactNode }) {
 
     const SiderFooter = () => (
         <div className="p-4 border-t border-gray-200 dark:border-gray-800">
-            <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
-                {!isCollapsed && (
-                    <Switch
-                        checkedChildren={<SunOutlined />}
-                        unCheckedChildren={<MoonOutlined />}
-                        checked={themeMode === 'light'}
-                        onChange={toggleTheme}
+            <div className="space-y-3">
+                {/* Jama Connection Status */}
+                <div className={`${isCollapsed ? 'flex justify-center' : ''}`}>
+                    <JamaConnection 
+                        variant="compact"
+                        onOpenConnectionModal={() => setJamaModalOpen(true)}
                     />
-                )}
-                <Button
-                    type="default"
-                    icon={isCollapsed ? <HiChevronRight className="size-6" /> : <HiChevronLeft className="size-6" />}
-                    onClick={toggleCollapsed}
-                    title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-                />
+                </div>
+                
+                {/* Theme toggle and collapse button */}
+                <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
+                    {!isCollapsed && (
+                        <Switch
+                            checkedChildren={<SunOutlined />}
+                            unCheckedChildren={<MoonOutlined />}
+                            checked={themeMode === 'light'}
+                            onChange={toggleTheme}
+                        />
+                    )}
+                    <Button
+                        type="default"
+                        icon={isCollapsed ? <HiChevronRight className="size-6" /> : <HiChevronLeft className="size-6" />}
+                        onClick={toggleCollapsed}
+                        title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
+                    />
+                </div>
             </div>
         </div>
     );
@@ -344,6 +357,17 @@ export function Navbar({ children }: { children: React.ReactNode }) {
                 >
                     <AppMenu />
                 </Drawer>
+                
+                {/* Jama Connection Modal */}
+                <Modal
+                    title="Jama Connection Settings"
+                    open={jamaModalOpen}
+                    onCancel={() => setJamaModalOpen(false)}
+                    footer={null}
+                    width={600}
+                >
+                    <JamaConnection />
+                </Modal>
             </Layout>
         </Layout>
     );

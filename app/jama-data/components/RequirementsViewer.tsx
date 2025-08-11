@@ -17,28 +17,83 @@ import {
     SearchOutlined, 
     FileTextOutlined
 } from '@ant-design/icons';
-import { JamaConnectionConfig, JamaItem } from '../types/jama';
-import { JamaService } from '../services/jamaService';
+import { JamaItem } from '../types/jama';
+import { globalJamaService } from '../../services/globalJamaService';
+import { useJamaConnection } from '../../components/JamaConnectionProvider';
 
-const { Text } = Typography;
+const { Text, Paragraph } = Typography;
+
+// Utility function to strip HTML tags and convert to plain text
+const stripHtmlTags = (html: string): string => {
+    if (!html) return '';
+    
+    // Remove HTML tags
+    const stripped = html.replace(/<[^>]*>/g, '');
+    
+    // Decode common HTML entities
+    const decoded = stripped
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'");
+    
+    // Clean up extra whitespace
+    return decoded.replace(/\s+/g, ' ').trim();
+};
 
 interface RequirementsViewerProps {
-    connectionConfig: JamaConnectionConfig;
+    // No longer need connectionConfig prop since we use global service
 }
 
-const RequirementsViewer: React.FC<RequirementsViewerProps> = ({ connectionConfig }) => {
-    const [jamaService] = useState(() => new JamaService(connectionConfig));
+const RequirementsViewer: React.FC<RequirementsViewerProps> = () => {
+    const { isConnected, connectionError } = useJamaConnection();
     
     // State
     const [loading, setLoading] = useState(false);
     const [itemId, setItemId] = useState<string>('');
     const [item, setItem] = useState<JamaItem | null>(null);
+    const [asilInfo, setAsilInfo] = useState<{ field: string; value: string; optionName: string } | null>(null);
+    const [reasonInfo, setReasonInfo] = useState<{ field: string; value: string } | null>(null);
+    const [itemTypeInfo, setItemTypeInfo] = useState<{ id: number; display: string } | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     const handleItemIdChange = (value: string) => {
         setItemId(value);
         setItem(null);
+        setAsilInfo(null);
+        setReasonInfo(null);
+        setItemTypeInfo(null);
         setError(null);
+    };
+
+    const extractAsilFromFields = (fields: any, itemType: number) => {
+        // Look for asil field with the format asil$itemType
+        const asilFieldName = `asil$${itemType}`;
+        
+        if (fields[asilFieldName]) {
+            return {
+                field: asilFieldName,
+                value: fields[asilFieldName]
+            };
+        }
+        
+        return null;
+    };
+
+    const extractReasonFromFields = (fields: any, itemType: number) => {
+        // Look for reason field with the format reason$itemType
+        const reasonFieldName = `reason$${itemType}`;
+        
+        if (fields[reasonFieldName]) {
+            return {
+                field: reasonFieldName,
+                value: fields[reasonFieldName]
+            };
+        }
+        
+        return null;
     };
 
     const handleLoadItem = async () => {
@@ -48,15 +103,81 @@ const RequirementsViewer: React.FC<RequirementsViewerProps> = ({ connectionConfi
             return;
         }
 
+        if (!isConnected) {
+            setError('Please connect to Jama first');
+            return;
+        }
+
         setLoading(true);
         setError(null);
+        setAsilInfo(null);
+        setReasonInfo(null);
+        setItemTypeInfo(null);
+        
         try {
-            const itemData = await jamaService.getItem(numericItemId);
+            // Use global service which handles token validation automatically
+            const itemData = await globalJamaService.getItem(numericItemId);
             setItem(itemData);
+
+            // Get item type information
+            try {
+                const itemTypeData = await globalJamaService.getItemType(itemData.itemType);
+                setItemTypeInfo({
+                    id: itemTypeData.id,
+                    display: itemTypeData.display
+                });
+            } catch (itemTypeError) {
+                console.error('Failed to load item type:', itemTypeError);
+                setItemTypeInfo({
+                    id: itemData.itemType,
+                    display: `Type ${itemData.itemType} (Failed to load name)`
+                });
+            }
+
+            // Extract ASIL information
+            const asilData = extractAsilFromFields(itemData.fields, itemData.itemType);
+            
+            if (asilData) {
+                try {
+                    // Get the picklist option details
+                    const picklistOption = await globalJamaService.getPicklistOption(asilData.value);
+                    
+                    setAsilInfo({
+                        field: asilData.field,
+                        value: asilData.value.toString(),
+                        optionName: picklistOption.name
+                    });
+                } catch (picklistError) {
+                    console.error('Failed to load ASIL picklist option:', picklistError);
+                    setAsilInfo({
+                        field: asilData.field,
+                        value: asilData.value.toString(),
+                        optionName: 'Unknown (Failed to load)'
+                    });
+                }
+            } else {
+                setAsilInfo(null);
+            }
+
+            // Extract Reason information
+            const reasonData = extractReasonFromFields(itemData.fields, itemData.itemType);
+            
+            if (reasonData) {
+                setReasonInfo({
+                    field: reasonData.field,
+                    value: reasonData.value
+                });
+            } else {
+                setReasonInfo(null);
+            }
+            
         } catch (error: any) {
             setError(error.message || 'Failed to load item');
             console.error('Failed to load item:', error);
             setItem(null);
+            setAsilInfo(null);
+            setReasonInfo(null);
+            setItemTypeInfo(null);
         } finally {
             setLoading(false);
         }
@@ -64,16 +185,38 @@ const RequirementsViewer: React.FC<RequirementsViewerProps> = ({ connectionConfi
 
     return (
         <div>
+            {/* Connection Status Alert */}
+            {!isConnected && (
+                <Alert
+                    message="Not Connected"
+                    description="Please connect to Jama first using the Connection tab."
+                    type="warning"
+                    showIcon
+                    style={{ marginBottom: 16 }}
+                />
+            )}
+
+            {connectionError && (
+                <Alert
+                    message="Connection Error"
+                    description={connectionError}
+                    type="error"
+                    showIcon
+                    style={{ marginBottom: 16 }}
+                />
+            )}
+
             {/* Item ID Input */}
             <Card style={{ marginBottom: 16 }}>
                 <Row gutter={16} align="middle">
                     <Col span={8}>
                         <Input
-                            placeholder="Enter Item ID (e.g., 1234567)"
+                            placeholder="Enter Item ID (e.g., 5093322)"
                             value={itemId}
                             onChange={(e) => handleItemIdChange(e.target.value)}
                             onPressEnter={handleLoadItem}
                             addonBefore={<FileTextOutlined />}
+                            disabled={!isConnected}
                         />
                     </Col>
                     
@@ -81,12 +224,21 @@ const RequirementsViewer: React.FC<RequirementsViewerProps> = ({ connectionConfi
                         <Button 
                             type="primary"
                             onClick={handleLoadItem}
-                            disabled={!itemId}
+                            disabled={!itemId || !isConnected}
                             loading={loading}
                             icon={<SearchOutlined />}
                         >
-                            Load Item
+                            Load Requirements
                         </Button>
+                    </Col>
+
+                    <Col span={12}>
+                        <Text type="secondary" style={{ fontSize: '12px' }}>
+                            {isConnected 
+                                ? 'Enter a Jama item ID to load requirement information'
+                                : 'Connect to Jama first to load requirement data'
+                            }
+                        </Text>
                     </Col>
                 </Row>
             </Card>
@@ -108,37 +260,54 @@ const RequirementsViewer: React.FC<RequirementsViewerProps> = ({ connectionConfi
             {loading && (
                 <Card style={{ textAlign: 'center', marginBottom: 16 }}>
                     <Spin size="large" />
-                    <div style={{ marginTop: 16 }}>Loading item...</div>
+                    <div style={{ marginTop: 16 }}>Loading requirement information...</div>
                 </Card>
             )}
 
-            {/* Item Display */}
+            {/* Requirement Information Display */}
             {item && !loading && (
-                <Card title="Item Details">
+                <Card title={`Requirement Information for Item ${item.id}`}>
                     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                        {/* Basic Item Information */}
                         <Descriptions bordered size="small" column={1}>
-                            <Descriptions.Item label="ID">
+                            <Descriptions.Item label="Item ID">
                                 <Text strong>{item.id}</Text>
                             </Descriptions.Item>
                             <Descriptions.Item label="Document Key">
                                 <Text code>{item.documentKey}</Text>
                             </Descriptions.Item>
-                            <Descriptions.Item label="Global ID">
-                                <Text code>{item.globalId}</Text>
+                            {item.fields.name && (
+                                <Descriptions.Item label="Name">
+                                    <Text strong>{item.fields.name}</Text>
+                                </Descriptions.Item>
+                            )}
+                            <Descriptions.Item label="Item Type">
+                                <Text>
+                                    {itemTypeInfo ? itemTypeInfo.display : `Type ${item.itemType}`}
+                                </Text>
                             </Descriptions.Item>
+                            {asilInfo && (
+                                <Descriptions.Item label="ASIL Classification">
+                                    <Text strong style={{ color: '#52c41a' }}>
+                                        ASIL {asilInfo.optionName}
+                                    </Text>
+                                </Descriptions.Item>
+                            )}
+                            {reasonInfo && (
+                                <Descriptions.Item label="Reason">
+                                    <Text>
+                                        {stripHtmlTags(reasonInfo.value)}
+                                    </Text>
+                                </Descriptions.Item>
+                            )}
                         </Descriptions>
 
+                        {/* Description if available */}
                         {item.fields.description && (
                             <Card size="small" title="Description">
-                                <div 
-                                    style={{ 
-                                        wordBreak: 'break-word',
-                                        lineHeight: '1.6'
-                                    }}
-                                    dangerouslySetInnerHTML={{ 
-                                        __html: item.fields.description 
-                                    }} 
-                                />
+                                <Paragraph style={{ margin: 0 }}>
+                                    {stripHtmlTags(item.fields.description)}
+                                </Paragraph>
                             </Card>
                         )}
                     </Space>
