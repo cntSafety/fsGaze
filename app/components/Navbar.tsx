@@ -73,7 +73,7 @@ const menuItemsDef: MenuItemDef[] = [
             { label: 'SW Safety Analysis', href: '/arxml-safety', isActive: true },
             { label: 'Failure Chain', href: '/arxml-crossFM', isActive: true },
             { label: 'Safety Tasks', href: '/arxml-safety-status', isActive: true },
-            { label: 'SW Flow', href: '/arxml-flowViewer', isActive: true }
+            { label: 'Requirements', href: '/jama-data', isActive: true }
         ]
     },
     {

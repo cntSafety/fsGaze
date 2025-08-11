@@ -114,6 +114,12 @@ const RequirementsViewer: React.FC = () => {
         try {
             // Use global service which handles token validation automatically
             const itemData = await globalJamaService.getItem(numericItemId);
+
+                // Console log the item data for debugging
+            console.log('Jama Item Data:', itemData);
+            console.log('Item Fields:', itemData.fields);
+            console.log('Item Type:', itemData.itemType);
+            
             setItem(itemData);
 
             // Get item type information
@@ -226,7 +232,7 @@ const RequirementsViewer: React.FC = () => {
                             icon={<SearchOutlined />}
                             style={{ width: '100%' }}
                         >
-                            Load Requirements
+                            Load Item
                         </Button>
                     </Col>
 
@@ -284,6 +290,35 @@ const RequirementsViewer: React.FC = () => {
                                     {itemTypeInfo ? itemTypeInfo.display : `Type ${item.itemType}`}
                                 </Text>
                             </Descriptions.Item>
+                            
+                            <Descriptions.Item label="Project">
+                                <Text>{item.project}</Text>
+                            </Descriptions.Item>
+                            
+                            <Descriptions.Item label="Created Date">
+                                <Text>
+                                    {item.createdDate ? new Date(item.createdDate).toLocaleString() : 'N/A'}
+                                </Text>
+                            </Descriptions.Item>
+                            
+                            <Descriptions.Item label="Modified Date">
+                                <Text>
+                                    {item.modifiedDate ? new Date(item.modifiedDate).toLocaleString() : 'N/A'}
+                                </Text>
+                            </Descriptions.Item>
+                            
+                            {item.fields.globalId && (
+                                <Descriptions.Item label="Global ID">
+                                    <Text>{item.fields.globalId}</Text>
+                                </Descriptions.Item>
+                            )}
+                            
+                            {item.fields.planned_release$435 && (
+                                <Descriptions.Item label="Planned Release">
+                                    <Text>{item.fields.planned_release$435}</Text>
+                                </Descriptions.Item>
+                            )}
+                            
                             {asilInfo && (
                                 <Descriptions.Item label="ASIL Classification">
                                     <Text strong style={{ color: '#52c41a' }}>
