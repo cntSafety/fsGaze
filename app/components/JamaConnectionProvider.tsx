@@ -81,14 +81,63 @@ export const JamaConnectionProvider: React.FC<JamaConnectionProviderProps> = ({ 
 
   // Auto-reconnect on app startup if we have stored config
   useEffect(() => {
-    const storedConfig = useJamaStore.getState().connectionConfig;
-    if (storedConfig && !isConnected) {
-      // Try to reconnect with stored config
-      connect(storedConfig).catch(() => {
-        // Silent fail - user will need to reconnect manually
-      });
-    }
-  }, []);
+    const initializeConnection = async () => {
+      const state = useJamaStore.getState();
+      const storedConfig = state.connectionConfig;
+      
+      if (!storedConfig || isConnected) {
+        return;
+      }
+
+      // For basic auth, try to reconnect if we have stored credentials
+      if (storedConfig.authType === 'basic' && storedConfig.username) {
+        // Basic auth can't auto-reconnect without password - show connection needed message
+        setConnectionError('OAuth credentials are required');
+        return;
+      }
+
+      // For OAuth, check if we have a valid token
+      if (storedConfig.authType === 'oauth' && storedConfig.accessToken && storedConfig.tokenExpiry) {
+        const isTokenStillValid = Date.now() < storedConfig.tokenExpiry;
+        
+        if (isTokenStillValid) {
+          try {
+            // Test if the stored token still works
+            const { JamaService } = await import('../jama-data/services/jamaService');
+            const jamaService = new JamaService(storedConfig);
+            const connectionSuccess = await jamaService.testConnection();
+            
+            if (connectionSuccess) {
+              // Token is valid, restore connection
+              setConnection(storedConfig);
+              notification.success({
+                message: 'Reconnected to Jama',
+                description: 'Successfully restored your Jama connection',
+                placement: 'topRight',
+                duration: 3,
+              });
+              return;
+            }
+          } catch (error) {
+            // Token test failed, will need fresh credentials
+          }
+        }
+        
+        // Token expired or invalid - check if we can refresh it
+        if (storedConfig.clientId) {
+          setConnectionError('OAuth credentials are required');
+          notification.warning({
+            message: 'Connection Expired',
+            description: 'Your Jama session has expired. Please reconnect with your OAuth credentials.',
+            placement: 'topRight',
+            duration: 5,
+          });
+        }
+      }
+    };
+
+    initializeConnection();
+  }, []);  // Only run once on mount
 
   const connect = async (config: JamaConnectionConfig): Promise<void> => {
     setConnecting(true);

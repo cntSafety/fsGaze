@@ -273,7 +273,7 @@ export function Navbar({ children }: { children: React.ReactNode }) {
                 {/* Jama Connection Status */}
                 <div className={`${isCollapsed ? 'flex justify-center' : ''}`}>
                     <JamaConnection 
-                        variant="compact"
+                        variant={isCollapsed ? 'mini' : 'compact'}
                         onOpenConnectionModal={() => setJamaModalOpen(true)}
                     />
                 </div>

@@ -43,11 +43,8 @@ const stripHtmlTags = (html: string): string => {
     return decoded.replace(/\s+/g, ' ').trim();
 };
 
-interface RequirementsViewerProps {
-    // No longer need connectionConfig prop since we use global service
-}
-
-const RequirementsViewer: React.FC<RequirementsViewerProps> = () => {
+// No props needed since component uses global Jama service
+const RequirementsViewer: React.FC = () => {
     const { isConnected, connectionError } = useJamaConnection();
     
     // State
@@ -208,8 +205,8 @@ const RequirementsViewer: React.FC<RequirementsViewerProps> = () => {
 
             {/* Item ID Input */}
             <Card style={{ marginBottom: 16 }}>
-                <Row gutter={16} align="middle">
-                    <Col span={8}>
+                <Row gutter={[16, 8]} align="middle">
+                    <Col xs={24} sm={24} md={8} lg={8}>
                         <Input
                             placeholder="Enter Item ID (e.g., 5093322)"
                             value={itemId}
@@ -220,19 +217,20 @@ const RequirementsViewer: React.FC<RequirementsViewerProps> = () => {
                         />
                     </Col>
                     
-                    <Col span={4}>
+                    <Col xs={24} sm={24} md={6} lg={4}>
                         <Button 
                             type="primary"
                             onClick={handleLoadItem}
                             disabled={!itemId || !isConnected}
                             loading={loading}
                             icon={<SearchOutlined />}
+                            style={{ width: '100%' }}
                         >
                             Load Requirements
                         </Button>
                     </Col>
 
-                    <Col span={12}>
+                    <Col xs={24} sm={24} md={10} lg={12}>
                         <Text type="secondary" style={{ fontSize: '12px' }}>
                             {isConnected 
                                 ? 'Enter a Jama item ID to load requirement information'

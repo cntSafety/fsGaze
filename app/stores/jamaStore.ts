@@ -217,15 +217,23 @@ export const useJamaStore = create<JamaStoreState>()(
     {
       name: 'jama-connection-storage',
       storage: createJSONStorage(() => localStorage),
-      // Only persist essential connection data, not sensitive tokens
+      // Persist connection data with session-based token storage
       partialize: (state) => ({
         connectionConfig: state.connectionConfig ? {
           baseUrl: state.connectionConfig.baseUrl,
           authType: state.connectionConfig.authType,
           clientId: state.connectionConfig.clientId,
-          // Don't persist sensitive data like tokens, secrets, or passwords
+          // For OAuth, persist tokens but not the client secret
+          ...(state.connectionConfig.authType === 'oauth' ? {
+            accessToken: state.connectionConfig.accessToken,
+            tokenExpiry: state.connectionConfig.tokenExpiry,
+          } : {}),
+          // For basic auth, persist username but not password
+          ...(state.connectionConfig.authType === 'basic' ? {
+            username: state.connectionConfig.username,
+          } : {}),
         } : null,
-        isConnected: false, // Always start disconnected for security
+        isConnected: state.isConnected && state.connectionConfig?.authType === 'basic' ? true : false, // Only auto-connect basic auth
         lastConnectionTest: state.lastConnectionTest,
       }),
     }

@@ -38,7 +38,7 @@ interface JamaConnectionProps {
     showStatusOnly?: boolean;
     showFullStatus?: boolean;
     onOpenConnectionModal?: () => void;
-    variant?: 'full' | 'status' | 'compact';
+    variant?: 'full' | 'status' | 'compact' | 'mini';
 }
 
 const JamaConnection: React.FC<JamaConnectionProps> = ({
@@ -63,6 +63,19 @@ const JamaConnection: React.FC<JamaConnectionProps> = ({
 
     const [form] = Form.useForm();
     const [authType, setAuthType] = useState<'oauth' | 'basic'>('oauth');
+
+    // Check if we have stored connection info on component mount
+    React.useEffect(() => {
+        if (connectionConfig && !isConnected) {
+            // Pre-fill form with stored config
+            form.setFieldsValue({
+                baseUrl: connectionConfig.baseUrl,
+                clientId: connectionConfig.clientId,
+                username: connectionConfig.username,
+            });
+            setAuthType(connectionConfig.authType);
+        }
+    }, [connectionConfig, isConnected, form]);
 
     // Status helper methods
     const getStatusColor = () => {
@@ -172,6 +185,36 @@ const JamaConnection: React.FC<JamaConnectionProps> = ({
             danger: true,
         },
     ];
+
+    // Mini variant for collapsed sidebar (icon + dot only)
+    if (variant === 'mini') {
+        return (
+            <Dropdown 
+                menu={{ items: menuItems }} 
+                placement="bottomRight"
+                trigger={['click']}
+            >
+                <Button 
+                    size="small" 
+                    type="text"
+                    style={{ 
+                        padding: '4px 8px',
+                        height: '28px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                    }}
+                >
+                    <Space size={4}>
+                        <Badge status={getStatusColor()} />
+                        <Text style={{ fontSize: '10px', lineHeight: 1 }}>
+                            Jama
+                        </Text>
+                    </Space>
+                </Button>
+            </Dropdown>
+        );
+    }
 
     // Compact variant for navbar/header
     if (variant === 'compact') {
@@ -334,6 +377,21 @@ const JamaConnection: React.FC<JamaConnectionProps> = ({
 
     return (
         <Card title="Connect to Jama">
+            {/* Show restoration message if we have stored config */}
+            {connectionConfig && !isConnected && (
+                <Alert
+                    message="Previous Connection Found"
+                    description={
+                        connectionConfig.authType === 'oauth' 
+                            ? `Found saved connection to ${connectionConfig.baseUrl}. Please enter your OAuth client secret to reconnect.`
+                            : `Found saved connection to ${connectionConfig.baseUrl}. Please enter your password to reconnect.`
+                    }
+                    type="info"
+                    showIcon
+                    style={{ marginBottom: 16 }}
+                />
+            )}
+            
             <Form
                 form={form}
                 layout="vertical"
