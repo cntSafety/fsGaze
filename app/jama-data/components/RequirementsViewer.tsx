@@ -114,11 +114,6 @@ const RequirementsViewer: React.FC = () => {
         try {
             // Use global service which handles token validation automatically
             const itemData = await globalJamaService.getItem(numericItemId);
-
-                // Console log the item data for debugging
-            console.log('Jama Item Data:', itemData);
-            console.log('Item Fields:', itemData.fields);
-            console.log('Item Type:', itemData.itemType);
             
             setItem(itemData);
 

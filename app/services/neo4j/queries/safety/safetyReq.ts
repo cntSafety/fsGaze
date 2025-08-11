@@ -2,53 +2,122 @@
 import { driver } from '@/app/services/neo4j/config';
 import { generateUUID } from '../../utils';
 
-// Types and interfaces
+/**
+ * Represents a Safety Requirement entity in the Neo4j database
+ */
 export interface SafetyReqData {
+  /** Unique identifier for the safety requirement */
   uuid: string;
+  /** Human-readable name of the safety requirement */
   name: string;
+  /** ISO timestamp when the requirement was created in fsGaze */
   created: string;
+  /** ISO timestamp when the requirement was last modified in fsGaze */
   lastModified: string;
+  /** Unique requirement identifier (e.g., REQ-001) */
   reqID: string;
+  /** Detailed description/text of the safety requirement */
   reqText: string;
+  /** ASIL classification level (QM, A, B, C, D) */
   reqASIL: string;
+  /** Optional link to external documents or systems */
   reqLinkedTo?: string;
+  /** Optional creation date from Jama system */
+  jamaCreatedDate?: string;
+  /** Optional modification date from Jama system */
+  jamaModifiedDate?: string;
 }
 
+/**
+ * Input data required to create a new Safety Requirement
+ */
 export interface CreateSafetyReqInput {
+  /** Human-readable name of the safety requirement */
   name: string;
+  /** Unique requirement identifier (e.g., REQ-001) */
   reqID: string;
+  /** Detailed description/text of the safety requirement */
   reqText: string;
+  /** ASIL classification level (must be valid SafetyReqASIL enum value) */
   reqASIL: string;
+  /** Optional link to external documents or systems */
   reqLinkedTo?: string;
+  /** Optional creation date from Jama system */
+  jamaCreatedDate?: string;
+  /** Optional modification date from Jama system */
+  jamaModifiedDate?: string;
 }
 
+/**
+ * Input data for updating an existing Safety Requirement
+ * All fields are optional to allow partial updates
+ */
 export interface UpdateSafetyReqInput {
+  /** Human-readable name of the safety requirement */
   name?: string;
+  /** Unique requirement identifier (e.g., REQ-001) */
   reqID?: string;
+  /** Detailed description/text of the safety requirement */
   reqText?: string;
+  /** ASIL classification level (must be valid SafetyReqASIL enum value) */
   reqASIL?: string;
+  /** Optional link to external documents or systems */
   reqLinkedTo?: string;
+  /** Optional creation date from Jama system */
+  jamaCreatedDate?: string;
+  /** Optional modification date from Jama system */
+  jamaModifiedDate?: string;
 }
 
-// ASIL validation enum
+/**
+ * ASIL (Automotive Safety Integrity Level) classification levels
+ * Used for functional safety requirements in automotive systems
+ */
 export enum SafetyReqASIL {
+  /** Quality Management - no safety requirements */
   QM = 'QM',
+  /** ASIL A - lowest safety integrity level */
   A = 'A',
+  /** ASIL B - medium-low safety integrity level */
   B = 'B',
+  /** ASIL C - medium-high safety integrity level */
   C = 'C',
+  /** ASIL D - highest safety integrity level */
   D = 'D'
 }
 
-// API Response interface
+/**
+ * Standard API response format for Safety Requirement operations
+ * @template T The type of data returned in successful responses
+ */
 export interface SafetyReqApiResponse<T = any> {
+  /** Indicates whether the operation was successful */
   success: boolean;
+  /** Data returned by successful operations */
   data?: T;
+  /** Success or informational message */
   message?: string;
+  /** Error message for failed operations */
   error?: string;
 }
 
 /**
- * Create a new SAFETYREQ node linked to a failure mode
+ * Creates a new SAFETYREQ node in Neo4j and links it to a failure mode
+ * 
+ * @param failureUuid - UUID of the failure mode to link the requirement to
+ * @param reqData - Safety requirement data to be stored
+ * @returns Promise resolving to API response with created requirement data
+ * 
+ * @example
+ * ```typescript
+ * const result = await createSafetyReq('failure-uuid-123', {
+ *   name: 'Emergency Stop Requirement',
+ *   reqID: 'REQ-001',
+ *   reqText: 'System must stop within 2 seconds',
+ *   reqASIL: SafetyReqASIL.C,
+ *   reqLinkedTo: 'https://jama.company.com/items/123'
+ * });
+ * ```
  */
 export const createSafetyReq = async (
   failureUuid: string,
@@ -82,7 +151,9 @@ export const createSafetyReq = async (
         reqID: $reqID,
         reqText: $reqText,
         reqASIL: $reqASIL,
-        reqLinkedTo: $reqLinkedTo
+        reqLinkedTo: $reqLinkedTo,
+        jamaCreatedDate: $jamaCreatedDate,
+        jamaModifiedDate: $jamaModifiedDate
       })
       CREATE (f)-[:HAS_SAFETY_REQUIREMENT]->(sr)
       RETURN sr
@@ -97,7 +168,9 @@ export const createSafetyReq = async (
       reqID: reqData.reqID,
       reqText: reqData.reqText,
       reqASIL: reqData.reqASIL,
-      reqLinkedTo: reqData.reqLinkedTo || null
+      reqLinkedTo: reqData.reqLinkedTo || null,
+      jamaCreatedDate: reqData.jamaCreatedDate || null,
+      jamaModifiedDate: reqData.jamaModifiedDate || null
     });
 
     if (result.records.length === 0) {
@@ -127,7 +200,18 @@ export const createSafetyReq = async (
 };
 
 /**
- * Get all SAFETYREQ nodes for a specific failure mode node
+ * Retrieves all SAFETYREQ nodes linked to a specific failure mode
+ * 
+ * @param failureUuid - UUID of the failure mode to get requirements for
+ * @returns Promise resolving to API response with array of safety requirements
+ * 
+ * @example
+ * ```typescript
+ * const result = await getSafetyReqsForNode('failure-uuid-123');
+ * if (result.success) {
+ *   console.log(`Found ${result.data.length} safety requirements`);
+ * }
+ * ```
  */
 export const getSafetyReqsForNode = async (
   failureUuid: string
@@ -159,7 +243,20 @@ export const getSafetyReqsForNode = async (
 };
 
 /**
- * Update an existing SAFETYREQ node
+ * Updates an existing SAFETYREQ node with new data
+ * Only provided fields will be updated, others remain unchanged
+ * 
+ * @param reqUuid - UUID of the safety requirement to update
+ * @param updateData - Object containing fields to update
+ * @returns Promise resolving to API response with updated requirement data
+ * 
+ * @example
+ * ```typescript
+ * const result = await updateSafetyReq('req-uuid-123', {
+ *   reqASIL: SafetyReqASIL.D,
+ *   reqText: 'Updated requirement description'
+ * });
+ * ```
  */
 export const updateSafetyReq = async (
   reqUuid: string,
@@ -199,6 +296,14 @@ export const updateSafetyReq = async (
     if (updateData.reqLinkedTo !== undefined) {
       updateFields.push('sr.reqLinkedTo = $reqLinkedTo');
       params.reqLinkedTo = updateData.reqLinkedTo;
+    }
+    if (updateData.jamaCreatedDate !== undefined) {
+      updateFields.push('sr.jamaCreatedDate = $jamaCreatedDate');
+      params.jamaCreatedDate = updateData.jamaCreatedDate;
+    }
+    if (updateData.jamaModifiedDate !== undefined) {
+      updateFields.push('sr.jamaModifiedDate = $jamaModifiedDate');
+      params.jamaModifiedDate = updateData.jamaModifiedDate;
     }
 
     if (updateFields.length === 0) {
@@ -245,7 +350,19 @@ export const updateSafetyReq = async (
 };
 
 /**
- * Delete a SAFETYREQ node
+ * Permanently deletes a SAFETYREQ node from the database
+ * This operation removes all relationships and cannot be undone
+ * 
+ * @param reqUuid - UUID of the safety requirement to delete
+ * @returns Promise resolving to API response indicating success/failure
+ * 
+ * @example
+ * ```typescript
+ * const result = await deleteSafetyReq('req-uuid-123');
+ * if (result.success) {
+ *   console.log('Safety requirement deleted successfully');
+ * }
+ * ```
  */
 export const deleteSafetyReq = async (
   reqUuid: string
@@ -287,7 +404,23 @@ export const deleteSafetyReq = async (
 };
 
 /**
- * Get all SAFETYREQ nodes with optional filtering
+ * Retrieves all SAFETYREQ nodes with optional filtering capabilities
+ * Useful for searching and reporting across all safety requirements
+ * 
+ * @param filters - Optional filtering criteria
+ * @param filters.reqASIL - Filter by ASIL level (exact match)
+ * @param filters.name - Filter by name (case-insensitive partial match)
+ * @param filters.reqID - Filter by requirement ID (case-insensitive partial match)
+ * @returns Promise resolving to API response with filtered safety requirements
+ * 
+ * @example
+ * ```typescript
+ * // Get all ASIL D requirements
+ * const result = await getAllSafetyReqs({ reqASIL: 'D' });
+ * 
+ * // Search by name
+ * const result2 = await getAllSafetyReqs({ name: 'emergency' });
+ * ```
  */
 export const getAllSafetyReqs = async (
   filters?: {
@@ -349,7 +482,19 @@ export const getAllSafetyReqs = async (
 };
 
 /**
- * Get a single SAFETYREQ node by UUID
+ * Retrieves a specific SAFETYREQ node by its UUID
+ * Used for displaying detailed safety requirement information
+ * 
+ * @param reqUuid - Unique identifier of the safety requirement
+ * @returns Promise resolving to API response with safety requirement data
+ * 
+ * @example
+ * ```typescript
+ * const result = await getSafetyReqByUuid('550e8400-e29b-41d4-a716-446655440000');
+ * if (result.success) {
+ *   console.log('Safety Req:', result.data.name);
+ * }
+ * ```
  */
 export const getSafetyReqByUuid = async (
   reqUuid: string

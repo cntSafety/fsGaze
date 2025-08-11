@@ -6,7 +6,8 @@ import {
   updateSafetyReq, 
   deleteSafetyReq, 
   SafetyReqData, 
-  CreateSafetyReqInput 
+  CreateSafetyReqInput,
+  UpdateSafetyReqInput 
 } from '@/app/services/neo4j/queries/safety/safetyReq';
 
 export const useSafetyReqManager = (onSaveSuccess?: () => void) => {
@@ -83,19 +84,22 @@ export const useSafetyReqManager = (onSaveSuccess?: () => void) => {
     try {
       setIsLoading(true);
       
-      // Convert form values to proper types
-      const convertedReqData = {
-        ...reqData,
-        reqASIL: reqData.reqASIL
-      };
-      
       let result;
       if (modalMode === 'create') {
         // Create new requirement
-        result = await createSafetyReq(selectedFailureForSafetyReq.failureUuid, convertedReqData);
+        result = await createSafetyReq(selectedFailureForSafetyReq.failureUuid, reqData);
       } else if (activeSafetyReq) {
-        // Update existing requirement
-        result = await updateSafetyReq(activeSafetyReq.uuid, convertedReqData);
+        // Update existing requirement - cast to UpdateSafetyReqInput
+        const updateData: UpdateSafetyReqInput = {
+          name: reqData.name,
+          reqID: reqData.reqID,
+          reqText: reqData.reqText,
+          reqASIL: reqData.reqASIL,
+          reqLinkedTo: reqData.reqLinkedTo,
+          jamaCreatedDate: reqData.jamaCreatedDate,
+          jamaModifiedDate: reqData.jamaModifiedDate
+        };
+        result = await updateSafetyReq(activeSafetyReq.uuid, updateData);
       }
       
       if (result?.success) {

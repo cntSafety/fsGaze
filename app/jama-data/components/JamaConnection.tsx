@@ -111,7 +111,7 @@ const JamaConnection: React.FC<JamaConnectionProps> = ({
         const minutesLeft = Math.floor((expiry - now.getTime()) / (1000 * 60));
         
         if (variant === 'full') {
-            return `${expiryDate.toLocaleString()} (${minutesLeft}m remaining)`;
+            return expiryDate.toLocaleString();
         }
         return `${minutesLeft}m remaining`;
     };
