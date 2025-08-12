@@ -161,3 +161,22 @@ RETURN swcProtoInScope, swcAppInScope, swcAppInScopePPorts, swcAppInScopeRPorts,
 MATCH path = (startNode)<-[*1..2]->(endNode)
 WHERE startNode.uuid = '1234...' AND endNode.uuid = '456'
 RETURN path
+
+MATCH (n)
+UNWIND keys(n) as prop
+WITH n, prop, n[prop] as value
+WHERE value IS NOT NULL AND
+  CASE
+    WHEN value IS :: STRING THEN toLower(value) CONTAINS toLower("MysearchString")
+    WHEN value IS :: INTEGER THEN toString(value) CONTAINS "MysearchString"
+    WHEN value IS :: FLOAT THEN toString(value) CONTAINS "MysearchString"
+    WHEN value IS :: BOOLEAN THEN toString(value) CONTAINS toLower("MysearchString")
+    WHEN value IS :: LIST<STRING> THEN ANY(item IN value WHERE toLower(toString(item)) CONTAINS toLower("MysearchString"))
+    WHEN value IS :: LIST<INTEGER> THEN ANY(item IN value WHERE toString(item) CONTAINS "MysearchString")
+    WHEN value IS :: LIST<FLOAT> THEN ANY(item IN value WHERE toString(item) CONTAINS "MysearchString")
+    ELSE false
+  END
+WITH n, collect(DISTINCT prop) as matchingProps
+WHERE size(matchingProps) > 0
+RETURN n.name, n.uuid, n.arxmlPath, labels(n) as nodeLabels, matchingProps
+LIMIT 100

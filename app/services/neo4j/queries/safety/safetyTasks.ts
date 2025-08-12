@@ -120,7 +120,7 @@ export const createSafetyTask = async (
         description: taskData.description.trim(),
         status: taskData.status,
         responsible: taskData.responsible.trim(),
-        reference: taskData.reference.trim(),
+        reference: taskData.reference ? taskData.reference.trim() : '',
         taskType: taskData.taskType,
         timestamp: currentTimestamp
       }
@@ -218,7 +218,7 @@ export const updateSafetyTask = async (
         description: taskData.description.trim(),
         status: taskData.status,
         responsible: taskData.responsible.trim(),
-        reference: taskData.reference.trim(),
+        reference: taskData.reference ? taskData.reference.trim() : '',
         taskType: taskData.taskType,
         timestamp: currentTimestamp
       }
