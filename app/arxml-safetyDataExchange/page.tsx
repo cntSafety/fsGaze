@@ -987,7 +987,7 @@ const SafetyDataExchangePage: React.FC = () => {
             {/* Show updated database status after successful import */}
             {showPostImportStats && uploadLogs.length > 0 && (
               <Alert
-                message="Import completed successfully! Click 'DB Status and Info' to view updated database statistics."
+                message="Import completed, please check the log for details! Click 'DB Status and Info' to view updated database statistics."
                 type="success"
                 showIcon
                 style={{ marginTop: 16 }}
