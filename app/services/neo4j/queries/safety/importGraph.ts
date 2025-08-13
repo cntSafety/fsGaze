@@ -1,5 +1,7 @@
 import { driver } from '@/app/services/neo4j/config';
 import { SafetyGraphData } from './types';
+import { getComponentByName } from '../components';
+import { getPortByName } from '../ports';
 
 export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
     success: boolean;
@@ -115,16 +117,120 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 continue;
             }
             // Check if the source ARXML_ELEMENT (or other type) exists
+            let sourceUuidToUse: string = occ.occuranceSourceUuid;
+            let sourceLabels: string = '';
+
             const sourceCheck = await tx.run(
-                'MATCH (src {uuid: $sourceUuid}) RETURN src.uuid AS uuid, labels(src) as lbls', 
-                { sourceUuid: occ.occuranceSourceUuid }
+                'MATCH (src {uuid: $sourceUuid}) RETURN src.uuid AS uuid, labels(src) as lbls',
+                { sourceUuid: sourceUuidToUse }
             );
             if (sourceCheck.records.length === 0) {
-                logs.push(`[ERROR] Source element with UUID ${occ.occuranceSourceUuid} for OCCURRENCE not found. Skipping link to FAILUREMODE ${occ.failureName || occ.failureUuid}.`);
-                continue;
+                // UUID not found; attempt fallback by name for specific component labels
+                const componentLabels = new Set([
+                    'APPLICATION_SW_COMPONENT_TYPE',
+                    'COMPOSITION_SW_COMPONENT_TYPE',
+                    'SERVICE_SW_COMPONENT_TYPE',
+                    'ECU_ABSTRACTION_SW_COMPONENT_TYPE'
+                ]);
+                const labelsFromPayload: string[] = Array.isArray((occ as any).occuranceSourceLabels) ? (occ as any).occuranceSourceLabels : [];
+                const isComponentType = labelsFromPayload.some(l => componentLabels.has(l));
+                const portLabels = new Set(['P_PORT_PROTOTYPE', 'R_PORT_PROTOTYPE']);
+                const isPortType = labelsFromPayload.some(l => portLabels.has(l));
+
+                if (isComponentType && occ.occuranceSourceName) {
+                    try {
+                        const lookup = await getComponentByName(occ.occuranceSourceName); //check in Neo4j if the SourceName exists
+                        if (lookup && lookup.success && lookup.data) {
+                            const candidate = Array.isArray(lookup.data) ? lookup.data[0] : lookup.data;
+                            if (candidate && candidate.uuid) {
+                                const reassignedUuid = candidate.uuid as string;
+                                // Verify the node with the reassigned UUID exists in the DB and fetch labels
+                                const verify = await tx.run(
+                                    'MATCH (src {uuid: $uuid}) RETURN labels(src) as lbls',
+                                    { uuid: reassignedUuid }
+                                );
+                                if (verify.records.length > 0) {
+                                    sourceUuidToUse = reassignedUuid;
+                                    sourceLabels = (verify.records[0].get('lbls') || []).join(':');
+                                    logs.push(
+                                        `[INFO] OCCURRENCE: Source UUID ${occ.occuranceSourceUuid} not found, but component named '${occ.occuranceSourceName}' exists. Reassigning to UUID ${reassignedUuid}.`
+                                    );
+                                } else {
+                                    logs.push(
+                                        `[ERROR] OCCURRENCE: Resolved component '${occ.occuranceSourceName}' to UUID ${reassignedUuid}, but node not present in DB. Skipping link to FAILUREMODE ${occ.failureName || occ.failureUuid}.`
+                                    );
+                                    continue;
+                                }
+                            } else {
+                                logs.push(
+                                    `[ERROR] OCCURRENCE: Component lookup by name '${occ.occuranceSourceName}' returned no UUID. Skipping link to FAILUREMODE ${occ.failureName || occ.failureUuid}.`
+                                );
+                                continue;
+                            }
+                        } else {
+                            logs.push(
+                                `[ERROR] OCCURRENCE: Component named '${occ.occuranceSourceName}' not found during fallback lookup. Skipping link to FAILUREMODE ${occ.failureName || occ.failureUuid}.`
+                            );
+                            continue;
+                        }
+                    } catch (e: any) {
+                        logs.push(
+                            `[ERROR] OCCURRENCE: Error during component name fallback for '${occ.occuranceSourceName}': ${e?.message || e}. Skipping link to FAILUREMODE ${occ.failureName || occ.failureUuid}.`
+                        );
+                        continue;
+                    }
+                } else if (isPortType && occ.occuranceSourceName) {
+                    try {
+                        const lookup = await getPortByName(occ.occuranceSourceName);
+                        if (lookup && lookup.success && lookup.data) {
+                            const candidate = Array.isArray(lookup.data) ? lookup.data[0] : lookup.data;
+                            if (candidate && candidate.uuid) {
+                                const reassignedUuid = candidate.uuid as string;
+                                // Verify and fetch labels for the port node
+                                const verify = await tx.run(
+                                    'MATCH (src {uuid: $uuid}) RETURN labels(src) as lbls',
+                                    { uuid: reassignedUuid }
+                                );
+                                if (verify.records.length > 0) {
+                                    sourceUuidToUse = reassignedUuid;
+                                    sourceLabels = (verify.records[0].get('lbls') || []).join(':');
+                                    logs.push(
+                                        `[INFO] OCCURRENCE: Source UUID ${occ.occuranceSourceUuid} not found, but port named '${occ.occuranceSourceName}' exists. Reassigning to UUID ${reassignedUuid}.`
+                                    );
+                                } else {
+                                    logs.push(
+                                        `[ERROR] OCCURRENCE: Resolved port '${occ.occuranceSourceName}' to UUID ${reassignedUuid}, but node not present in DB. Skipping link to FAILUREMODE ${occ.failureName || occ.failureUuid}.`
+                                    );
+                                    continue;
+                                }
+                            } else {
+                                logs.push(
+                                    `[ERROR] OCCURRENCE: Port lookup by name '${occ.occuranceSourceName}' returned no UUID. Skipping link to FAILUREMODE ${occ.failureName || occ.failureUuid}.`
+                                );
+                                continue;
+                            }
+                        } else {
+                            logs.push(
+                                `[ERROR] OCCURRENCE: Port named '${occ.occuranceSourceName}' not found during fallback lookup. Skipping link to FAILUREMODE ${occ.failureName || occ.failureUuid}.`
+                            );
+                            continue;
+                        }
+                    } catch (e: any) {
+                        logs.push(
+                            `[ERROR] OCCURRENCE: Error during port name fallback for '${occ.occuranceSourceName}': ${e?.message || e}. Skipping link to FAILUREMODE ${occ.failureName || occ.failureUuid}.`
+                        );
+                        continue;
+                    }
+                } else {
+                    logs.push(
+                        `[ERROR] Source element ${occ.occuranceSourceName ? `'${occ.occuranceSourceName}' ` : ''}with UUID ${occ.occuranceSourceUuid} for OCCURRENCE not found. Skipping link to FAILUREMODE ${occ.failureName || occ.failureUuid}.`
+                    );
+                    continue;
+                }
+            } else {
+                const sourceNode = sourceCheck.records[0];
+                sourceLabels = sourceNode.get('lbls').join(':');
             }
-            const sourceNode = sourceCheck.records[0];
-            const sourceLabels = sourceNode.get('lbls').join(':');
 
             // Check if the target FAILUREMODE exists (it should have been created above)
             const failureCheck = await tx.run(
@@ -142,9 +248,9 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 'MERGE (f)-[r:OCCURRENCE]->(src) ' +
                 'ON CREATE SET r.created = timestamp(), r.lastModified = timestamp() ' +
                 'RETURN type(r) AS relType', // We can return something to confirm creation/match
-                { failureUuid: occ.failureUuid, occuranceSourceUuid: occ.occuranceSourceUuid }
+                { failureUuid: occ.failureUuid, occuranceSourceUuid: sourceUuidToUse }
             );
-            logs.push(`[SUCCESS] OCCURRENCE relationship linked: (FAILUREMODE ${occ.failureName || occ.failureUuid})-[OCCURRENCE]->(${sourceLabels} ${occ.occuranceSourceName || occ.occuranceSourceUuid}).`);
+            logs.push(`[SUCCESS] OCCURRENCE relationship linked: (FAILUREMODE ${occ.failureName || occ.failureUuid})-[OCCURRENCE]->(${sourceLabels} ${occ.occuranceSourceName || sourceUuidToUse}).`);
         }
 
         // Import CAUSATION links (FIRST, THEN)
@@ -152,7 +258,8 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
             if (!link.causeFailureUuid || !link.causationUuid || !link.effectFailureUuid) {
                 logs.push(`[ERROR] Skipping CAUSATION link due to missing UUIDs: ${JSON.stringify(link)}`);
                 continue;
-            }            // Check if CAUSE FAILUREMODE exists
+            }
+            // Check if CAUSE FAILUREMODE exists
             const causeFailureCheck = await tx.run('MATCH (f:FAILUREMODE {uuid: $uuid}) RETURN f.uuid', { uuid: link.causeFailureUuid });
             if (causeFailureCheck.records.length === 0) {
                 logs.push(`[ERROR] CAUSE FAILUREMODE ${link.causeFailureName || link.causeFailureUuid} not found for causation link. Skipping.`);
@@ -164,7 +271,8 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
             if (causationNodeCheck.records.length === 0) {
                 logs.push(`[ERROR] CAUSATION node ${link.causationName || link.causationUuid} not found for causation link. Skipping.`);
                 continue;
-            }            // Check if EFFECT FAILUREMODE exists
+            }
+            // Check if EFFECT FAILUREMODE exists
             const effectFailureCheck = await tx.run('MATCH (f:FAILUREMODE {uuid: $uuid}) RETURN f.uuid', { uuid: link.effectFailureUuid });
             if (effectFailureCheck.records.length === 0) {
                 logs.push(`[ERROR] EFFECT FAILUREMODE ${link.effectFailureName || link.effectFailureUuid} not found for causation link. Skipping.`);
@@ -308,11 +416,55 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
             }
 
             // Check if the source node exists (can be any node type)
-            const nodeCheck = await tx.run('MATCH (n {uuid: $uuid}) RETURN n.uuid, labels(n) as labels', { uuid: link.nodeUuid });
+            let nodeUuidToUse: string = link.nodeUuid;
+            const nodeCheck = await tx.run('MATCH (n {uuid: $uuid}) RETURN n.uuid, labels(n) as labels', { uuid: nodeUuidToUse });
             if (nodeCheck.records.length === 0) {
-                logs.push(`[ERROR] Source node ${link.nodeName || link.nodeUuid} not found for TASKREF link. Skipping.`);
-                continue;
-            }            // Check if SAFETYTASKS exists
+                // Attempt fallback by component name if provided
+                if (link.nodeName) {
+                    try {
+                        const lookup = await getComponentByName(link.nodeName); // search for the name in DB
+                        if (lookup && lookup.success && lookup.data) {
+                            const candidate = Array.isArray(lookup.data) ? lookup.data[0] : lookup.data;
+                            if (candidate && candidate.uuid) {
+                                const reassignedUuid = candidate.uuid as string;
+                                // Verify presence in DB
+                                const verify = await tx.run('MATCH (n {uuid: $uuid}) RETURN labels(n) as labels', { uuid: reassignedUuid });
+                                if (verify.records.length > 0) {
+                                    nodeUuidToUse = reassignedUuid;
+                                    logs.push(
+                                        `[INFO] TASKREF: Source node UUID ${link.nodeUuid} not found, but component named '${link.nodeName}' exists. Reassigning to UUID ${reassignedUuid}.`
+                                    );
+                                } else {
+                                    logs.push(
+                                        `[ERROR] TASKREF: Resolved component '${link.nodeName}' to UUID ${reassignedUuid}, but node not present in DB. Skipping.`
+                                    );
+                                    continue;
+                                }
+                            } else {
+                                logs.push(
+                                    `[ERROR] TASKREF: Component lookup by name '${link.nodeName}' returned no UUID. Skipping.`
+                                );
+                                continue;
+                            }
+                        } else {
+                            logs.push(
+                                `[ERROR] TASKREF: Component named '${link.nodeName}' not found during fallback lookup. Skipping.`
+                            );
+                            continue;
+                        }
+                    } catch (e: any) {
+                        logs.push(
+                            `[ERROR] TASKREF: Error during component name fallback for '${link.nodeName}': ${e?.message || e}. Skipping.`
+                        );
+                        continue;
+                    }
+                } else {
+                    logs.push(`[ERROR] Source node ${link.nodeName || link.nodeUuid} not found for TASKREF link. Skipping.`);
+                    continue;
+                }
+            }
+
+            // Check if SAFETYTASKS exists
             const taskCheck = await tx.run('MATCH (task:SAFETYTASKS {uuid: $uuid}) RETURN task.uuid', { uuid: link.safetyTaskUuid });
             if (taskCheck.records.length === 0) {
                 logs.push(`[ERROR] SAFETYTASKS ${link.safetyTaskName || link.safetyTaskUuid} not found for TASKREF link. Skipping.`);
@@ -325,9 +477,9 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 'MATCH (task:SAFETYTASKS {uuid: $safetyTaskUuid}) ' +
                 'MERGE (n)-[rel:TASKREF]->(task) ' +
                 'ON CREATE SET rel.created = timestamp(), rel.lastModified = timestamp() ',
-                { nodeUuid: link.nodeUuid, safetyTaskUuid: link.safetyTaskUuid }
+                { nodeUuid: nodeUuidToUse, safetyTaskUuid: link.safetyTaskUuid }
             );
-            logs.push(`[SUCCESS] TASKREF relationship linked: (${link.nodeName || link.nodeUuid})-[TASKREF]->(SAFETYTASKS ${link.safetyTaskName || link.safetyTaskUuid}).`);
+            logs.push(`[SUCCESS] TASKREF relationship linked: (${link.nodeName || nodeUuidToUse})-[TASKREF]->(SAFETYTASKS ${link.safetyTaskName || link.safetyTaskUuid}).`);
         }
 
         // Import/Update SAFETY REQUIREMENTS
@@ -451,13 +603,58 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 continue;
             }
 
-            // Check if the source node exists (can be any node type)
-            const nodeCheck = await tx.run('MATCH (n {uuid: $uuid}) RETURN n.uuid, labels(n) as labels', { uuid: link.nodeUuid });
+            // Check if the source node exists (can be any node type) with fallback by component name
+            let nodeUuidToUse: string = link.nodeUuid;
+            let nodeLabels = '';
+            let nodeCheck = await tx.run('MATCH (n {uuid: $uuid}) RETURN n.uuid, labels(n) as labels', { uuid: nodeUuidToUse });
             if (nodeCheck.records.length === 0) {
-                logs.push(`[ERROR] Source node ${link.nodeName || link.nodeUuid} not found for NOTEREF link. Skipping.`);
-                continue;
+                // Attempt fallback by component name if provided
+                if (link.nodeName) {
+                    try {
+                        const lookup = await getComponentByName(link.nodeName);
+                        if (lookup && lookup.success && lookup.data) {
+                            const candidate = Array.isArray(lookup.data) ? lookup.data[0] : lookup.data;
+                            if (candidate && candidate.uuid) {
+                                const reassignedUuid = candidate.uuid as string;
+                                // Verify presence in DB and fetch labels
+                                const verify = await tx.run('MATCH (n {uuid: $uuid}) RETURN labels(n) as labels', { uuid: reassignedUuid });
+                                if (verify.records.length > 0) {
+                                    nodeUuidToUse = reassignedUuid;
+                                    nodeLabels = (verify.records[0].get('labels') || []).join(':');
+                                    logs.push(
+                                        `[INFO] NOTEREF: Source node UUID ${link.nodeUuid} not found, but component named '${link.nodeName}' exists. Reassigning to UUID ${reassignedUuid}.`
+                                    );
+                                } else {
+                                    logs.push(
+                                        `[ERROR] NOTEREF: Resolved component '${link.nodeName}' to UUID ${reassignedUuid}, but node not present in DB. Skipping.`
+                                    );
+                                    continue;
+                                }
+                            } else {
+                                logs.push(
+                                    `[ERROR] NOTEREF: Component lookup by name '${link.nodeName}' returned no UUID. Skipping.`
+                                );
+                                continue;
+                            }
+                        } else {
+                            logs.push(
+                                `[ERROR] NOTEREF: Component named '${link.nodeName}' not found during fallback lookup. Skipping.`
+                            );
+                            continue;
+                        }
+                    } catch (e: any) {
+                        logs.push(
+                            `[ERROR] NOTEREF: Error during component name fallback for '${link.nodeName}': ${e?.message || e}. Skipping.`
+                        );
+                        continue;
+                    }
+                } else {
+                    logs.push(`[ERROR] Source node ${link.nodeName || link.nodeUuid} not found for NOTEREF link. Skipping.`);
+                    continue;
+                }
+            } else {
+                nodeLabels = nodeCheck.records[0].get('labels').join(':');
             }
-            const nodeLabels = nodeCheck.records[0].get('labels').join(':');
 
             // Check if SAFETYNOTE exists
             const safetyNoteCheck = await tx.run('MATCH (note:SAFETYNOTE {uuid: $uuid}) RETURN note.uuid', { uuid: link.safetyNoteUuid });
@@ -472,9 +669,9 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 'MATCH (note:SAFETYNOTE {uuid: $safetyNoteUuid}) ' +
                 'MERGE (n)-[rel:NOTEREF]->(note) ' +
                 'ON CREATE SET rel.created = timestamp(), rel.lastModified = timestamp() ',
-                { nodeUuid: link.nodeUuid, safetyNoteUuid: link.safetyNoteUuid }
+                { nodeUuid: nodeUuidToUse, safetyNoteUuid: link.safetyNoteUuid }
             );
-            logs.push(`[SUCCESS] NOTEREF relationship linked: (${nodeLabels} ${link.nodeName || link.nodeUuid})-[NOTEREF]->(SAFETYNOTE ${link.safetyNoteName || link.safetyNoteUuid}).`);
+            logs.push(`[SUCCESS] NOTEREF relationship linked: (${nodeLabels} ${link.nodeName || nodeUuidToUse})-[NOTEREF]->(SAFETYNOTE ${link.safetyNoteName || link.safetyNoteUuid}).`);
         }
 
         await tx.commit();

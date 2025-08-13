@@ -823,3 +823,53 @@ export const getPartnerPort = async (portUuid: string): Promise<QueryResult<Part
     await session.close();
   }
 };
+
+/**
+ * Get port information by name for P_PORT_PROTOTYPE or R_PORT_PROTOTYPE.
+ * Mirrors getComponentByName pattern: returns a single object if exactly one match,
+ * otherwise returns an array of matches. Includes uuid, name, arxmlPath, and labels.
+ */
+export const getPortByName = async (portName: string) => {
+  const session = driver.session();
+  try {
+    const result = await session.run(
+      `MATCH (port {name: $portName})
+       WHERE port:P_PORT_PROTOTYPE OR port:R_PORT_PROTOTYPE
+       RETURN port.uuid AS portUuid,
+              port.name AS portName,
+              port.arxmlPath AS portArxmlPath,
+              labels(port) AS portLabels`,
+      { portName }
+    );
+
+    if (result.records.length === 0) {
+      return {
+        success: false,
+        message: `Port with name "${portName}" not found`,
+        data: null,
+      };
+    }
+
+    const ports = result.records.map(record => ({
+      uuid: record.get('portUuid') as string,
+      name: record.get('portName') as string,
+      arxmlPath: record.get('portArxmlPath') as string,
+      labels: record.get('portLabels') as string[],
+    }));
+
+    return {
+      success: true,
+      data: ports.length === 1 ? ports[0] : ports,
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return {
+      success: false,
+      message: `Error fetching Port with name "${portName}".`,
+      error: errorMessage,
+      data: null,
+    } as any;
+  } finally {
+    await session.close();
+  }
+};
