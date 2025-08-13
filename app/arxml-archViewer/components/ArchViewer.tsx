@@ -1491,6 +1491,183 @@ const ArchViewerInner = () => {
     setContextMenu(null);
   }, [setNodes, setEdges]);
 
+  // Utility: compute lower→higher ASIL connections summary (grouped by component pair)
+  const computeLowerToHigherAsil = useCallback(() => {
+    const asilRank: Record<string, number> = { QM: 0, A: 1, B: 2, C: 3, D: 4 };
+    const compById = new Map(allComponents.map((c) => [c.uuid, c] as const));
+    const selectedSet = new Set(selectedComponentIds);
+
+    let inspectedConnections = 0;
+    const pairKey = (a: string, b: string) => `${a} -> ${b}`;
+    const byPair = new Map<string, { lower: SWComponent; higher: SWComponent; count: number }>();
+
+    connections.forEach((targetPortUuid, sourcePortUuid) => {
+      const sourcePort = allPorts.find((p) => p.uuid === sourcePortUuid);
+      const targetPort = allPorts.find((p) => p.uuid === targetPortUuid);
+      if (!sourcePort || !targetPort) return;
+
+      // Normalize to provider/receiver
+      let providerPort: PortInfo | undefined;
+      let receiverPort: PortInfo | undefined;
+      if (sourcePort.type === 'P_PORT_PROTOTYPE' && targetPort.type === 'R_PORT_PROTOTYPE') {
+        providerPort = sourcePort;
+        receiverPort = targetPort;
+      } else if (sourcePort.type === 'R_PORT_PROTOTYPE' && targetPort.type === 'P_PORT_PROTOTYPE') {
+        providerPort = targetPort;
+        receiverPort = sourcePort;
+      } else {
+        return;
+      }
+
+      const providerCompId = providerPort ? portToComponentMap.get(providerPort.uuid) : undefined;
+      const receiverCompId = receiverPort ? portToComponentMap.get(receiverPort.uuid) : undefined;
+      if (!providerCompId || !receiverCompId) return;
+      if (!selectedSet.has(providerCompId) || !selectedSet.has(receiverCompId)) return;
+      if (providerCompId === receiverCompId) return;
+
+      const providerComp = compById.get(providerCompId);
+      const receiverComp = compById.get(receiverCompId);
+      if (!providerComp || !receiverComp) return;
+
+      const pRank = asilRank[providerComp.asil] ?? -1;
+      const rRank = asilRank[receiverComp.asil] ?? -1;
+      if (pRank < 0 || rRank < 0) return; // skip unknown
+
+      inspectedConnections += 1;
+
+      let lower: SWComponent | null = null;
+      let higher: SWComponent | null = null;
+      if (pRank < rRank) {
+        lower = providerComp; higher = receiverComp;
+      } else if (rRank < pRank) {
+        lower = receiverComp; higher = providerComp;
+      }
+      if (!lower || !higher) return;
+
+      const key = pairKey(lower.uuid, higher.uuid);
+      const entry = byPair.get(key) ?? { lower, higher, count: 0 };
+      entry.count += 1;
+      byPair.set(key, entry);
+    });
+
+    return { byPair, inspectedConnections };
+  }, [allComponents, allPorts, connections, portToComponentMap, selectedComponentIds]);
+
+  // Highlight connections where a lower-ASIL component connects to a higher-ASIL component
+  const handleFindLowerToHigherAsil = useCallback(() => {
+    if (selectedComponentIds.length === 0) {
+      console.warn('[ASIL Check] No components selected. Select components first.');
+      return;
+    }
+
+    const asilRank: Record<string, number> = { QM: 0, A: 1, B: 2, C: 3, D: 4 };
+
+    const highlightedNodeIds = new Set<string>();
+
+    setEdges((eds) => {
+      const next = eds.map((e) => {
+        const src = allComponents.find((c) => c.uuid === e.source);
+        const tgt = allComponents.find((c) => c.uuid === e.target);
+        if (!src || !tgt) {
+          return {
+            ...e,
+            style: {
+              ...e.style,
+              opacity: 0.2,
+              transition: 'stroke 0.2s, stroke-width 0.2s, opacity 0.2s'
+            },
+            animated: false
+          };
+        }
+        const sRank = asilRank[src.asil] ?? -1;
+        const tRank = asilRank[tgt.asil] ?? -1;
+        const highlight = sRank >= 0 && tRank >= 0 && sRank !== tRank; // different levels only
+
+        if (highlight) {
+          highlightedNodeIds.add(e.source);
+          highlightedNodeIds.add(e.target);
+        }
+
+        return {
+          ...e,
+          style: {
+            ...e.style,
+            stroke: highlight ? '#ff4d4f' : e.style?.stroke,
+            strokeWidth: highlight ? Math.max(2.5, Number(e.style?.strokeWidth ?? 1.5) + 0.5) : e.style?.strokeWidth,
+            opacity: highlight ? 1 : 0.15,
+            transition: 'stroke 0.2s, stroke-width 0.2s, opacity 0.2s'
+          },
+          animated: highlight
+        } as Edge;
+      });
+
+      // After computing edge highlights, dim unrelated nodes
+      setNodes((nds) =>
+        nds.map((n) => ({
+          ...n,
+          style: {
+            ...n.style,
+            opacity: highlightedNodeIds.size === 0 ? 1 : highlightedNodeIds.has(n.id) ? 1 : 0.3,
+            transition: 'opacity 0.2s'
+          }
+        }))
+      );
+
+      return next;
+    });
+  }, [allComponents, setEdges, setNodes, selectedComponentIds.length]);
+
+  // Export CSV for the lower→higher ASIL summary
+  const handleExportLowerToHigherCsv = useCallback(() => {
+    if (selectedComponentIds.length === 0) {
+      notification.warning({
+        message: 'No components selected',
+        description: 'Select components first to analyze connections.'
+      });
+      return;
+    }
+
+    const { byPair } = computeLowerToHigherAsil();
+    if (!byPair || byPair.size === 0) {
+      notification.info({
+        message: 'No lower→higher ASIL links',
+        description: 'No qualifying connections were found in the current selection.'
+      });
+      return;
+    }
+
+    const header = ['Source Component', 'Source ASIL', 'Target Component', 'Target ASIL', 'Connections'];
+    const escape = (v: string) => '"' + (v ?? '').replace(/"/g, '""') + '"';
+    const rows: string[] = [header.map(escape).join(',')];
+    // Sort rows by descending connections for readability
+    const entries = Array.from(byPair.values()).sort((a, b) => b.count - a.count);
+    for (const { lower, higher, count } of entries) {
+      rows.push([
+        escape(lower.name),
+        escape(lower.asil),
+        escape(higher.name),
+        escape(higher.asil),
+        String(count)
+      ].join(','));
+    }
+    const csv = rows.join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'lower_to_higher_asil_connections.csv';
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    notification.success({
+      message: 'CSV exported',
+      description: 'lower_to_higher_asil_connections.csv was generated.'
+    });
+  }, [computeLowerToHigherAsil, selectedComponentIds.length]);
+
 
   if (loading) {
     return (
@@ -1744,7 +1921,7 @@ const ArchViewerInner = () => {
                     alignItems: 'center'
                 }}
             >
-                <Space align="center">
+                <Space align="center" style={{ gap: 12 }}>
                     {!isPanelVisible && (
                         <Button
                             icon={<MenuUnfoldOutlined />}
@@ -1755,6 +1932,20 @@ const ArchViewerInner = () => {
                     <Title level={4} style={{ margin: 0 }}>
                         Software Component Architecture Viewer
                     </Title>
+                    <Button
+                      size="small"
+                      onClick={handleFindLowerToHigherAsil}
+                      disabled={loadingData || selectedComponentIds.length === 0}
+                    >
+                      Find lower ASIL to higher ASIL
+                    </Button>
+                    <Button
+                      size="small"
+                      onClick={handleExportLowerToHigherCsv}
+                      disabled={loadingData || selectedComponentIds.length === 0}
+                    >
+                      Export CSV (lower→higher)
+                    </Button>
                 </Space>
             </Card>
             
