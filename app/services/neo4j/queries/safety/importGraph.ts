@@ -606,7 +606,7 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
             // Check if the source node exists (can be any node type) with fallback by component name
             let nodeUuidToUse: string = link.nodeUuid;
             let nodeLabels = '';
-            let nodeCheck = await tx.run('MATCH (n {uuid: $uuid}) RETURN n.uuid, labels(n) as labels', { uuid: nodeUuidToUse });
+            const nodeCheck = await tx.run('MATCH (n {uuid: $uuid}) RETURN n.uuid, labels(n) as labels', { uuid: nodeUuidToUse });
             if (nodeCheck.records.length === 0) {
                 // Attempt fallback by component name if provided
                 if (link.nodeName) {
