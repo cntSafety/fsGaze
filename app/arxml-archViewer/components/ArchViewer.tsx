@@ -785,6 +785,52 @@ const ArchViewerInner = () => {
     return { outgoing, incoming };
   }, []);
 
+  // Heuristic: order ports within a node to reduce edge crossings.
+  // We approximate by sorting ports according to the average index of their partner components
+  // (components are indexed by name). This is a lightweight variant of the barycenter method
+  // used in layered graph drawing. It does not change routing or layout—only vertical ordering
+  // of handles inside each node.
+  const orderPortsForComponent = useCallback((ports: PortInfo[], componentIndexMap: Map<string, number>) => {
+    if (ports.length <= 1) return ports;
+    // Build partner list for each port
+    const partnerAverages: Record<string, number> = {};
+    for (const port of ports) {
+      const partners: number[] = [];
+      // A connection can list this port as key (source) OR value (target)
+      connections.forEach((targetPortUuid, sourcePortUuid) => {
+        if (sourcePortUuid === port.uuid || targetPortUuid === port.uuid) {
+          const partnerPortUuid = sourcePortUuid === port.uuid ? targetPortUuid : sourcePortUuid;
+          const partnerComponentUuid = portToComponentMap.get(partnerPortUuid);
+          if (partnerComponentUuid) {
+            const idx = componentIndexMap.get(partnerComponentUuid);
+            if (idx !== undefined) partners.push(idx);
+          }
+        }
+      });
+      partnerAverages[port.uuid] = partners.length ? partners.reduce((a,b)=>a+b,0)/partners.length : Number.MAX_SAFE_INTEGER - 1; // isolate unconnected at bottom
+    }
+    return [...ports].sort((a,b) => partnerAverages[a.uuid] - partnerAverages[b.uuid] || a.name.localeCompare(b.name));
+  }, [connections, portToComponentMap]);
+
+  // Utility (not currently invoked in UI) to count crossings between two ordered port sets.
+  // For two sets of edges (providerPorts -> receiverPorts), a crossing occurs for edges (u->v), (u'->v')
+  // when order(u) < order(u') but order(v) > order(v'). This function could be used in the future
+  // to evaluate effectiveness of ordering heuristics.
+  const countBipartiteCrossings = useCallback((edgesList: {source: string; target: string;}[], orderLeft: string[], orderRight: string[]) => {
+    const posLeft: Record<string, number> = {}; orderLeft.forEach((id,i)=>{posLeft[id]=i});
+    const posRight: Record<string, number> = {}; orderRight.forEach((id,i)=>{posRight[id]=i});
+    // Sort edges by left order then count inversions on right order
+    const sorted = [...edgesList].sort((e1,e2)=>posLeft[e1.source]-posLeft[e2.source] || posRight[e1.target]-posRight[e2.target]);
+    const rightSequence = sorted.map(e=>posRight[e.target]);
+    // Count inversions (Fenwick / BIT could optimize; simple O(n^2) acceptable for small per-node sets)
+    let crossings = 0;
+    for (let i=0;i<rightSequence.length;i++) {
+      for (let j=i+1;j<rightSequence.length;j++) {
+        if (rightSequence[i] > rightSequence[j]) crossings++; }
+    }
+    return crossings;
+  }, []);
+
   const createVisualization = useCallback(() => {
     // Filter to only show selected components
     const selectedComponents: SWComponent[] = allComponents.filter((c: SWComponent) => selectedComponentIds.includes(c.uuid));
@@ -895,6 +941,13 @@ const ArchViewerInner = () => {
       const newNodes: Node[] = selectedComponents.map((c: SWComponent) => {
         const backgroundColor = getAsilColorWithOpacity(c.asil);
         const ports = componentPorts.get(c.uuid) || { provider: [], receiver: [] };
+        // Component index map (stable across ordering) constructed once per visualization
+        const componentIndexMap = new Map(allComponents
+          .slice() // copy
+          .sort((a,b)=>a.name.localeCompare(b.name))
+          .map((comp, idx)=>[comp.uuid, idx] as const));
+        const orderedProvider = orderPortsForComponent(ports.provider, componentIndexMap);
+        const orderedReceiver = orderPortsForComponent(ports.receiver, componentIndexMap);
         const maxPorts = Math.max(ports.provider.length, ports.receiver.length);
         const nodeHeight = Math.max(80, 50 + maxPorts * 15);
         const nodeWidth = Math.max(150, c.name.length * 8 + 40);
@@ -905,8 +958,8 @@ const ArchViewerInner = () => {
           data: { 
             label: c.name, 
             component: c,
-            providerPorts: ports.provider,
-            receiverPorts: ports.receiver,
+            providerPorts: orderedProvider,
+            receiverPorts: orderedReceiver,
             hasProviderConnections: false,
             hasReceiverConnections: false,
             connectionCounts: { incoming: 0, outgoing: 0 },
