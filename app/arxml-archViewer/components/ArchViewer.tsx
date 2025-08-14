@@ -75,43 +75,17 @@ const CustomNode = ({ data }: { data: CondensedNodeData & { condensed?: boolean 
                     />
                 )}
                 
-                {/* Component name with connection count badges */}
-                <div style={{ 
-                    textAlign: 'center',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    color: 'inherit',
-                    wordBreak: 'break-word',
-                    lineHeight: '1.2',
-                    position: 'relative'
-                }}>
-                    {data.label}
-                    {/* Connection count badges */}
-                    {(data.connectionCounts.incoming > 0 || data.connectionCounts.outgoing > 0) && (
-                        <div style={{ 
-                            position: 'absolute', 
-                            top: '-20px', 
-                            right: '-10px',
-                            display: 'flex',
-                            gap: '4px'
-                        }}>
-                            {data.connectionCounts.incoming > 0 && (
-                                <Badge 
-                                    count={data.connectionCounts.incoming} 
-                                    style={{ backgroundColor: '#52c41a', fontSize: '10px' }}
-                                    title={`${data.connectionCounts.incoming} incoming connections`}
-                                />
-                            )}
-                            {data.connectionCounts.outgoing > 0 && (
-                                <Badge 
-                                    count={data.connectionCounts.outgoing} 
-                                    style={{ backgroundColor: '#1890ff', fontSize: '10px' }}
-                                    title={`${data.connectionCounts.outgoing} outgoing connections`}
-                                />
-                            )}
-                        </div>
-                    )}
-                </div>
+        {/* Component name (counts removed for condensed view) */}
+        <div style={{ 
+          textAlign: 'center',
+          fontSize: '12px',
+          fontWeight: 600,
+          color: 'inherit',
+          wordBreak: 'break-word',
+          lineHeight: '1.2'
+        }}>
+          {data.label}
+        </div>
                 
                 {/* Single output handle if component has outgoing connections */}
                 {data.hasProviderConnections && (
@@ -900,15 +874,7 @@ const ArchViewerInner = () => {
             stroke: strokeColor,
             opacity: Math.min(0.7 + group.connectionCount * 0.05, 1)
           },
-          label: `${group.connectionCount}`,
-          labelStyle: {
-            fontSize: '10px',
-            backgroundColor: 'white',
-            padding: '2px 6px',
-            borderRadius: '3px',
-            border: `1px solid ${strokeColor}`,
-            fontWeight: 'bold'
-          },
+          // label removed in condensed view
           data: {
             connectionGroup: group,
             isCondensed: true
@@ -1944,7 +1910,7 @@ const ArchViewerInner = () => {
                       onClick={handleExportLowerToHigherCsv}
                       disabled={loadingData || selectedComponentIds.length === 0}
                     >
-                      Export CSV (lower→higher)
+                      Export CSV for CURRENT VIEW
                     </Button>
                 </Space>
             </Card>
