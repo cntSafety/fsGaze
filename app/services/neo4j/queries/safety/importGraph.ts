@@ -12,6 +12,24 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
     const tx = session.beginTransaction();
     const logs: string[] = [];
 
+    // Helper: safely parse ISO date string to epoch ms number (or null if invalid/missing)
+    const parseToEpoch = (value: any): number | null => {
+        if (!value || typeof value !== 'string') return null;
+        const ms = Date.parse(value);
+        return isNaN(ms) ? null : ms;
+    };
+
+    // Build parameter objects for node import to avoid repeating logic
+    const buildNodeParams = (rawProperties: any) => {
+        const createdMillis = parseToEpoch(rawProperties?.created);
+        const lastModifiedMillis = parseToEpoch(rawProperties?.lastModified);
+        // propsAll keeps original (minus uuid) for ON CREATE assignment
+        const { uuid: _u, ...rest } = rawProperties || {};
+        // Exclude timestamps from the merge-on-match set to preserve existing DB timestamps
+        const { created: _c, lastModified: _l, ...propsWithoutTimestamps } = rest;
+        return { createdMillis, lastModifiedMillis, propsAll: rest, propsNoTS: propsWithoutTimestamps };
+    };
+
     const convertNeo4jTimestampToNumber = (value: any): number | null => {
         if (value === null || typeof value === 'undefined') return null;
         if (typeof value === 'number') return value; // Already a JS number
@@ -32,17 +50,15 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
         const failureNodeType = "FAILUREMODE";
         for (const failure of data.failures || []) {
             const { uuid, properties: rawProperties } = failure;
-            const propsToSet = { ...rawProperties };
-            delete propsToSet.uuid;       // Handled by MERGE key
-            delete propsToSet.created;  // We set this explicitly
-            delete propsToSet.lastModified;  // We set this explicitly
-
+            const { createdMillis, lastModifiedMillis, propsAll, propsNoTS } = buildNodeParams(rawProperties);
             const result = await tx.run(
                 'MERGE (f:FAILUREMODE {uuid: $uuid}) ' +
-                'ON CREATE SET f = $propsToSet, f.uuid = $uuid, f.created = timestamp(), f.lastModified = timestamp() ' +
-                'ON MATCH SET f += $propsToSet ' +
+                'ON CREATE SET f = $propsAll, f.uuid = $uuid, ' +
+                'f.created = coalesce($createdMillis, timestamp()), ' +
+                'f.lastModified = coalesce($lastModifiedMillis, timestamp()) ' +
+                'ON MATCH SET f += $propsNoTS ' +
                 'RETURN f.name AS name, f.created AS created, f.lastModified AS lastModified',
-                { uuid, propsToSet }
+                { uuid, propsAll, propsNoTS, createdMillis, lastModifiedMillis }
             );
             const record = result.records[0];
             if (record) {
@@ -73,17 +89,15 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
         const causationNodeType = "CAUSATION";
         for (const causation of data.causations || []) {
             const { uuid, properties: rawProperties } = causation;
-            const propsToSet = { ...rawProperties };
-            delete propsToSet.uuid;
-            delete propsToSet.created;
-            delete propsToSet.lastModified;
-
+            const { createdMillis, lastModifiedMillis, propsAll, propsNoTS } = buildNodeParams(rawProperties);
             const result = await tx.run(
                 'MERGE (c:CAUSATION {uuid: $uuid}) ' +
-                'ON CREATE SET c = $propsToSet, c.uuid = $uuid, c.created = timestamp(), c.lastModified = timestamp() ' +
-                'ON MATCH SET c += $propsToSet ' +
+                'ON CREATE SET c = $propsAll, c.uuid = $uuid, ' +
+                'c.created = coalesce($createdMillis, timestamp()), ' +
+                'c.lastModified = coalesce($lastModifiedMillis, timestamp()) ' +
+                'ON MATCH SET c += $propsNoTS ' +
                 'RETURN c.name AS name, c.created AS created, c.lastModified AS lastModified',
-                { uuid, propsToSet }
+                { uuid, propsAll, propsNoTS, createdMillis, lastModifiedMillis }
             );
             const record = result.records[0];
             if (record) {
@@ -304,17 +318,15 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
         const riskRatingNodeType = "RISKRATING";
         for (const riskRating of data.riskRatings || []) {
             const { uuid, properties: rawProperties } = riskRating;
-            const propsToSet = { ...rawProperties };
-            delete propsToSet.uuid;       // Handled by MERGE key
-            delete propsToSet.created;  // We set this explicitly
-            delete propsToSet.lastModified;  // We set this explicitly
-
+            const { createdMillis, lastModifiedMillis, propsAll, propsNoTS } = buildNodeParams(rawProperties);
             const result = await tx.run(
                 'MERGE (r:RISKRATING {uuid: $uuid}) ' +
-                'ON CREATE SET r = $propsToSet, r.uuid = $uuid, r.created = timestamp(), r.lastModified = timestamp() ' +
-                'ON MATCH SET r += $propsToSet ' +
+                'ON CREATE SET r = $propsAll, r.uuid = $uuid, ' +
+                'r.created = coalesce($createdMillis, timestamp()), ' +
+                'r.lastModified = coalesce($lastModifiedMillis, timestamp()) ' +
+                'ON MATCH SET r += $propsNoTS ' +
                 'RETURN r.name AS name, r.created AS created, r.lastModified AS lastModified',
-                { uuid, propsToSet }
+                { uuid, propsAll, propsNoTS, createdMillis, lastModifiedMillis }
             );
             const record = result.records[0];
             if (record) {
@@ -373,17 +385,15 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
         const safetyTaskNodeType = "SAFETYTASKS";
         for (const safetyTask of data.safetyTasks || []) {
             const { uuid, properties: rawProperties } = safetyTask;
-            const propsToSet = { ...rawProperties };
-            delete propsToSet.uuid;       // Handled by MERGE key
-            delete propsToSet.created;  // We set this explicitly
-            delete propsToSet.lastModified;  // We set this explicitly
-
+            const { createdMillis, lastModifiedMillis, propsAll, propsNoTS } = buildNodeParams(rawProperties);
             const result = await tx.run(
                 'MERGE (task:SAFETYTASKS {uuid: $uuid}) ' +
-                'ON CREATE SET task = $propsToSet, task.uuid = $uuid, task.created = timestamp(), task.lastModified = timestamp() ' +
-                'ON MATCH SET task += $propsToSet ' +
+                'ON CREATE SET task = $propsAll, task.uuid = $uuid, ' +
+                'task.created = coalesce($createdMillis, timestamp()), ' +
+                'task.lastModified = coalesce($lastModifiedMillis, timestamp()) ' +
+                'ON MATCH SET task += $propsNoTS ' +
                 'RETURN task.name AS name, task.created AS created, task.lastModified AS lastModified',
-                { uuid, propsToSet }
+                { uuid, propsAll, propsNoTS, createdMillis, lastModifiedMillis }
             );
             const record = result.records[0];
             if (record) {
@@ -486,17 +496,15 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
         const safetyReqNodeType = "SAFETYREQ";
         for (const safetyReq of data.safetyReqs || []) {
             const { uuid, properties: rawProperties } = safetyReq;
-            const propsToSet = { ...rawProperties };
-            delete propsToSet.uuid;       // Handled by MERGE key
-            delete propsToSet.created;  // We set this explicitly
-            delete propsToSet.lastModified;  // We set this explicitly
-
+            const { createdMillis, lastModifiedMillis, propsAll, propsNoTS } = buildNodeParams(rawProperties);
             const result = await tx.run(
                 'MERGE (req:SAFETYREQ {uuid: $uuid}) ' +
-                'ON CREATE SET req = $propsToSet, req.uuid = $uuid, req.created = timestamp(), req.lastModified = timestamp() ' +
-                'ON MATCH SET req += $propsToSet ' +
+                'ON CREATE SET req = $propsAll, req.uuid = $uuid, ' +
+                'req.created = coalesce($createdMillis, timestamp()), ' +
+                'req.lastModified = coalesce($lastModifiedMillis, timestamp()) ' +
+                'ON MATCH SET req += $propsNoTS ' +
                 'RETURN req.name AS name, req.created AS created, req.lastModified AS lastModified',
-                { uuid, propsToSet }
+                { uuid, propsAll, propsNoTS, createdMillis, lastModifiedMillis }
             );
             const record = result.records[0];
             if (record) {
@@ -559,17 +567,15 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
         const safetyNoteNodeType = "SAFETYNOTE";
         for (const safetyNote of data.safetyNotes || []) {
             const { uuid, properties: rawProperties } = safetyNote;
-            const propsToSet = { ...rawProperties };
-            delete propsToSet.uuid;       // Handled by MERGE key
-            delete propsToSet.created;  // We set this explicitly
-            delete propsToSet.lastModified;  // We set this explicitly
-
+            const { createdMillis, lastModifiedMillis, propsAll, propsNoTS } = buildNodeParams(rawProperties);
             const result = await tx.run(
                 'MERGE (note:SAFETYNOTE {uuid: $uuid}) ' +
-                'ON CREATE SET note = $propsToSet, note.uuid = $uuid, note.created = timestamp(), note.lastModified = timestamp() ' +
-                'ON MATCH SET note += $propsToSet ' +
+                'ON CREATE SET note = $propsAll, note.uuid = $uuid, ' +
+                'note.created = coalesce($createdMillis, timestamp()), ' +
+                'note.lastModified = coalesce($lastModifiedMillis, timestamp()) ' +
+                'ON MATCH SET note += $propsNoTS ' +
                 'RETURN note.note AS noteContent, note.created AS created, note.lastModified AS lastModified',
-                { uuid, propsToSet }
+                { uuid, propsAll, propsNoTS, createdMillis, lastModifiedMillis }
             );
             const record = result.records[0];
             if (record) {

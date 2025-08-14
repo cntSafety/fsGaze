@@ -162,6 +162,7 @@ MATCH path = (startNode)<-[*1..2]->(endNode)
 WHERE startNode.uuid = '1234...' AND endNode.uuid = '456'
 RETURN path
 
+//search
 MATCH (n)
 UNWIND keys(n) as prop
 WITH n, prop, n[prop] as value
@@ -180,3 +181,25 @@ WITH n, collect(DISTINCT prop) as matchingProps
 WHERE size(matchingProps) > 0
 RETURN n.name, n.uuid, n.arxmlPath, labels(n) as nodeLabels, matchingProps
 LIMIT 100
+
+
+//transform dates
+MATCH (n)
+WITH n,
+  CASE WHEN n.created IS NOT NULL
+        AND toInteger(n.created) IS NOT NULL
+        AND size(toString(n.created)) >= 13
+        AND NOT toString(n.created) CONTAINS 'T'
+       THEN toInteger(n.created) END AS createdEpoch,
+  CASE WHEN n.lastModified IS NOT NULL
+        AND toInteger(n.lastModified) IS NOT NULL
+        AND size(toString(n.lastModified)) >= 13
+        AND NOT toString(n.lastModified) CONTAINS 'T'
+       THEN toInteger(n.lastModified) END AS lastModifiedEpoch
+FOREACH (_ IN CASE WHEN createdEpoch IS NOT NULL THEN [1] ELSE [] END |
+  SET n.created = datetime({ epochMillis: createdEpoch })
+)
+FOREACH (_ IN CASE WHEN lastModifiedEpoch IS NOT NULL THEN [1] ELSE [] END |
+  SET n.lastModified = datetime({ epochMillis: lastModifiedEpoch })
+)
+RETURN count(*) AS nodesTouched;
