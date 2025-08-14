@@ -831,6 +831,23 @@ const ArchViewerInner = () => {
     return crossings;
   }, []);
 
+  // Compute average Y position of partner nodes for a given port (barycenter). Ports with partners higher up get placed earlier.
+  const averagePartnerY = useCallback((portUuid: string, yMap: Map<string, number>): number => {
+    const ys: number[] = [];
+    connections.forEach((targetPortUuid, sourcePortUuid) => {
+      if (sourcePortUuid === portUuid || targetPortUuid === portUuid) {
+        const partnerPortUuid = sourcePortUuid === portUuid ? targetPortUuid : sourcePortUuid;
+        const partnerComponentUuid = portToComponentMap.get(partnerPortUuid);
+        if (partnerComponentUuid) {
+          const y = yMap.get(partnerComponentUuid);
+          if (y !== undefined) ys.push(y);
+        }
+      }
+    });
+    if (!ys.length) return Number.MAX_SAFE_INTEGER - 1; // unconnected -> bottom
+    return ys.reduce((a,b)=>a+b,0)/ys.length;
+  }, [connections, portToComponentMap]);
+
   const createVisualization = useCallback(() => {
     // Filter to only show selected components
     const selectedComponents: SWComponent[] = allComponents.filter((c: SWComponent) => selectedComponentIds.includes(c.uuid));
@@ -938,46 +955,39 @@ const ArchViewerInner = () => {
 
     } else {
       // Create detailed view (original behavior)
+      // First pass: create nodes with original port ordering; we'll refine ordering after ELK layout
       const newNodes: Node[] = selectedComponents.map((c: SWComponent) => {
         const backgroundColor = getAsilColorWithOpacity(c.asil);
         const ports = componentPorts.get(c.uuid) || { provider: [], receiver: [] };
-        // Component index map (stable across ordering) constructed once per visualization
-        const componentIndexMap = new Map(allComponents
-          .slice() // copy
-          .sort((a,b)=>a.name.localeCompare(b.name))
-          .map((comp, idx)=>[comp.uuid, idx] as const));
-        const orderedProvider = orderPortsForComponent(ports.provider, componentIndexMap);
-        const orderedReceiver = orderPortsForComponent(ports.receiver, componentIndexMap);
         const maxPorts = Math.max(ports.provider.length, ports.receiver.length);
         const nodeHeight = Math.max(80, 50 + maxPorts * 15);
         const nodeWidth = Math.max(150, c.name.length * 8 + 40);
-        
         return {
           id: c.uuid,
-          type: 'custom',
-          data: { 
-            label: c.name, 
-            component: c,
-            providerPorts: orderedProvider,
-            receiverPorts: orderedReceiver,
-            hasProviderConnections: false,
-            hasReceiverConnections: false,
-            connectionCounts: { incoming: 0, outgoing: 0 },
-            condensed: false
-          } as CondensedNodeData & { condensed: boolean },
-          position: { x: 0, y: 0 },
-          style: {
-            backgroundColor: backgroundColor,
-            color: getTextColorForBackground(backgroundColor),
-            border: '2px solid rgba(255, 255, 255, 0.8)',
-            borderRadius: '8px',
-            width: nodeWidth,
-            height: nodeHeight,
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-            fontSize: '12px',
-            fontWeight: '600'
-          }
-        };
+            type: 'custom',
+            data: { 
+              label: c.name, 
+              component: c,
+              providerPorts: ports.provider,
+              receiverPorts: ports.receiver,
+              hasProviderConnections: false,
+              hasReceiverConnections: false,
+              connectionCounts: { incoming: 0, outgoing: 0 },
+              condensed: false
+            } as CondensedNodeData & { condensed: boolean },
+            position: { x: 0, y: 0 },
+            style: {
+              backgroundColor: backgroundColor,
+              color: getTextColorForBackground(backgroundColor),
+              border: '2px solid rgba(255, 255, 255, 0.8)',
+              borderRadius: '8px',
+              width: nodeWidth,
+              height: nodeHeight,
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+              fontSize: '12px',
+              fontWeight: '600'
+            }
+        }
       });
       
       // Create detailed edges (original logic)
@@ -1047,14 +1057,199 @@ const ArchViewerInner = () => {
       });
 
       elkLayout(newNodes, newEdges).then(({nodes: layoutedNodes, edges: layoutedEdges}) => {
-        setNodes(layoutedNodes);
-        setEdges(layoutedEdges);
-        
-        setTimeout(() => {
-          if (layoutedNodes.length > 0) {
-            fitView({ padding: 0.1, duration: 800 });
+        // Build quick lookup for node vertical positions
+        const yMap = new Map(layoutedNodes.map(n => [n.id, n.position.y] as const));
+
+        // Cache: port -> partner port uuids, partner component uuids
+        const portPartners = new Map<string, {ports: string[]; components: string[]}>();
+        connections.forEach((targetPortUuid, sourcePortUuid) => {
+          const a = sourcePortUuid, b = targetPortUuid;
+          const compA = portToComponentMap.get(a); const compB = portToComponentMap.get(b);
+            if (!portPartners.has(a)) portPartners.set(a,{ports:[],components:[]});
+            if (!portPartners.has(b)) portPartners.set(b,{ports:[],components:[]});
+            portPartners.get(a)!.ports.push(b); if (compB) portPartners.get(a)!.components.push(compB);
+            portPartners.get(b)!.ports.push(a); if (compA) portPartners.get(b)!.components.push(compA);
+        });
+
+        const median = (nums: number[]) => {
+          if (!nums.length) return Number.MAX_SAFE_INTEGER - 1;
+          const arr = [...nums].sort((a,b)=>a-b); const m = Math.floor(arr.length/2);
+          return arr.length % 2 ? arr[m] : (arr[m-1]+arr[m])/2;
+        };
+
+        // Initial ordering: median of partner component Y positions (barycenter robust to outliers)
+        const initialReorder = (ports: PortInfo[]) => {
+          return [...ports].sort((a,b) => {
+            const ya = portPartners.get(a.uuid)?.components.map(cId => yMap.get(cId) ?? Infinity) || [];
+            const yb = portPartners.get(b.uuid)?.components.map(cId => yMap.get(cId) ?? Infinity) || [];
+            const ma = median(ya); const mb = median(yb);
+            if (ma === mb) return a.name.localeCompare(b.name);
+            return ma - mb;
+          });
+        };
+
+        let workingNodes = layoutedNodes.map(n => {
+          const d: any = n.data;
+          if (!d) return n;
+          return {
+            ...n,
+            data: {
+              ...d,
+              providerPorts: initialReorder(d.providerPorts || []),
+              receiverPorts: initialReorder(d.receiverPorts || [])
+            }
+          };
+        });
+
+        // Iterative refinement: use median of partner port indices (left/right passes)
+        const maxPasses = 5;
+        for (let pass=0; pass<maxPasses; pass++) {
+          let changed = false;
+          // Build port -> index map for current ordering
+          const portIndex = new Map<string, number>();
+          workingNodes.forEach(node => {
+            const d: any = node.data; if (!d) return;
+            (d.providerPorts||[]).forEach((p: PortInfo, i: number) => portIndex.set(p.uuid, i));
+            (d.receiverPorts||[]).forEach((p: PortInfo, i: number) => portIndex.set(p.uuid, i));
+          });
+          const refine = (ports: PortInfo[]) => {
+            return [...ports].sort((a,b) => {
+              const pa = portPartners.get(a.uuid)?.ports.map(pp => portIndex.get(pp) ?? Number.MAX_SAFE_INTEGER) || [];
+              const pb = portPartners.get(b.uuid)?.ports.map(pp => portIndex.get(pp) ?? Number.MAX_SAFE_INTEGER) || [];
+              const ma = median(pa); const mb = median(pb);
+              if (ma === mb) return a.name.localeCompare(b.name);
+              return ma - mb;
+            });
+          };
+          const nextNodes = workingNodes.map(node => {
+            const d: any = node.data; if (!d) return node;
+            const newProviders = refine(d.providerPorts || []);
+            const newReceivers = refine(d.receiverPorts || []);
+            if (!changed && (JSON.stringify(newProviders.map((p:PortInfo)=>p.uuid)) !== JSON.stringify((d.providerPorts||[]).map((p:PortInfo)=>p.uuid)) || JSON.stringify(newReceivers.map((p:PortInfo)=>p.uuid)) !== JSON.stringify((d.receiverPorts||[]).map((p:PortInfo)=>p.uuid)))) {
+              changed = true;
+            }
+            return {
+              ...node,
+              data: { ...d, providerPorts: newProviders, receiverPorts: newReceivers }
+            };
+          });
+          workingNodes = nextNodes;
+          if (!changed) break; // stop early if stable
+        }
+
+        // --- Additional Step 1: Partner Port Y Estimation Reorder ---
+        // Now that we have a stable ordering, estimate absolute Y for every port handle, then reorder
+        // each side again using the median of PARTNER PORT *absolute Y* (gives finer vertical alignment
+        // than component Y or partner index alone).
+        const PORT_BASE_OFFSET = 25; // must match CustomNode handle top formula
+        const PORT_VERTICAL_SPACING = 15; // must match CustomNode spacing
+
+        // Build port -> estimated absolute Y map based on current ordering
+        const portEstimatedY = new Map<string, number>();
+        const portTypeMap = new Map<string, string>(); // cache type for quick filtering
+        allPorts.forEach(p => portTypeMap.set(p.uuid, p.type));
+
+        workingNodes.forEach(node => {
+          const d: any = node.data; if (!d) return;
+          (d.receiverPorts||[]).forEach((p: PortInfo, idx: number) => {
+            portEstimatedY.set(p.uuid, node.position.y + PORT_BASE_OFFSET + idx * PORT_VERTICAL_SPACING);
+          });
+          (d.providerPorts||[]).forEach((p: PortInfo, idx: number) => {
+            portEstimatedY.set(p.uuid, node.position.y + PORT_BASE_OFFSET + idx * PORT_VERTICAL_SPACING);
+          });
+        });
+
+        const reorderByPartnerPortY = (ports: PortInfo[]) => {
+          return [...ports].sort((a,b) => {
+            const yaList = portPartners.get(a.uuid)?.ports.map(pp => portEstimatedY.get(pp) ?? Number.MAX_SAFE_INTEGER) || [];
+            const ybList = portPartners.get(b.uuid)?.ports.map(pp => portEstimatedY.get(pp) ?? Number.MAX_SAFE_INTEGER) || [];
+            const ya = median(yaList); const yb = median(ybList);
+            if (ya === yb) return a.name.localeCompare(b.name);
+            return ya - yb;
+          });
+        };
+
+        workingNodes = workingNodes.map(node => {
+          const d: any = node.data; if (!d) return node;
+            return {
+              ...node,
+              data: {
+                ...d,
+                providerPorts: reorderByPartnerPortY(d.providerPorts || []),
+                receiverPorts: reorderByPartnerPortY(d.receiverPorts || [])
+              }
+            };
+        });
+
+        // Recompute estimated Y after reorder for use in local swap optimization
+        portEstimatedY.clear();
+        workingNodes.forEach(node => {
+          const d: any = node.data; if (!d) return;
+          (d.receiverPorts||[]).forEach((p: PortInfo, idx: number) => {
+            portEstimatedY.set(p.uuid, node.position.y + PORT_BASE_OFFSET + idx * PORT_VERTICAL_SPACING);
+          });
+          (d.providerPorts||[]).forEach((p: PortInfo, idx: number) => {
+            portEstimatedY.set(p.uuid, node.position.y + PORT_BASE_OFFSET + idx * PORT_VERTICAL_SPACING);
+          });
+        });
+
+        // --- Additional Step 3: Local Adjacent Swap Optimization ---
+        // For each node side independently, try swapping adjacent ports when it reduces an inversion-like
+        // crossing score (computed using median partner port Y). This is a cheap local improvement that
+        // often eliminates residual easy crossings.
+
+        const crossingScoreForOrder = (ports: PortInfo[]) => {
+          // Sequence of partner median Y values (Infinity for unconnected)
+          const seq = ports.map(p => {
+            const ys = portPartners.get(p.uuid)?.ports.map(pp => portEstimatedY.get(pp) ?? Number.MAX_SAFE_INTEGER) || [];
+            return median(ys);
+          });
+          // Count inversions (O(n^2) fine for small port counts)
+          let inv = 0;
+          for (let i=0;i<seq.length;i++) {
+            for (let j=i+1;j<seq.length;j++) {
+              if (seq[i] > seq[j]) inv++; }
           }
-        }, 100);
+          return inv;
+        };
+
+        const optimizeSide = (ports: PortInfo[]) => {
+          if (ports.length < 3) return ports; // nothing meaningful
+          let improved = true;
+          let current = [...ports];
+          let currentScore = crossingScoreForOrder(current);
+          let passes = 0;
+          const MAX_LOCAL_PASSES = 4; // guard
+          while (improved && passes < MAX_LOCAL_PASSES) {
+            improved = false;
+            passes++;
+            for (let i=0;i<current.length-1;i++) {
+              const swapped = [...current];
+              [swapped[i], swapped[i+1]] = [swapped[i+1], swapped[i]];
+              const newScore = crossingScoreForOrder(swapped);
+              if (newScore < currentScore) {
+                current = swapped;
+                currentScore = newScore;
+                improved = true;
+              }
+            }
+          }
+          return current;
+        };
+
+        workingNodes = workingNodes.map(node => {
+          const d: any = node.data; if (!d) return node;
+          const optProviders = optimizeSide(d.providerPorts || []);
+          const optReceivers = optimizeSide(d.receiverPorts || []);
+          return {
+            ...node,
+            data: { ...d, providerPorts: optProviders, receiverPorts: optReceivers }
+          };
+        });
+
+        setNodes(workingNodes);
+        setEdges(layoutedEdges);
+        setTimeout(() => { if (workingNodes.length>0) fitView({padding:0.1, duration:800}); }, 100);
       });
     }
   }, [allComponents, allPorts, connections, portToComponentMap, selectedComponentIds, condensedView, createCondensedConnections, calculateConnectionCounts, setNodes, setEdges, fitView]);
