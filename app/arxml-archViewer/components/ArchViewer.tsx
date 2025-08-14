@@ -1,7 +1,7 @@
 'use client';
 // Arch Viewer supports display of all ports
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
-import { TreeSelect, Spin, Typography, Card, Button, Space, Dropdown, Menu, Input, notification, Collapse, Switch, Badge, Modal, Descriptions } from 'antd';
+import { TreeSelect, Spin, Typography, Card, Button, Space, Dropdown, Menu, Input, notification, Collapse, Switch, Badge, Modal, Descriptions, List, Tag } from 'antd';
 import { MenuFoldOutlined, MenuUnfoldOutlined, UsergroupAddOutlined, LinkOutlined, DeleteOutlined, InfoCircleOutlined, SaveOutlined, UploadOutlined, CopyOutlined, ExpandOutlined, NodeIndexOutlined } from '@ant-design/icons';
 import ReactFlow, {
     Controls,
@@ -860,9 +860,6 @@ const ArchViewerInner = () => {
       // Create condensed edges
       const newEdges: Edge[] = Array.from(connectionGroups.values()).map((group) => {
         const strokeWidth = Math.min(2 + group.connectionCount * 0.5, 8);
-        const strokeColor = group.connectionCount > 5 ? '#ff4d4f' : 
-                           group.connectionCount > 2 ? '#faad14' : '#52c41a';
-        
         return {
           id: `${group.sourceComponentId}->${group.targetComponentId}`,
           source: group.sourceComponentId,
@@ -871,10 +868,9 @@ const ArchViewerInner = () => {
           targetHandle: `${group.targetComponentId}-input`,
           style: {
             strokeWidth,
-            stroke: strokeColor,
             opacity: Math.min(0.7 + group.connectionCount * 0.05, 1)
           },
-          // label removed in condensed view
+          // label removed in condensed view; stroke color left default like detailed view
           data: {
             connectionGroup: group,
             isCondensed: true
@@ -1655,7 +1651,7 @@ const ArchViewerInner = () => {
 
   return (
     <div style={{ 
-      height: 'calc(100vh - 96px)', // Account for navbar height and padding
+      height: '100vh', // Use full viewport height
       width: 'calc(100% + 48px)', // Account for left and right padding
       position: 'relative', 
       display: 'flex',
@@ -1686,7 +1682,7 @@ const ArchViewerInner = () => {
                   width: isMobile ? '300px' : '350px', 
                   minWidth: isMobile ? '300px' : '300px',
                   maxWidth: isMobile ? '300px' : '400px',
-                  height: '100%',
+                  height: '100vh', // fill full viewport height
                   borderRight: !isMobile ? `1px solid ${themeMode === 'dark' ? '#434343' : '#d9d9d9'}` : 'none',
                   backgroundColor: themeMode === 'dark' ? '#1f1f1f' : '#ffffff',
                   overflow: 'auto',
@@ -2000,123 +1996,96 @@ const ArchViewerInner = () => {
         
         {/* Connection Details Modal for Condensed View */}
         <Modal
-            title={`Connection Details: ${connectionDetailsModal.sourceComponent?.name || 'Unknown'} → ${connectionDetailsModal.targetComponent?.name || 'Unknown'}`}
-            open={connectionDetailsModal.isVisible}
-            onCancel={() => setConnectionDetailsModal({
+          title={`Connection Details: ${connectionDetailsModal.sourceComponent?.name || 'Unknown'} → ${connectionDetailsModal.targetComponent?.name || 'Unknown'}`}
+          open={connectionDetailsModal.isVisible}
+          onCancel={() => setConnectionDetailsModal({
+            isVisible: false,
+            sourceComponent: null,
+            targetComponent: null,
+            connections: []
+          })}
+          footer={[
+            <Button
+              key="close"
+              onClick={() => setConnectionDetailsModal({
                 isVisible: false,
                 sourceComponent: null,
                 targetComponent: null,
                 connections: []
-            })}
-            footer={[
-                <Button 
-                    key="close" 
-                    onClick={() => setConnectionDetailsModal({
-                        isVisible: false,
-                        sourceComponent: null,
-                        targetComponent: null,
-                        connections: []
-                    })}
-                >
-                    Close
-                </Button>
-            ]}
-            width={800}
-            style={{ top: 20 }}
+              })}
+            >
+              Close
+            </Button>
+          ]}
+          width={800}
+          style={{ top: 20 }}
         >
-            {connectionDetailsModal.sourceComponent && connectionDetailsModal.targetComponent && (
-                <Space direction="vertical" style={{ width: '100%' }} size="large">
-                    {/* Component Information */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                        <Card 
-                            title="Source Component" 
-                            size="small"
-                            headStyle={{ backgroundColor: '#e6f7ff' }}
-                        >
-                            <Descriptions column={1} size="small">
-                                <Descriptions.Item label="Name">
-                                    <Text strong>{connectionDetailsModal.sourceComponent.name}</Text>
-                                </Descriptions.Item>
-                                <Descriptions.Item label="Type">
-                                    {connectionDetailsModal.sourceComponent.componentType}
-                                </Descriptions.Item>
-                                <Descriptions.Item label="ASIL">
-                                    <Badge 
-                                        color={getAsilColor(connectionDetailsModal.sourceComponent.asil)}
-                                        text={connectionDetailsModal.sourceComponent.asil}
-                                    />
-                                </Descriptions.Item>
-                            </Descriptions>
-                        </Card>
-                        
-                        <Card 
-                            title="Target Component" 
-                            size="small"
-                            headStyle={{ backgroundColor: '#f6ffed' }}
-                        >
-                            <Descriptions column={1} size="small">
-                                <Descriptions.Item label="Name">
-                                    <Text strong>{connectionDetailsModal.targetComponent.name}</Text>
-                                </Descriptions.Item>
-                                <Descriptions.Item label="Type">
-                                    {connectionDetailsModal.targetComponent.componentType}
-                                </Descriptions.Item>
-                                <Descriptions.Item label="ASIL">
-                                    <Badge 
-                                        color={getAsilColor(connectionDetailsModal.targetComponent.asil)}
-                                        text={connectionDetailsModal.targetComponent.asil}
-                                    />
-                                </Descriptions.Item>
-                            </Descriptions>
-                        </Card>
-                    </div>
-                    
-                    {/* Connection Details */}
-                    <Card 
-                        title={`Port-to-Port Connections (${connectionDetailsModal.connections.length})`}
-                        size="small"
-                    >
-                        <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                            {connectionDetailsModal.connections.map((connection, index) => (
-                                <Card 
-                                    key={index}
-                                    size="small"
-                                    style={{ 
-                                        marginBottom: '8px',
-                                        backgroundColor: index % 2 === 0 ? '#fafafa' : '#ffffff'
-                                    }}
-                                >
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '16px', alignItems: 'center' }}>
-                                        <div>
-                                            <Text strong>Provider Port:</Text>
-                                            <br />
-                                            <Text code>{connection.sourcePort.name}</Text>
-                                            <br />
-                                            <Text type="secondary" style={{ fontSize: '11px' }}>
-                                                {connection.sourcePort.type}
-                                            </Text>
-                                        </div>
-                                        
-                                        <div style={{ textAlign: 'center' }}>
-                                            <Text type="secondary">→</Text>
-                                        </div>
-                                        
-                                        <div>
-                                            <Text strong>Receiver Port:</Text>
-                                            <br />
-                                            <Text code>{connection.targetPort.name}</Text>
-                                            <br />
-                                            <Text type="secondary" style={{ fontSize: '11px' }}>
-                                                {connection.targetPort.type}
-                                            </Text>
-                                        </div>
-                                    </div>
-                                </Card>
-                            ))}
-                        </div>
-                    </Card>
-                </Space>
-            )}
+          {connectionDetailsModal.sourceComponent && connectionDetailsModal.targetComponent && (
+            <Space direction="vertical" style={{ width: '100%' }} size="large">
+              {/* Component Information */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <Card title="Source Component" size="small" bordered>
+                  <Descriptions column={1} size="small" colon>
+                    <Descriptions.Item label="Name">
+                      <Text strong>{connectionDetailsModal.sourceComponent.name}</Text>
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Type">
+                      {connectionDetailsModal.sourceComponent.componentType}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="ASIL">
+                      <Badge
+                        color={getAsilColor(connectionDetailsModal.sourceComponent.asil)}
+                        text={connectionDetailsModal.sourceComponent.asil}
+                      />
+                    </Descriptions.Item>
+                  </Descriptions>
+                </Card>
+                <Card title="Target Component" size="small" bordered>
+                  <Descriptions column={1} size="small" colon>
+                    <Descriptions.Item label="Name">
+                      <Text strong>{connectionDetailsModal.targetComponent.name}</Text>
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Type">
+                      {connectionDetailsModal.targetComponent.componentType}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="ASIL">
+                      <Badge
+                        color={getAsilColor(connectionDetailsModal.targetComponent.asil)}
+                        text={connectionDetailsModal.targetComponent.asil}
+                      />
+                    </Descriptions.Item>
+                  </Descriptions>
+                </Card>
+              </div>
+              {/* Connection Details */}
+              <Card
+                title={`Port-to-Port Connections (${connectionDetailsModal.connections.length})`}
+                size="small"
+                bordered
+              >
+                <List
+                  size="small"
+                  dataSource={connectionDetailsModal.connections}
+                  style={{ maxHeight: 300, overflowY: 'auto' }}
+                  renderItem={(connection, index) => (
+                    <List.Item key={index} style={{ alignItems: 'flex-start' }}>
+                      <Space direction="vertical" style={{ flex: 1 }} size={4}>
+                        <Text type="secondary" style={{ fontSize: 11 }}>Provider Port</Text>
+                        <Tag>{connection.sourcePort.name}</Tag>
+                        <Text type="secondary" style={{ fontSize: 11 }}>{connection.sourcePort.type}</Text>
+                      </Space>
+                      <Text type="secondary">→</Text>
+                      <Space direction="vertical" style={{ flex: 1 }} size={4}>
+                        <Text type="secondary" style={{ fontSize: 11 }}>Receiver Port</Text>
+                        <Tag>{connection.targetPort.name}</Tag>
+                        <Text type="secondary" style={{ fontSize: 11 }}>{connection.targetPort.type}</Text>
+                      </Space>
+                    </List.Item>
+                  )}
+                />
+              </Card>
+            </Space>
+          )}
         </Modal>
     </div>
   );
