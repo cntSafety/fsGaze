@@ -40,7 +40,8 @@ const getAsilColorWithOpacity = (asil: string, opacity: number = 0.7) => {
     return baseColor; // Fallback for any other color format
 };
 
-const CustomNode = ({ data }: { data: CondensedNodeData & { condensed?: boolean } }) => {
+// Performance: memoize node rendering to avoid unnecessary re-renders when unrelated state changes
+const CustomNode = React.memo(({ data }: { data: CondensedNodeData & { condensed?: boolean } }) => {
     const { condensed = false } = data;
     
     if (condensed) {
@@ -175,7 +176,8 @@ const CustomNode = ({ data }: { data: CondensedNodeData & { condensed?: boolean 
             </div>
         );
     }
-};
+});
+CustomNode.displayName = 'CustomNode';
 
 const nodeTypes: NodeTypes = {
     custom: CustomNode,
@@ -363,6 +365,27 @@ const ArchViewerInner = () => {
   const { fitView } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  
+  // Debug flag to gate verbose performance logging
+  const DEBUG_PERF = false;
+  const debugLog = (...args: any[]) => { if (DEBUG_PERF) console.log(...args); };
+
+  // Map ports by UUID for O(1) lookups instead of repeated allPorts.find
+  const portById = useMemo(() => new Map(allPorts.map(p => [p.uuid, p] as const)), [allPorts]);
+
+  // Precompute adjacency (partners) once; reused by ordering and condensed grouping
+  const portPartners = useMemo(() => {
+    const map = new Map<string, {ports: string[]; components: string[]}>();
+    connections.forEach((targetPortUuid, sourcePortUuid) => {
+      const a = sourcePortUuid, b = targetPortUuid;
+      const compA = portToComponentMap.get(a); const compB = portToComponentMap.get(b);
+      if (!map.has(a)) map.set(a,{ports:[],components:[]});
+      if (!map.has(b)) map.set(b,{ports:[],components:[]});
+      map.get(a)!.ports.push(b); if (compB) map.get(a)!.components.push(compB);
+      map.get(b)!.ports.push(a); if (compA) map.get(b)!.components.push(compA);
+    });
+    return map;
+  }, [connections, portToComponentMap]);
 
   // Check for mobile screen size
   useEffect(() => {
@@ -460,7 +483,7 @@ const ArchViewerInner = () => {
       
       // ⏱️ Performance Measurement: Start timing
       const startTime = performance.now();
-      console.log(`🚀 Loading component data for ${componentIds.length} components...`);
+  debugLog(`🚀 Loading component data for ${componentIds.length} components...`);
       
       const selectedComponents = allComponents.filter(c => componentIds.includes(c.uuid));
 
@@ -475,7 +498,7 @@ const ArchViewerInner = () => {
       const allPortsResult = await getAllPortsForComponents(componentIds);
       
       const portFetchEnd = performance.now();
-      console.log(`⚡ Batch port fetching completed in ${(portFetchEnd - portFetchStart).toFixed(2)}ms (single query for all components)`);
+  debugLog(`⚡ Batch port fetching completed in ${(portFetchEnd - portFetchStart).toFixed(2)}ms (single query for all components)`);
 
       // Process the batch port results
       if (allPortsResult.success && allPortsResult.data) {
@@ -486,7 +509,7 @@ const ArchViewerInner = () => {
           });
         });
         
-        console.log(`📦 Processed ${allPortsList.length} ports across ${allPortsResult.data.size} components`);
+  debugLog(`📦 Processed ${allPortsList.length} ports across ${allPortsResult.data.size} components`);
       } else {
         console.error('Batch port fetch failed - no fallback available');
         throw new Error('Failed to load port data');
@@ -496,14 +519,14 @@ const ArchViewerInner = () => {
       const connectionFetchStart = performance.now();
       
       // SUPER OPTIMIZED: Try the optimized assembly connector query first
-      console.log(`🚀 Executing OPTIMIZED connection fetching...`);
+  debugLog(`🚀 Executing OPTIMIZED connection fetching...`);
       
       const partnerResult = await getPartnerPortsForComponentsOptimized(componentIds);
-      console.log(`✅ OPTIMIZED query completed successfully`);
+  debugLog(`✅ OPTIMIZED query completed successfully`);
       
       const connectionFetchEnd = performance.now();
       const connectionFetchTime = connectionFetchEnd - connectionFetchStart;
-      console.log(`⚡ Partner connection fetching completed in ${connectionFetchTime.toFixed(2)}ms`);
+  debugLog(`⚡ Partner connection fetching completed in ${connectionFetchTime.toFixed(2)}ms`);
       
       // ⏱️ Performance Measurement: Connection processing phase
       const connectionProcessingStart = performance.now();
@@ -523,7 +546,7 @@ const ArchViewerInner = () => {
       
       const connectionProcessingEnd = performance.now();
       const connectionProcessingTime = connectionProcessingEnd - connectionProcessingStart;
-      console.log(`⚡ Connection processing completed in ${connectionProcessingTime.toFixed(2)}ms`);
+  debugLog(`⚡ Connection processing completed in ${connectionProcessingTime.toFixed(2)}ms`);
 
       setConnections(newConnections);
       setPortToComponentMap(newPortToComponentMap);
@@ -532,8 +555,8 @@ const ArchViewerInner = () => {
       // ⏱️ Performance Measurement: Total time
       const endTime = performance.now();
       const totalTime = endTime - startTime;
-      console.log(`✅ Component data loading completed in ${totalTime.toFixed(2)}ms total`);
-      console.log(`📊 DETAILED Performance breakdown:
+  debugLog(`✅ Component data loading completed in ${totalTime.toFixed(2)}ms total`);
+  debugLog(`📊 DETAILED Performance breakdown:
         - Port fetching: ${(portFetchEnd - portFetchStart).toFixed(2)}ms (${((portFetchEnd - portFetchStart) / totalTime * 100).toFixed(1)}%)
         - Connection fetching: ${connectionFetchTime.toFixed(2)}ms (${(connectionFetchTime / totalTime * 100).toFixed(1)}%)
         - Connection processing: ${connectionProcessingTime.toFixed(2)}ms (${(connectionProcessingTime / totalTime * 100).toFixed(1)}%)
@@ -711,8 +734,8 @@ const ArchViewerInner = () => {
     const selectedComponentUuids = selectedComponents.map(c => c.uuid);
     
     allConnections.forEach((targetPortUuid, sourcePortUuid) => {
-      const sourcePort = allPorts.find(p => p.uuid === sourcePortUuid);
-      const targetPort = allPorts.find(p => p.uuid === targetPortUuid);
+      const sourcePort = portById.get(sourcePortUuid);
+      const targetPort = portById.get(targetPortUuid);
       
       if (!sourcePort || !targetPort) return;
       
@@ -763,7 +786,7 @@ const ArchViewerInner = () => {
     });
     
     return componentConnections;
-  }, [allPorts, portToComponentMap]);
+  }, [allPorts, portToComponentMap, portById]);
 
   // Helper function to calculate connection counts for condensed nodes
   const calculateConnectionCounts = useCallback((
@@ -997,8 +1020,8 @@ const ArchViewerInner = () => {
       const processedConnections = new Set<string>();
       
       connections.forEach((targetPortUuid, sourcePortUuid) => {
-        const sourcePort = allPorts.find(p => p.uuid === sourcePortUuid);
-        const targetPort = allPorts.find(p => p.uuid === targetPortUuid);
+        const sourcePort = portById.get(sourcePortUuid);
+        const targetPort = portById.get(targetPortUuid);
 
         if (!sourcePort || !targetPort) return;
         
@@ -1252,7 +1275,7 @@ const ArchViewerInner = () => {
         setTimeout(() => { if (workingNodes.length>0) fitView({padding:0.1, duration:800}); }, 100);
       });
     }
-  }, [allComponents, allPorts, connections, portToComponentMap, selectedComponentIds, condensedView, createCondensedConnections, calculateConnectionCounts, setNodes, setEdges, fitView]);
+  }, [allComponents, allPorts, connections, portToComponentMap, selectedComponentIds, condensedView, createCondensedConnections, calculateConnectionCounts, setNodes, setEdges, fitView, portById, portPartners]);
 
   // Auto-create visualization when component selection changes and data is loaded
   useEffect(() => {
@@ -1712,8 +1735,8 @@ const ArchViewerInner = () => {
     const byPair = new Map<string, { lower: SWComponent; higher: SWComponent; count: number }>();
 
     connections.forEach((targetPortUuid, sourcePortUuid) => {
-      const sourcePort = allPorts.find((p) => p.uuid === sourcePortUuid);
-      const targetPort = allPorts.find((p) => p.uuid === targetPortUuid);
+      const sourcePort = portById.get(sourcePortUuid);
+      const targetPort = portById.get(targetPortUuid);
       if (!sourcePort || !targetPort) return;
 
       // Normalize to provider/receiver
@@ -1761,7 +1784,7 @@ const ArchViewerInner = () => {
     });
 
     return { byPair, inspectedConnections };
-  }, [allComponents, allPorts, connections, portToComponentMap, selectedComponentIds]);
+  }, [allComponents, allPorts, connections, portToComponentMap, selectedComponentIds, portById]);
 
   // Highlight connections where a lower-ASIL component connects to a higher-ASIL component
   const handleFindLowerToHigherAsil = useCallback(() => {
@@ -1776,8 +1799,8 @@ const ArchViewerInner = () => {
 
     setEdges((eds) => {
       const next = eds.map((e) => {
-        const src = allComponents.find((c) => c.uuid === e.source);
-        const tgt = allComponents.find((c) => c.uuid === e.target);
+  const src = allComponents.find((c) => c.uuid === e.source); // component lookup small set
+  const tgt = allComponents.find((c) => c.uuid === e.target);
         if (!src || !tgt) {
           return {
             ...e,
