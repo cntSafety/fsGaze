@@ -16,6 +16,7 @@ import ReactFlow, {
     Handle,
     Connection,
     addEdge,
+    ReactFlowInstance, // add type
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { Button, Collapse, Typography, Space, Tag, Modal, message, theme } from 'antd';
@@ -23,6 +24,7 @@ import { NodeCollapseOutlined, DeleteOutlined, ReloadOutlined } from '@ant-desig
 import { SwComponent, Failure, PortFailure, ProviderPort } from './types';
 import { getSafetyGraph } from '@/app/services/neo4j/queries/safety/exportGraph';
 import { deleteCausationNode, createCausationBetweenFailureModes } from '@/app/services/neo4j/queries/safety/causation';
+import ELK from 'elkjs/lib/elk.bundled.js'; // added
 
 const { Title, Text } = Typography;
 
@@ -60,7 +62,8 @@ function SwFailureNode({ data }: { data: NodeData }) {
     <div style={{
       padding: '12px 16px',
       borderRadius: '8px',
-      background: token.colorBgElevated,
+      // Legend update: SW should be green for readability (adaptive)
+      background: token.colorSuccessBg,
       border: showBorder ? `3px solid ${token.colorWarning}` : 'none',
       boxShadow: token.boxShadow,
       minWidth: '180px',
@@ -68,30 +71,26 @@ function SwFailureNode({ data }: { data: NodeData }) {
       textAlign: 'center',
       position: 'relative'
     }}>
-      {/* Input handle for receiving failures */}
       <Handle
         type="target"
         position={Position.Left}
         id="left"
         style={{ background: token.colorTextSecondary, width: '10px', height: '10px', left: '-5px' }}
       />
-      
-      {/* Output handle for propagating failures */}
       <Handle
         type="source"
         position={Position.Right}
         id="right"
         style={{ background: token.colorTextSecondary, width: '10px', height: '10px', right: '-5px' }}
       />
-      
       <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '4px' }}>
         {data.label}
       </div>
-      <div style={{ fontSize: '11px', opacity: 0.9 }}>
+      <div style={{ fontSize: '11px', color: token.colorTextSecondary }}>
         <span style={{ fontWeight: 'bold' }}>ASIL:</span> <span style={{ fontWeight: 'bold' }}>{data.asil}</span>
       </div>
       {data.description && (
-        <div style={{ fontSize: '10px', opacity: 0.8, marginTop: '2px' }}>
+        <div style={{ fontSize: '10px', color: token.colorTextTertiary, marginTop: '2px' }}>
           {data.description.length > 30 ? `${data.description.substring(0, 30)}...` : data.description}
         </div>
       )}
@@ -104,46 +103,41 @@ function ReceiverPortFailureNode({ data }: { data: NodeData }) {
   const { token } = theme.useToken();
   const showBorder = ['A', 'B', 'C', 'D'].includes(data.asil);
   const isQM = data.asil === 'QM';
-  const labelTextColor = isQM ? token.colorTextQuaternary : token.colorText;
-  const asilTextColor = isQM ? token.colorTextQuaternary : token.colorTextSecondary;
+  // Receiver: solid primary background, light-solid text for contrast (adaptive)
+  const labelTextColor = token.colorTextLightSolid;
+  const asilTextColor = token.colorTextLightSolid;
   
   return (
     <div style={{
       padding: '10px 14px',
       borderRadius: '6px',
-      background: token.colorPrimaryBg,
+      background: token.colorPrimary,
       border: showBorder ? `3px solid ${token.colorWarning}` : 'none',
       boxShadow: token.boxShadowSecondary,
-      minWidth: '160px', // Minimum width, can expand for longer content
-      maxWidth: '280px', // Maximum width to prevent excessive expansion
+      minWidth: '160px',
+      maxWidth: '280px',
       position: 'relative',
-      textAlign: 'right', // Right-align the text content
-      whiteSpace: 'nowrap', // Prevent text wrapping for port names
-      overflow: 'hidden', // Hide overflow if text is too long
-      textOverflow: 'ellipsis', // Show ellipsis for very long text
-      transform: 'translateX(calc(200px - 100%))', // Move so right edge aligns at 200px (250px gap from SW at 450px)
-      marginLeft: '0'
+      textAlign: 'right',
+      whiteSpace: 'nowrap',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis'
     }}>
-      {/* Input handle for receiving from other failure modes */}
       <Handle
         type="target"
         position={Position.Left}
         id="left"
-        style={{ background: token.colorPrimary, width: '8px', height: '8px', left: '-4px' }}
+        style={{ background: token.colorTextLightSolid, width: '8px', height: '8px', left: '-4px' }}
       />
-      
-      {/* Output handle for propagating to SW component failures */}
       <Handle
         type="source"
         position={Position.Right}
         id="right"
-        style={{ background: token.colorPrimary, width: '8px', height: '8px', right: '-4px' }}
+        style={{ background: token.colorTextLightSolid, width: '8px', height: '8px', right: '-4px' }}
       />
-      
-      <div style={{ fontSize: '12px', fontWeight: '600', color: token.colorTextDescription, marginBottom: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      <div style={{ fontSize: '12px', fontWeight: '600', color: labelTextColor, opacity: 0.85, marginBottom: '2px' }}>
         {data.portName}
       </div>
-      <div style={{ fontSize: '13px', fontWeight: '700', color: labelTextColor, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      <div style={{ fontSize: '13px', fontWeight: '700', color: labelTextColor }}>
         {data.label}
       </div>
       <div style={{ fontSize: '10px', color: asilTextColor }}>
@@ -158,8 +152,9 @@ function ProviderPortFailureNode({ data }: { data: NodeData }) {
   const { token } = theme.useToken();
   const showBorder = ['A', 'B', 'C', 'D'].includes(data.asil);
   const isQM = data.asil === 'QM';
-  const labelTextColor = isQM ? token.colorTextQuaternary : token.colorText;
-  const asilTextColor = isQM ? token.colorTextQuaternary : token.colorTextSecondary;
+  // Provider: lighter warning background so ASIL border is visible (adaptive)
+  const labelTextColor = token.colorText;
+  const asilTextColor = token.colorTextSecondary;
   
   return (
     <div style={{
@@ -171,23 +166,19 @@ function ProviderPortFailureNode({ data }: { data: NodeData }) {
       minWidth: '160px',
       position: 'relative'
     }}>
-      {/* Input handle for receiving from SW component failures */}
       <Handle
         type="target"
         position={Position.Left}
         id="left"
         style={{ background: token.colorWarning, width: '8px', height: '8px', left: '-4px' }}
       />
-      
-      {/* Output handle for propagating to other failure modes */}
       <Handle
         type="source"
         position={Position.Right}
         id="right"
         style={{ background: token.colorWarning, width: '8px', height: '8px', right: '-4px' }}
       />
-      
-      <div style={{ fontSize: '12px', fontWeight: '600', color: token.colorTextDescription, marginBottom: '2px' }}>
+      <div style={{ fontSize: '12px', fontWeight: '600', color: token.colorTextSecondary, marginBottom: '2px' }}>
         {data.portName}
       </div>
       <div style={{ fontSize: '13px', fontWeight: '700', color: labelTextColor }}>
@@ -200,66 +191,84 @@ function ProviderPortFailureNode({ data }: { data: NodeData }) {
   );
 }
 
-// *** NEW: BARYCENTER LAYOUT ALGORITHM ***
-const layoutNodesWithBarycenter = (nodes: Node[], edges: Edge[]): Node[] => {
-  const receiverNodes = nodes.filter(n => n.type === 'receiverPortFailure');
-  const swNodes = nodes.filter(n => n.type === 'swFailure');
-  const providerNodes = nodes.filter(n => n.type === 'providerPortFailure');
+// Replace barycenter layout with ELK layered layout
+const elk = new ELK();
 
-  if (swNodes.length === 0) return nodes; // No central nodes to align
+type ElkNode = {
+  id: string;
+  width: number;
+  height: number;
+  layoutOptions?: Record<string, string>;
+};
 
-  const nodePositions = new Map(nodes.map(n => [n.id, { ...n.position }]));
-  const forwardNeighbors = new Map<string, string[]>();
-  const backwardNeighbors = new Map<string, string[]>();
+const DEFAULT_SIZES: Record<string, { width: number; height: number }> = {
+  receiverPortFailure: { width: 260, height: 72 },
+  swFailure: { width: 220, height: 84 },
+  providerPortFailure: { width: 240, height: 72 },
+};
 
-  edges.forEach(edge => {
-    if (!forwardNeighbors.has(edge.source)) forwardNeighbors.set(edge.source, []);
-    forwardNeighbors.get(edge.source)!.push(edge.target);
-    if (!backwardNeighbors.has(edge.target)) backwardNeighbors.set(edge.target, []);
-    backwardNeighbors.get(edge.target)!.push(edge.source);
+const layoutWithELK = async (nodes: Node[], edges: Edge[]) => {
+  // Heuristic: detect SW->SW density; ELK will naturally add middle ranks,
+  // but we bump spacing if dense to create clearer "bands".
+  const swIds = new Set(nodes.filter(n => n.type === 'swFailure').map(n => n.id));
+  const sw2swCount = edges.filter(e => swIds.has(e.source) && swIds.has(e.target)).length;
+  const denseSW = sw2swCount > Math.max(8, swIds.size);
+
+  const elkNodes: ElkNode[] = nodes.map((n) => {
+    const size = DEFAULT_SIZES[n.type as keyof typeof DEFAULT_SIZES] ?? { width: 200, height: 60 };
+    // Layer constraints to keep inputs left and outputs right
+    let layerConstraint = 'NONE';
+    if (n.type === 'receiverPortFailure') layerConstraint = 'FIRST';
+    if (n.type === 'providerPortFailure') layerConstraint = 'LAST';
+
+    return {
+      id: n.id,
+      width: size.width,
+      height: size.height,
+      layoutOptions: {
+        'elk.layered.layering.layerConstraint': layerConstraint,
+      },
+    };
   });
 
-  const calculateBarycenter = (nodeId: string, neighborsMap: Map<string, string[]>) => {
-    const neighborIds = neighborsMap.get(nodeId);
-    if (!neighborIds || neighborIds.length === 0) {
-      return nodePositions.get(nodeId)?.y ?? 0;
-    }
-    const sum = neighborIds.reduce((acc, neighborId) => acc + (nodePositions.get(neighborId)?.y ?? 0), 0);
-    return sum / neighborIds.length;
+  const elkEdges = edges.map(e => ({
+    id: e.id,
+    sources: [e.source],
+    targets: [e.target],
+  }));
+
+  const graph = {
+    id: 'root',
+    layoutOptions: {
+      'elk.algorithm': 'layered',
+      'elk.direction': 'RIGHT',
+      'elk.edgeRouting': 'POLYLINE',
+      'elk.spacing.nodeNode': '32',
+      'elk.spacing.edgeNode': '24',
+      'elk.spacing.edgeEdge': '18',
+      'elk.layered.spacing.nodeNodeBetweenLayers': denseSW ? '120' : '72',
+      'elk.layered.spacing.edgeNodeBetweenLayers': denseSW ? '96' : '56',
+      'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
+      'elk.layered.cycleBreaking.strategy': 'GREEDY',
+      'elk.layered.crossingMinimization.semiInteractive': 'false',
+      'elk.layered.mergeEdges': 'true',
+    },
+    children: elkNodes,
+    edges: elkEdges,
   };
 
-  const ITERATIONS = 8;
-  const V_SPACING = 120; // Vertical spacing between nodes in a column
+  const layouted = await elk.layout(graph as any);
 
-  for (let i = 0; i < ITERATIONS; i++) {
-    // Left -> Right Sweep
-    swNodes.sort((a, b) => calculateBarycenter(a.id, backwardNeighbors) - calculateBarycenter(b.id, backwardNeighbors));
-    swNodes.forEach((node, index) => {
-      const currentPos = nodePositions.get(node.id)!;
-      nodePositions.set(node.id, { x: currentPos.x, y: index * V_SPACING }); // Preserve X position
-    });
-    
-    providerNodes.sort((a, b) => calculateBarycenter(a.id, backwardNeighbors) - calculateBarycenter(b.id, backwardNeighbors));
-    providerNodes.forEach((node, index) => {
-      const currentPos = nodePositions.get(node.id)!;
-      nodePositions.set(node.id, { x: currentPos.x, y: index * V_SPACING }); // Preserve X position
-    });
+  // Map ELK positions back to React Flow nodes
+  const posMap = new Map<string, { x: number; y: number }>();
+  (layouted.children || []).forEach((c: any) => {
+    posMap.set(c.id, { x: c.x || 0, y: c.y || 0 });
+  });
 
-    // Right -> Left Sweep
-    swNodes.sort((a, b) => calculateBarycenter(a.id, forwardNeighbors) - calculateBarycenter(b.id, forwardNeighbors));
-    swNodes.forEach((node, index) => {
-      const currentPos = nodePositions.get(node.id)!;
-      nodePositions.set(node.id, { x: currentPos.x, y: index * V_SPACING }); // Preserve X position
-    });
-
-    receiverNodes.sort((a, b) => calculateBarycenter(a.id, forwardNeighbors) - calculateBarycenter(b.id, forwardNeighbors));
-    receiverNodes.forEach((node, index) => {
-      const currentPos = nodePositions.get(node.id)!;
-      nodePositions.set(node.id, { x: currentPos.x, y: index * V_SPACING }); // Preserve X position (right-aligned)
-    });
-  }
-
-  return nodes.map(node => ({ ...node, position: nodePositions.get(node.id)! }));
+  return nodes.map(n => {
+    const p = posMap.get(n.id);
+    return p ? { ...n, position: p } : n;
+  });
 };
 
 export default function FMFlow({
@@ -276,8 +285,9 @@ export default function FMFlow({
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isCreatingCausation, setIsCreatingCausation] = useState(false);
-  const [refreshTrigger, setRefreshTrigger] = useState(0); // Trigger to refresh causation data
-  
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [rfInstance, setRfInstance] = useState<ReactFlowInstance | null>(null);
+
   // Context menu state for edge deletion
   const [contextMenu, setContextMenu] = useState<{
     visible: boolean;
@@ -620,11 +630,24 @@ export default function FMFlow({
     // Causation creation should only happen via drag and drop from handles
   }, [hideContextMenu]);
 
-  const applyLayout = useCallback(() => {
-    // Apply Barycenter layout to reduce edge crossings
-    const layoutedNodes = layoutNodesWithBarycenter(nodes, edges);
-    setNodes(layoutedNodes);
-  }, [nodes, edges, setNodes]);
+  const applyLayout = useCallback(async () => {
+    try {
+      const layoutedNodes = await layoutWithELK(nodes, edges);
+      setNodes(layoutedNodes);
+
+      // Keep the diagram in view after layout
+      requestAnimationFrame(() => {
+        try {
+          rfInstance?.fitView({ padding: 0.15, duration: 300 });
+        } catch {
+          // no-op
+        }
+      });
+    } catch (e) {
+      console.error('ELK layout failed:', e);
+      message.error('Layout failed. See console for details.');
+    }
+  }, [nodes, edges, setNodes, rfInstance]);
 
   // Apply initial layout only when nodes are first loaded
   const [hasAppliedInitialLayout, setHasAppliedInitialLayout] = useState(false);
@@ -749,6 +772,7 @@ export default function FMFlow({
             connectionLineType={ConnectionLineType.Straight}
             fitView
             attributionPosition="bottom-left"
+            onInit={(instance) => setRfInstance(instance)}
           >
             <Background />
             <Controls />
