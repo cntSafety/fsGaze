@@ -22,7 +22,7 @@ import 'reactflow/dist/style.css';
 import { Button, Collapse, Typography, Space, Tag, Modal, message, theme } from 'antd';
 import { NodeCollapseOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import { SwComponent, Failure, PortFailure, ProviderPort } from './types';
-import { getSafetyGraph } from '@/app/services/neo4j/queries/safety/exportGraph';
+import { getSafetyGraphForComponent } from '@/app/services/neo4j/queries/safety/exportGraph';
 import { deleteCausationNode, createCausationBetweenFailureModes } from '@/app/services/neo4j/queries/safety/causation';
 import { useRouter } from 'next/navigation';
 import ELK from 'elkjs/lib/elk.bundled.js'; // added
@@ -67,10 +67,13 @@ function SwFailureNode({ data }: { data: NodeData }) {
       background: token.colorSuccessBg,
       border: showBorder ? `3px solid ${token.colorWarning}` : 'none',
       boxShadow: token.boxShadow,
-      minWidth: '180px',
+      width: 320,
       color: textColor,
       textAlign: 'center',
-      position: 'relative'
+      position: 'relative',
+      whiteSpace: 'normal',
+      wordBreak: 'break-word',
+      lineHeight: 1.25
     }}>
       <Handle
         type="target"
@@ -115,13 +118,12 @@ function ReceiverPortFailureNode({ data }: { data: NodeData }) {
       background: token.colorPrimary,
       border: showBorder ? `3px solid ${token.colorWarning}` : 'none',
       boxShadow: token.boxShadowSecondary,
-      minWidth: '160px',
-      maxWidth: '280px',
+      width: 300,
       position: 'relative',
       textAlign: 'right',
-      whiteSpace: 'nowrap',
-      overflow: 'hidden',
-      textOverflow: 'ellipsis'
+      whiteSpace: 'normal',
+      wordBreak: 'break-word',
+      lineHeight: 1.25
     }}>
       <Handle
         type="target"
@@ -164,8 +166,11 @@ function ProviderPortFailureNode({ data }: { data: NodeData }) {
       background: token.colorWarningBg,
       border: showBorder ? `3px solid ${token.colorWarning}` : 'none',
       boxShadow: token.boxShadowSecondary,
-      minWidth: '160px',
-      position: 'relative'
+      width: 300,
+      position: 'relative',
+      whiteSpace: 'normal',
+      wordBreak: 'break-word',
+      lineHeight: 1.25
     }}>
       <Handle
         type="target"
@@ -204,9 +209,9 @@ type ElkNode = {
 };
 
 const DEFAULT_SIZES: Record<string, { width: number; height: number }> = {
-  receiverPortFailure: { width: 260, height: 72 },
-  swFailure: { width: 220, height: 84 },
-  providerPortFailure: { width: 240, height: 72 },
+  receiverPortFailure: { width: 300, height: 92 },
+  swFailure: { width: 320, height: 100 },
+  providerPortFailure: { width: 300, height: 92 },
 };
 
 const layoutWithELK = async (nodes: Node[], edges: Edge[]) => {
@@ -269,6 +274,7 @@ export default function FMFlow({
   onFailureSelect,
   selectedFailures
 }: FMFlowProps) {
+  const { token } = theme.useToken();
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -292,23 +298,24 @@ export default function FMFlow({
     providerPortFailure: ProviderPortFailureNode,
   }), []);
 
-  // Function to fetch causation relationships from Neo4j
+  // Function to fetch causation relationships scoped to this component from Neo4j
   const fetchCausationRelationships = useCallback(async () => {
     try {
-      // console.log('🔍 Fetching causation relationships...');
-      const result = await getSafetyGraph();
-      if (result.success && result.data?.causationLinks) {
-        //console.log(`✅ Found ${result.data.causationLinks.length} causation links:`, result.data.causationLinks);
-        // console.log (`data from getSafetzGraph:`, result.data);
-        return result.data.causationLinks;
+      const result = await getSafetyGraphForComponent(swComponent.uuid);
+      if (result.success && result.data) {
+        return result.data.map((row: any) => ({
+          causationUuid: row.cuuid,
+          causeFailureUuid: row.causeFailureUuid,
+          effectFailureUuid: row.effectFailureUuid,
+        }));
       }
-      console.warn('⚠️ Failed to fetch causation links:', result.message);
+      console.warn('⚠️ Failed to fetch component-scoped causation links:', result.message);
       return [];
     } catch (error) {
-      console.error('❌ Error fetching causation relationships:', error);
+      console.error('❌ Error fetching component-scoped causation relationships:', error);
       return [];
     }
-  }, []);
+  }, [swComponent.uuid]);
 
   // Keep applyLayout defined before dependent callbacks
   const applyLayout = useCallback(async () => {
@@ -326,117 +333,109 @@ export default function FMFlow({
     }
   }, [nodes, edges, setNodes, rfInstance]);
 
-  // Build nodes from service (preferred) or props, fetch causations, build edges, apply layout
+  // Build nodes from props, fetch component-scoped causations, build edges, apply layout
   const generateGraph = useCallback(async () => {
     console.log(`[FMFlow] Generating graph for component: ${swComponent.uuid}`);
     const newNodes: Node[] = [];
     const newEdges: Edge[] = [];
-
-    // 1) Try to fetch complete graph from Neo4j
     let usedServiceData = false;
+
+    // 1) Try to fetch component-scoped graph data from Neo4j
     try {
-      const result = await getSafetyGraph();
-      console.log('[FMFlow] Data received from getSafetyGraph:', result);
+      const result = await getSafetyGraphForComponent(swComponent.uuid);
+      if (result.success && result.data && result.data.length > 0) {
+        const rows: any[] = result.data as any[];
 
-      if (result.success && result.data) {
-        const d = result.data as any;
-        const swFailures = d.swFailures || d.failures || [];
-        const recvFailures = d.receiverPortFailures || d.inputPortFailures || [];
-        const provFailures = d.providerPortFailures || d.outputPortFailures || [];
-        const causationLinks = d.causationLinks || [];
-
-        console.log(`[FMFlow] Processing ${swFailures.length} SW failures, ${recvFailures.length} receiver failures, ${provFailures.length} provider failures, ${causationLinks.length} causation links`);
-
-        // Receiver port failure nodes
-        recvFailures.forEach((f: any) => {
-          if (!f?.failureUuid || !f?.failureName) return;
-          newNodes.push({
-            id: `receiver-${f.portUuid || 'port'}-${f.failureUuid}`,
-            type: 'receiverPortFailure',
-            position: { x: 0, y: 0 },
-            data: {
-              label: f.failureName,
-              portName: f.portName || 'Receiver',
-              asil: f.asil || 'N/A',
-              description: f.failureDescription,
-              failureUuid: f.failureUuid,
-              portUuid: f.portUuid,
-            },
-          });
-        });
-
-        // SW failures
-        swFailures.forEach((f: any) => {
-          if (!f?.failureUuid || !f?.failureName) return;
-          newNodes.push({
-            id: `sw-${f.failureUuid}`,
-            type: 'swFailure',
-            position: { x: 0, y: 0 },
-            data: {
-              label: f.failureName,
-              asil: f.asil || 'N/A',
-              description: f.failureDescription,
-              failureUuid: f.failureUuid,
-            },
-          });
-        });
-
-        // Provider port failure nodes
-        provFailures.forEach((f: any) => {
-          if (!f?.failureUuid || !f?.failureName) return;
-          newNodes.push({
-            id: `provider-${f.portUuid || 'port'}-${f.failureUuid}`,
-            type: 'providerPortFailure',
-            position: { x: 0, y: 0 },
-            data: {
-              label: f.failureName,
-              portName: f.portName || 'Provider',
-              asil: f.asil || 'N/A',
-              description: f.failureDescription,
-              failureUuid: f.failureUuid,
-              portUuid: f.portUuid,
-            },
-          });
-        });
-
-        // Create a map for id lookup
+        const nodesMap = new Map<string, Node>();
         const failureUuidToNodeId = new Map<string, string>();
-        newNodes.forEach(node => {
-          if (node.data?.failureUuid) {
-            failureUuidToNodeId.set(node.data.failureUuid, node.id);
+
+        // Build nodes from service rows (SW failures and port failures)
+        rows.forEach((row) => {
+          // SW failure on component
+          if (row.failureUuid && row.failureName) {
+            const swNodeId = `sw-${row.failureUuid}`;
+            if (!nodesMap.has(swNodeId)) {
+              const node: Node = {
+                id: swNodeId,
+                type: 'swFailure',
+                position: { x: 0, y: 0 },
+                data: {
+                  label: row.failureName,
+                  asil: 'N/A',
+                  description: undefined,
+                  failureUuid: row.failureUuid,
+                },
+              };
+              nodesMap.set(swNodeId, node);
+              failureUuidToNodeId.set(row.failureUuid, swNodeId);
+            }
+          }
+
+          // Port failure nodes (receiver/provider)
+          if (row.failurePortUuid && row.failurePortName && row.portUuid && row.portLabels) {
+            const isReceiver = Array.isArray(row.portLabels) && row.portLabels.includes('R_PORT_PROTOTYPE');
+            const isProvider = Array.isArray(row.portLabels) && row.portLabels.includes('P_PORT_PROTOTYPE');
+            const nodeType = isReceiver ? 'receiverPortFailure' : 'providerPortFailure';
+            const prefix = isReceiver ? 'receiver' : 'provider';
+            // Only add if we can classify as receiver or provider
+            if (isReceiver || isProvider) {
+              const portNodeId = `${prefix}-${row.portUuid}-${row.failurePortUuid}`;
+              if (!nodesMap.has(portNodeId)) {
+                const node: Node = {
+                  id: portNodeId,
+                  type: nodeType as any,
+                  position: { x: 0, y: 0 },
+                  data: {
+                    label: row.failurePortName,
+                    portName: row.portName,
+                    asil: 'N/A',
+                    description: undefined,
+                    failureUuid: row.failurePortUuid,
+                    portUuid: row.portUuid,
+                  },
+                };
+                nodesMap.set(portNodeId, node);
+                failureUuidToNodeId.set(row.failurePortUuid, portNodeId);
+              }
+            }
           }
         });
 
-        // Causation edges
-        causationLinks.forEach((link: any, linkIndex: number) => {
-          const sourceNodeId = failureUuidToNodeId.get(link.causeFailureUuid);
-          const targetNodeId = failureUuidToNodeId.get(link.effectFailureUuid);
-          if (sourceNodeId && targetNodeId) {
-            newEdges.push({
-              id: `causation-${link.causationUuid}-${linkIndex}`,
-              source: sourceNodeId,
-              target: targetNodeId,
-              type: 'default',
-              animated: true,
-              style: { stroke: '#F59E0B', strokeWidth: 3, strokeDasharray: '5,5' },
-              markerEnd: { type: MarkerType.ArrowClosed, color: '#F59E0B' },
-              data: {
-                causationUuid: link.causationUuid,
-                causationName: link.causationName,
-                type: 'causation',
-              },
-            });
-          }
+        // Build causation edges for pairs that exist inside this component
+        const edgesSet = new Set<string>();
+        rows.forEach((row, idx) => {
+          if (!row.cuuid || !row.causeFailureUuid || !row.effectFailureUuid) return;
+          const sourceNodeId = failureUuidToNodeId.get(row.causeFailureUuid);
+          const targetNodeId = failureUuidToNodeId.get(row.effectFailureUuid);
+          if (!sourceNodeId || !targetNodeId) return;
+          const edgeKey = `${row.cuuid}|${sourceNodeId}|${targetNodeId}`;
+          if (edgesSet.has(edgeKey)) return;
+          edgesSet.add(edgeKey);
+
+          newEdges.push({
+            id: `causation-${row.cuuid}-${idx}`,
+            source: sourceNodeId,
+            target: targetNodeId,
+            type: 'default',
+            animated: true,
+            style: { stroke: '#F59E0B', strokeWidth: 3, strokeDasharray: '5,5' },
+            markerEnd: { type: MarkerType.ArrowClosed, color: '#F59E0B' },
+            data: {
+              causationUuid: row.cuuid,
+              causationName: row.causeFailureName && row.effectFailureName
+                ? `${row.causeFailureName} → ${row.effectFailureName}`
+                : undefined,
+              type: 'causation',
+            },
+          });
         });
 
+        newNodes.push(...Array.from(nodesMap.values()));
         usedServiceData = newNodes.length > 0;
-        console.log(`[FMFlow] Created ${newNodes.length} nodes and ${newEdges.length} edges from service data`);
-      } else {
-        console.warn('[FMFlow] getSafetyGraph failed or returned no data:', result.message);
-        message.error(`Failed to fetch graph data: ${result.message}`);
+        console.log(`[FMFlow] Created ${newNodes.length} nodes and ${newEdges.length} edges from component-scoped service data`);
       }
     } catch (e) {
-      console.warn('[FMFlow] getSafetyGraph threw an error, falling back to props:', e);
+      console.warn('[FMFlow] getSafetyGraphForComponent failed, will fallback to props:', e);
     }
 
     // 2) Fallback to props when service data is unavailable or empty
@@ -462,6 +461,7 @@ export default function FMFlow({
           }
         });
       });
+      
       // SW failures from props
       failures.forEach((failure) => {
         if (failure.failureName && failure.failureName !== 'No failures defined') {
@@ -478,6 +478,7 @@ export default function FMFlow({
           });
         }
       });
+
       // Provider port failures from props
       providerPorts.forEach((port) => {
         const portFailuresList = portFailures[port.uuid] || [];
@@ -499,14 +500,15 @@ export default function FMFlow({
           }
         });
       });
-      // Causation edges (always from service)
+
+      // Causation edges (from component-scoped service query)
       try {
         const causationLinks = await fetchCausationRelationships();
         const failureUuidToNodeId = new Map<string, string>();
         newNodes.forEach(node => {
           if (node.data.failureUuid) failureUuidToNodeId.set(node.data.failureUuid, node.id);
         });
-        causationLinks.forEach((link, linkIndex) => {
+        causationLinks.forEach((link: any, linkIndex: number) => {
           const sourceNodeId = failureUuidToNodeId.get(link.causeFailureUuid);
           const targetNodeId = failureUuidToNodeId.get(link.effectFailureUuid);
           if (sourceNodeId && targetNodeId) {
@@ -520,7 +522,6 @@ export default function FMFlow({
               markerEnd: { type: MarkerType.ArrowClosed, color: '#F59E0B' },
               data: {
                 causationUuid: link.causationUuid,
-                causationName: link.causationName,
                 type: 'causation',
               },
             });
@@ -750,7 +751,7 @@ export default function FMFlow({
 
         <div style={{ 
           height: '700px', 
-          border: '1px solid #d9d9d9', 
+          border: `1px solid ${token.colorBorderSecondary}`, 
           borderRadius: '4px',
           position: 'relative',
           opacity: isCreatingCausation ? 0.7 : 1,
@@ -781,30 +782,30 @@ export default function FMFlow({
               position: 'fixed',
               top: contextMenu.y,
               left: contextMenu.x,
-              backgroundColor: 'white',
-              border: '1px solid #d9d9d9',
-              borderRadius: '4px',
-              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+              backgroundColor: token.colorBgElevated,
+              border: `1px solid ${token.colorBorderSecondary}`,
+              borderRadius: token.borderRadius,
+              boxShadow: token.boxShadowSecondary,
               zIndex: 1000,
               minWidth: '180px'
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ padding: '8px 12px', borderBottom: '1px solid #f0f0f0' }}>
+            <div style={{ padding: '8px 12px', borderBottom: `1px solid ${token.colorSplit}` }}>
               <Text strong style={{ fontSize: '12px' }}>Delete Causation</Text>
             </div>
             <div style={{ padding: '4px 0' }}>
-              <div style={{ padding: '6px 12px', fontSize: '11px', color: '#666' }}>
+              <div style={{ padding: '6px 12px', fontSize: '11px', color: token.colorTextSecondary }}>
                 {contextMenu.causationName}
               </div>
               <Button
                 type="text"
+                danger
                 icon={<DeleteOutlined />}
                 onClick={handleDeleteCausation}
                 style={{ 
                   width: '100%', 
                   textAlign: 'left',
-                  color: '#ff4d4f',
                   borderRadius: 0
                 }}
                 size="small"

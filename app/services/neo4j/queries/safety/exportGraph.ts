@@ -267,3 +267,69 @@ export async function getSafetyGraphForDiagram(): Promise<{
         await session.close();
     }
 }
+
+/**
+ * Fetches a safety subgraph for a specific component using a predefined UUID filter.
+ * The query returns the causation UUID along with the involved failure nodes
+ * (selected failure, its cause, and its effect) limited to failures that occur
+ * within the specified component.
+ */
+export async function getSafetyGraphForComponent(componentUuid: string): Promise<{
+    success: boolean;
+    data?: Array<{
+        cuuid: string;
+        failureUuid: string;
+        failureName: string;
+        causeFailureUuid: string;
+        causeFailureName: string;
+        effectFailureUuid: string;
+        effectFailureName: string;
+        failurePortUuid?: string;
+        failurePortName?: string;
+        portUuid?: string;
+        portName?: string;
+        portLabels?: string[];
+    }>;
+    message?: string;
+}> {
+    const session = driver.session();
+    try {
+        const query = `
+            MATCH (f:FAILUREMODE)-[:OCCURRENCE]->(cmp)
+            WHERE cmp.uuid = $componentUuid
+            OPTIONAL MATCH (port)<-[:CONTAINS]-(cmp)
+            WHERE port:P_PORT_PROTOTYPE OR port:R_PORT_PROTOTYPE
+            OPTIONAL MATCH (fport)-[:OCCURRENCE]->(port)
+            OPTIONAL MATCH (c:CAUSATION)-[]-(f)
+            OPTIONAL MATCH (f)-[:OCCURRENCE]->(src)
+            OPTIONAL MATCH (cause:FAILUREMODE)<-[:FIRST]-(c)-[:THEN]->(effect:FAILUREMODE)
+            RETURN c.uuid AS cuuid, f.uuid AS failureUuid, f.name AS failureName,
+                   fport.uuid AS failurePortUuid, fport.name AS failurePortName,
+                   port.uuid AS portUuid, port.name AS portName, labels(port) AS portLabels,
+                   cause.uuid AS causeFailureUuid, cause.name AS causeFailureName,
+                   effect.uuid AS effectFailureUuid, effect.name AS effectFailureName
+        `;
+        const result = await session.run(query, { componentUuid });
+        const rows = result.records.map(record => ({
+            cuuid: record.get('cuuid'),
+            failureUuid: record.get('failureUuid'),
+            failureName: record.get('failureName'),
+            failurePortUuid: record.get('failurePortUuid') || undefined,
+            failurePortName: record.get('failurePortName') || undefined,
+            portUuid: record.get('portUuid') || undefined,
+            portName: record.get('portName') || undefined,
+            portLabels: record.get('portLabels') || undefined,
+            causeFailureUuid: record.get('causeFailureUuid'),
+            causeFailureName: record.get('causeFailureName'),
+            effectFailureUuid: record.get('effectFailureUuid'),
+            effectFailureName: record.get('effectFailureName'),
+        }));
+
+        return { success: true, data: rows };
+    } catch (error: any) {
+        console.error("Error fetching safety graph for component:", error);
+        return { success: false, message: error.message };
+    } finally {
+        await session.close();
+    }
+}

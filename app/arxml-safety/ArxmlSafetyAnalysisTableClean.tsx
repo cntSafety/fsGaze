@@ -156,6 +156,14 @@ export default function ArxmlSafetyAnalysisTable() {
     return keys;
   };
 
+  // Expand all rows by default whenever new data is loaded
+  useEffect(() => {
+    if (tableData.length > 0) {
+      const allKeys = getAllExpandableKeys(tableData);
+      setExpandedKeys(allKeys);
+    }
+  }, [tableData]);
+
   const handleExpandAll = () => {
     const allKeys = getAllExpandableKeys(tableData);
     setExpandedKeys(allKeys);
