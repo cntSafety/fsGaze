@@ -16,7 +16,7 @@ import ReactFlow, {
     Handle,
     Connection,
     addEdge,
-    ReactFlowInstance, // add type
+    ReactFlowInstance,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { Button, Collapse, Typography, Space, Tag, Modal, message, theme } from 'antd';
@@ -24,6 +24,7 @@ import { NodeCollapseOutlined, DeleteOutlined, ReloadOutlined } from '@ant-desig
 import { SwComponent, Failure, PortFailure, ProviderPort } from './types';
 import { getSafetyGraph } from '@/app/services/neo4j/queries/safety/exportGraph';
 import { deleteCausationNode, createCausationBetweenFailureModes } from '@/app/services/neo4j/queries/safety/causation';
+import { useRouter } from 'next/navigation';
 import ELK from 'elkjs/lib/elk.bundled.js'; // added
 
 const { Title, Text } = Typography;
@@ -191,7 +192,8 @@ function ProviderPortFailureNode({ data }: { data: NodeData }) {
   );
 }
 
-// Replace barycenter layout with ELK layered layout
+// Replace previous ELK code: keep layered layout, let it distribute everything.
+// Remove fixed column constraints and SW lane logic.
 const elk = new ELK();
 
 type ElkNode = {
@@ -208,26 +210,14 @@ const DEFAULT_SIZES: Record<string, { width: number; height: number }> = {
 };
 
 const layoutWithELK = async (nodes: Node[], edges: Edge[]) => {
-  // Heuristic: detect SW->SW density; ELK will naturally add middle ranks,
-  // but we bump spacing if dense to create clearer "bands".
-  const swIds = new Set(nodes.filter(n => n.type === 'swFailure').map(n => n.id));
-  const sw2swCount = edges.filter(e => swIds.has(e.source) && swIds.has(e.target)).length;
-  const denseSW = sw2swCount > Math.max(8, swIds.size);
-
   const elkNodes: ElkNode[] = nodes.map((n) => {
     const size = DEFAULT_SIZES[n.type as keyof typeof DEFAULT_SIZES] ?? { width: 200, height: 60 };
-    // Layer constraints to keep inputs left and outputs right
-    let layerConstraint = 'NONE';
-    if (n.type === 'receiverPortFailure') layerConstraint = 'FIRST';
-    if (n.type === 'providerPortFailure') layerConstraint = 'LAST';
-
     return {
       id: n.id,
       width: size.width,
       height: size.height,
-      layoutOptions: {
-        'elk.layered.layering.layerConstraint': layerConstraint,
-      },
+      // no layer constraints: ELK computes best layering
+      layoutOptions: {},
     };
   });
 
@@ -242,15 +232,14 @@ const layoutWithELK = async (nodes: Node[], edges: Edge[]) => {
     layoutOptions: {
       'elk.algorithm': 'layered',
       'elk.direction': 'RIGHT',
-      'elk.edgeRouting': 'POLYLINE',
-      'elk.spacing.nodeNode': '32',
-      'elk.spacing.edgeNode': '24',
-      'elk.spacing.edgeEdge': '18',
-      'elk.layered.spacing.nodeNodeBetweenLayers': denseSW ? '120' : '72',
-      'elk.layered.spacing.edgeNodeBetweenLayers': denseSW ? '96' : '56',
+      // ELK edge routing doesn’t affect React Flow edges, but keep spacing tidy
+      'elk.spacing.nodeNode': '40',
+      'elk.spacing.edgeNode': '32',
+      'elk.spacing.edgeEdge': '24',
+      'elk.layered.spacing.nodeNodeBetweenLayers': '96',
+      'elk.layered.spacing.edgeNodeBetweenLayers': '80',
       'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
       'elk.layered.cycleBreaking.strategy': 'GREEDY',
-      'elk.layered.crossingMinimization.semiInteractive': 'false',
       'elk.layered.mergeEdges': 'true',
     },
     children: elkNodes,
@@ -259,7 +248,6 @@ const layoutWithELK = async (nodes: Node[], edges: Edge[]) => {
 
   const layouted = await elk.layout(graph as any);
 
-  // Map ELK positions back to React Flow nodes
   const posMap = new Map<string, { x: number; y: number }>();
   (layouted.children || []).forEach((c: any) => {
     posMap.set(c.id, { x: c.x || 0, y: c.y || 0 });
@@ -287,8 +275,7 @@ export default function FMFlow({
   const [isCreatingCausation, setIsCreatingCausation] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [rfInstance, setRfInstance] = useState<ReactFlowInstance | null>(null);
-
-  // Context menu state for edge deletion
+  const [hasAppliedInitialLayout, setHasAppliedInitialLayout] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
     visible: boolean;
     x: number;
@@ -323,110 +310,279 @@ export default function FMFlow({
     }
   }, []);
 
-  // Function to refresh only causation edges without affecting layout
-  const refreshCausationEdges = useCallback(async () => {
+  // Keep applyLayout defined before dependent callbacks
+  const applyLayout = useCallback(async () => {
     try {
-      const causationLinks = await fetchCausationRelationships();
-      
-      // Create a map of failure UUID to node ID for efficient lookups
-      const failureUuidToNodeId = new Map<string, string>();
-      nodes.forEach(node => {
-        if (node.data.failureUuid) {
-          failureUuidToNodeId.set(node.data.failureUuid, node.id);
-        }
+      const layoutedNodes = await layoutWithELK(nodes, edges);
+      setNodes(layoutedNodes);
+      requestAnimationFrame(() => {
+        try {
+          rfInstance?.fitView({ padding: 0.15, duration: 300 });
+        } catch { /* no-op */ }
       });
+    } catch (e) {
+      console.error('ELK layout failed:', e);
+      message.error('Layout failed. See console for details.');
+    }
+  }, [nodes, edges, setNodes, rfInstance]);
 
-      // Create new causation edges
-      const newCausationEdges: Edge[] = [];
-      causationLinks.forEach((link, linkIndex) => {
-        const sourceNodeId = failureUuidToNodeId.get(link.causeFailureUuid);
-        const targetNodeId = failureUuidToNodeId.get(link.effectFailureUuid);
-        
-        if (sourceNodeId && targetNodeId) {
-          newCausationEdges.push({
-            id: `causation-${link.causationUuid}-${linkIndex}`,
-            source: sourceNodeId,
-            target: targetNodeId,
-            type: 'straight',
-            animated: true,
-            style: { 
-              stroke: '#F59E0B', 
-              strokeWidth: 3,
-              strokeDasharray: '5,5'
-            },
-            markerEnd: {
-              type: MarkerType.ArrowClosed,
-              color: '#F59E0B',
-            },
+  // Build nodes from service (preferred) or props, fetch causations, build edges, apply layout
+  const generateGraph = useCallback(async () => {
+    console.log(`[FMFlow] Generating graph for component: ${swComponent.uuid}`);
+    const newNodes: Node[] = [];
+    const newEdges: Edge[] = [];
+
+    // 1) Try to fetch complete graph from Neo4j
+    let usedServiceData = false;
+    try {
+      const result = await getSafetyGraph();
+      console.log('[FMFlow] Data received from getSafetyGraph:', result);
+
+      if (result.success && result.data) {
+        const d = result.data as any;
+        const swFailures = d.swFailures || d.failures || [];
+        const recvFailures = d.receiverPortFailures || d.inputPortFailures || [];
+        const provFailures = d.providerPortFailures || d.outputPortFailures || [];
+        const causationLinks = d.causationLinks || [];
+
+        console.log(`[FMFlow] Processing ${swFailures.length} SW failures, ${recvFailures.length} receiver failures, ${provFailures.length} provider failures, ${causationLinks.length} causation links`);
+
+        // Receiver port failure nodes
+        recvFailures.forEach((f: any) => {
+          if (!f?.failureUuid || !f?.failureName) return;
+          newNodes.push({
+            id: `receiver-${f.portUuid || 'port'}-${f.failureUuid}`,
+            type: 'receiverPortFailure',
+            position: { x: 0, y: 0 },
             data: {
-              causationUuid: link.causationUuid,
-              causationName: link.causationName,
-              type: 'causation'
-            }
+              label: f.failureName,
+              portName: f.portName || 'Receiver',
+              asil: f.asil || 'N/A',
+              description: f.failureDescription,
+              failureUuid: f.failureUuid,
+              portUuid: f.portUuid,
+            },
+          });
+        });
+
+        // SW failures
+        swFailures.forEach((f: any) => {
+          if (!f?.failureUuid || !f?.failureName) return;
+          newNodes.push({
+            id: `sw-${f.failureUuid}`,
+            type: 'swFailure',
+            position: { x: 0, y: 0 },
+            data: {
+              label: f.failureName,
+              asil: f.asil || 'N/A',
+              description: f.failureDescription,
+              failureUuid: f.failureUuid,
+            },
+          });
+        });
+
+        // Provider port failure nodes
+        provFailures.forEach((f: any) => {
+          if (!f?.failureUuid || !f?.failureName) return;
+          newNodes.push({
+            id: `provider-${f.portUuid || 'port'}-${f.failureUuid}`,
+            type: 'providerPortFailure',
+            position: { x: 0, y: 0 },
+            data: {
+              label: f.failureName,
+              portName: f.portName || 'Provider',
+              asil: f.asil || 'N/A',
+              description: f.failureDescription,
+              failureUuid: f.failureUuid,
+              portUuid: f.portUuid,
+            },
+          });
+        });
+
+        // Create a map for id lookup
+        const failureUuidToNodeId = new Map<string, string>();
+        newNodes.forEach(node => {
+          if (node.data?.failureUuid) {
+            failureUuidToNodeId.set(node.data.failureUuid, node.id);
+          }
+        });
+
+        // Causation edges
+        causationLinks.forEach((link: any, linkIndex: number) => {
+          const sourceNodeId = failureUuidToNodeId.get(link.causeFailureUuid);
+          const targetNodeId = failureUuidToNodeId.get(link.effectFailureUuid);
+          if (sourceNodeId && targetNodeId) {
+            newEdges.push({
+              id: `causation-${link.causationUuid}-${linkIndex}`,
+              source: sourceNodeId,
+              target: targetNodeId,
+              type: 'default',
+              animated: true,
+              style: { stroke: '#F59E0B', strokeWidth: 3, strokeDasharray: '5,5' },
+              markerEnd: { type: MarkerType.ArrowClosed, color: '#F59E0B' },
+              data: {
+                causationUuid: link.causationUuid,
+                causationName: link.causationName,
+                type: 'causation',
+              },
+            });
+          }
+        });
+
+        usedServiceData = newNodes.length > 0;
+        console.log(`[FMFlow] Created ${newNodes.length} nodes and ${newEdges.length} edges from service data`);
+      } else {
+        console.warn('[FMFlow] getSafetyGraph failed or returned no data:', result.message);
+        message.error(`Failed to fetch graph data: ${result.message}`);
+      }
+    } catch (e) {
+      console.warn('[FMFlow] getSafetyGraph threw an error, falling back to props:', e);
+    }
+
+    // 2) Fallback to props when service data is unavailable or empty
+    if (!usedServiceData) {
+      // Receiver port failures from props
+      receiverPorts.forEach((port) => {
+        const portFailuresList = receiverPortFailures[port.uuid] || [];
+        portFailuresList.forEach((failure) => {
+          if (failure.failureName && failure.failureName !== 'No failures defined') {
+            newNodes.push({
+              id: `receiver-${port.uuid}-${failure.failureUuid}`,
+              type: 'receiverPortFailure',
+              position: { x: 0, y: 0 },
+              data: {
+                label: failure.failureName,
+                portName: port.name,
+                asil: failure.asil || 'N/A',
+                description: failure.failureDescription,
+                failureUuid: failure.failureUuid,
+                portUuid: port.uuid,
+              },
+            });
+          }
+        });
+      });
+      // SW failures from props
+      failures.forEach((failure) => {
+        if (failure.failureName && failure.failureName !== 'No failures defined') {
+          newNodes.push({
+            id: `sw-${failure.failureUuid}`,
+            type: 'swFailure',
+            position: { x: 0, y: 0 },
+            data: {
+              label: failure.failureName,
+              asil: failure.asil || 'N/A',
+              description: failure.failureDescription,
+              failureUuid: failure.failureUuid,
+            },
           });
         }
       });
-
-      // Update edges by removing old causation edges and adding new ones
-      setEdges(currentEdges => {
-        const nonCausationEdges = currentEdges.filter(edge => edge.data?.type !== 'causation');
-        return [...nonCausationEdges, ...newCausationEdges];
+      // Provider port failures from props
+      providerPorts.forEach((port) => {
+        const portFailuresList = portFailures[port.uuid] || [];
+        portFailuresList.forEach((failure) => {
+          if (failure.failureName && failure.failureName !== 'No failures defined') {
+            newNodes.push({
+              id: `provider-${port.uuid}-${failure.failureUuid}`,
+              type: 'providerPortFailure',
+              position: { x: 0, y: 0 },
+              data: {
+                label: failure.failureName,
+                portName: port.name,
+                asil: failure.asil || 'N/A',
+                description: failure.failureDescription,
+                failureUuid: failure.failureUuid,
+                portUuid: port.uuid,
+              },
+            });
+          }
+        });
       });
-    } catch (error) {
-      console.error('Error refreshing causation edges:', error);
-    }
-  }, [nodes, fetchCausationRelationships, setEdges]);
-
-  const onConnect = useCallback(async (params: Connection) => {
-    // Prevent multiple simultaneous causation creations
-    if (isCreatingCausation) return;
-    
-    // Find the source and target nodes to get failure UUIDs
-    const sourceNode = nodes.find(node => node.id === params.source);
-    const targetNode = nodes.find(node => node.id === params.target);
-    
-    if (!sourceNode || !targetNode) {
-      message.error('Could not find source or target node');
-      return;
-    }
-    
-    const sourceFailureUuid = sourceNode.data.failureUuid;
-    const targetFailureUuid = targetNode.data.failureUuid;
-    
-    if (!sourceFailureUuid || !targetFailureUuid) {
-      message.error('Source or target node does not have a failure UUID');
-      return;
-    }
-    
-    setIsCreatingCausation(true);
-    
-    try {
-      const result = await createCausationBetweenFailureModes(
-        sourceFailureUuid,
-        targetFailureUuid
-      );
-      
-      if (result.success) {
-        message.success(`Causation created: "${sourceNode.data.label}" → "${targetNode.data.label}"`);
-        
-        // Refresh causation edges to show new causation (without layout)
-        refreshCausationEdges();
-      } else {
-        message.error(`Failed to create causation: ${result.message}`);
+      // Causation edges (always from service)
+      try {
+        const causationLinks = await fetchCausationRelationships();
+        const failureUuidToNodeId = new Map<string, string>();
+        newNodes.forEach(node => {
+          if (node.data.failureUuid) failureUuidToNodeId.set(node.data.failureUuid, node.id);
+        });
+        causationLinks.forEach((link, linkIndex) => {
+          const sourceNodeId = failureUuidToNodeId.get(link.causeFailureUuid);
+          const targetNodeId = failureUuidToNodeId.get(link.effectFailureUuid);
+          if (sourceNodeId && targetNodeId) {
+            newEdges.push({
+              id: `causation-${link.causationUuid}-${linkIndex}`,
+              source: sourceNodeId,
+              target: targetNodeId,
+              type: 'default',
+              animated: true,
+              style: { stroke: '#F59E0B', strokeWidth: 3, strokeDasharray: '5,5' },
+              markerEnd: { type: MarkerType.ArrowClosed, color: '#F59E0B' },
+              data: {
+                causationUuid: link.causationUuid,
+                causationName: link.causationName,
+                type: 'causation',
+              },
+            });
+          }
+        });
+      } catch (e) {
+        console.error('Error fetching causation links:', e);
       }
-    } catch (error) {
-      console.error('Error creating causation:', error);
-      message.error('Error creating causation');
-    } finally {
-      setIsCreatingCausation(false);
     }
-  }, [nodes, isCreatingCausation]);
 
-  // Handle right-click on edges (for causation deletion)
+    // Apply ELK layout on freshly built graph
+    setEdges(newEdges);
+    console.log('[FMFlow] Set edges:', newEdges.length);
+    try {
+      const layouted = await layoutWithELK(newNodes, newEdges);
+      setNodes(layouted);
+      console.log('[FMFlow] Set nodes:', layouted.length);
+      requestAnimationFrame(() => {
+        try {
+          rfInstance?.fitView({ padding: 0.15, duration: 300 });
+          console.log('[FMFlow] Fit view applied');
+        } catch { /* no-op */ }
+      });
+      setHasAppliedInitialLayout(true);
+    } catch (e) {
+      console.error('[FMFlow] ELK layout failed, setting raw nodes:', e);
+      setNodes(newNodes);
+      console.log('[FMFlow] Set raw nodes:', newNodes.length);
+    }
+    console.log('[FMFlow] generateGraph completed');
+  }, [
+    fetchCausationRelationships,
+    setNodes,
+    setEdges,
+    rfInstance,
+    failures,
+    providerPorts,
+    portFailures,
+    receiverPorts,
+    receiverPortFailures,
+  ]);
+
+  // Generate once on initial mount (do not auto-update on prop changes)
+  useEffect(() => {
+    // Only generate graph if we have data and haven't done the initial layout
+    if (failures.length > 0 && !hasAppliedInitialLayout) {
+      generateGraph();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [failures, generateGraph]);
+
+  // Fallback: if initial layout didn't run, guard and run once when data is ready
+  useEffect(() => {
+    if (nodes.length > 0 && edges.length > 0 && !hasAppliedInitialLayout) {
+      applyLayout();
+      setHasAppliedInitialLayout(true);
+    }
+  }, [nodes, edges, hasAppliedInitialLayout, applyLayout]);
+
+  // Add back the context-menu handlers
   const onEdgeContextMenu = useCallback((event: React.MouseEvent, edge: Edge) => {
     event.preventDefault();
-    
-    // Only show context menu for causation edges
     if (edge.data?.type === 'causation') {
       setContextMenu({
         visible: true,
@@ -434,31 +590,25 @@ export default function FMFlow({
         y: event.clientY,
         edgeId: edge.id,
         causationUuid: edge.data.causationUuid,
-        causationName: edge.data.causationName
+        causationName: edge.data.causationName,
       });
     }
   }, []);
 
-  // Hide context menu when clicking elsewhere
   const hideContextMenu = useCallback(() => {
     setContextMenu(null);
   }, []);
 
-  // Handle causation deletion
   const handleDeleteCausation = useCallback(async () => {
     if (!contextMenu) return;
-
     try {
       const result = await deleteCausationNode(contextMenu.causationUuid);
-      
       if (result.success) {
         message.success(`Causation "${contextMenu.causationName}" deleted successfully`);
-        
-        // Remove the edge from the diagram immediately
         setEdges((edges) => edges.filter(edge => edge.id !== contextMenu.edgeId));
-        
-        // Refresh causation edges to ensure data consistency (without layout)
-        refreshCausationEdges();
+        requestAnimationFrame(() => {
+          applyLayout();
+        });
       } else {
         message.error(`Failed to delete causation: ${result.message}`);
       }
@@ -468,204 +618,70 @@ export default function FMFlow({
     } finally {
       hideContextMenu();
     }
-  }, [contextMenu, hideContextMenu, setEdges]);
-
-  // Generate nodes and apply layout
-  useEffect(() => {
-    const generateNodes = async () => {
-      const newNodes: Node[] = [];
-      const newEdges: Edge[] = [];
-
-      // Create receiver port failure nodes (left side) - positioned for right-alignment
-      let receiverYOffset = 50;
-      const receiverColumnLeft = 50; // Left position of the receiver column
-      
-      receiverPorts.forEach((port) => {
-        const portFailuresList = receiverPortFailures[port.uuid] || [];
-        portFailuresList.forEach((failure) => {
-          if (failure.failureName && failure.failureName !== 'No failures defined') {
-            newNodes.push({
-              id: `receiver-${port.uuid}-${failure.failureUuid}`,
-              type: 'receiverPortFailure',
-              position: { x: receiverColumnLeft, y: receiverYOffset },
-              data: {
-                label: failure.failureName,
-                portName: port.name,
-                asil: failure.asil || 'N/A',
-                description: failure.failureDescription,
-                failureUuid: failure.failureUuid,
-                portUuid: port.uuid,
-              },
-            });
-            receiverYOffset += 100; // Increased vertical spacing to 100px
-          }
-        });
-      });
-
-      // Create SW component failure nodes (center) - 400px from left
-      let swYOffset = 50;
-      failures.forEach((failure) => {
-        if (failure.failureName && failure.failureName !== 'No failures defined') {
-          newNodes.push({
-            id: `sw-${failure.failureUuid}`,
-            type: 'swFailure',
-            position: { x: 450, y: swYOffset }, // 400px from left column
-            data: {
-              label: failure.failureName,
-              asil: failure.asil || 'N/A',
-              description: failure.failureDescription,
-              failureUuid: failure.failureUuid,
-            },
-          });
-          swYOffset += 100; // Increased vertical spacing to 100px
-        }
-      });
-
-      // Create provider port failure nodes (right side) - 400px from center
-      let providerYOffset = 50;
-      providerPorts.forEach((port) => {
-        const portFailuresList = portFailures[port.uuid] || [];
-        portFailuresList.forEach((failure) => {
-          if (failure.failureName && failure.failureName !== 'No failures defined') {
-            newNodes.push({
-              id: `provider-${port.uuid}-${failure.failureUuid}`,
-              type: 'providerPortFailure',
-              position: { x: 850, y: providerYOffset }, // 400px from center column
-              data: {
-                label: failure.failureName,
-                portName: port.name,
-                asil: failure.asil || 'N/A',
-                description: failure.failureDescription,
-                failureUuid: failure.failureUuid,
-                portUuid: port.uuid,
-              },
-            });
-            providerYOffset += 100; // Increased vertical spacing to 100px
-          }
-        });
-      });
-
-      // Fetch and create causation relationship edges
-      try {
-        const causationLinks = await fetchCausationRelationships();
-        
-        // Create a map of failure UUID to node ID for efficient lookups
-        const failureUuidToNodeId = new Map<string, string>();
-        newNodes.forEach(node => {
-          if (node.data.failureUuid) {
-            failureUuidToNodeId.set(node.data.failureUuid, node.id);
-          }
-        });
-
-        // console.log(`📊 Processing ${causationLinks.length} causation links...`);
-        // console.log('🗂️ Available failure UUIDs in nodes:', Array.from(failureUuidToNodeId.keys()));
-
-        // Create edges for causation relationships
-        // let createdEdgesCount = 0;
-        causationLinks.forEach((link, linkIndex) => {
-          const sourceNodeId = failureUuidToNodeId.get(link.causeFailureUuid);
-          const targetNodeId = failureUuidToNodeId.get(link.effectFailureUuid);
-          
-          // console.log(`🔗 Processing causation: ${link.causeFailureName} → ${link.effectFailureName}`);
-          // console.log(`   Source UUID: ${link.causeFailureUuid} → Node ID: ${sourceNodeId}`);
-          // console.log(`   Target UUID: ${link.effectFailureUuid} → Node ID: ${targetNodeId}`);
-          
-          if (sourceNodeId && targetNodeId) {
-            newEdges.push({
-              id: `causation-${link.causationUuid}-${linkIndex}`,
-              source: sourceNodeId,
-              target: targetNodeId,
-              type: 'straight',
-              animated: true,
-              style: { 
-                stroke: '#F59E0B', 
-                strokeWidth: 3,
-                strokeDasharray: '5,5'
-              },
-              markerEnd: {
-                type: MarkerType.ArrowClosed,
-                color: '#F59E0B',
-              },
-              data: {
-                causationUuid: link.causationUuid,
-                causationName: link.causationName,
-                type: 'causation'
-              }
-            });
-            // createdEdgesCount++;
-            // console.log(`✅ Created causation edge: ${sourceNodeId} → ${targetNodeId}`);
-          } else {
-            // console.log(`⚠️ Skipped causation edge - missing nodes: source=${sourceNodeId}, target=${targetNodeId}`);
-          }
-        });
-        
-        // console.log(`📈 Created ${createdEdgesCount} out of ${causationLinks.length} causation edges`);
-      } catch (error) {
-        console.error('❌ Error creating causation edges:', error);
-      }
-
-      // Set nodes and edges without automatic layout (layout only on startup and manual trigger)
-      setNodes(newNodes);
-      setEdges(newEdges);
-    };
-
-    generateNodes();
-  }, [
-    failures,
-    providerPorts,
-    portFailures,
-    receiverPorts,
-    receiverPortFailures,
-    setNodes,
-    setEdges,
-    fetchCausationRelationships,
-    // refreshTrigger removed - we don't want auto-layout after causation creation
-  ]);
+  }, [contextMenu, setEdges, applyLayout, hideContextMenu]);
 
   const handleNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
-    // Hide context menu when clicking on nodes
     hideContextMenu();
-    
-    // Removed onFailureSelect call to prevent automatic causation creation on node click
-    // Causation creation should only happen via drag and drop from handles
   }, [hideContextMenu]);
 
-  const applyLayout = useCallback(async () => {
+  // Create causation on connect and refresh graph
+  const onConnect = useCallback(async (params: Connection) => {
+    if (isCreatingCausation) return;
+
+    const sourceNode = nodes.find(n => n.id === params.source);
+    const targetNode = nodes.find(n => n.id === params.target);
+    if (!sourceNode || !targetNode) {
+      message.error('Could not find source or target node');
+      return;
+    }
+
+    const sourceFailureUuid = sourceNode.data?.failureUuid;
+    const targetFailureUuid = targetNode.data?.failureUuid;
+    if (!sourceFailureUuid || !targetFailureUuid) {
+      message.error('Source or target node does not have a failure UUID');
+      return;
+    }
+
+    setIsCreatingCausation(true);
     try {
-      const layoutedNodes = await layoutWithELK(nodes, edges);
-      setNodes(layoutedNodes);
-
-      // Keep the diagram in view after layout
-      requestAnimationFrame(() => {
-        try {
-          rfInstance?.fitView({ padding: 0.15, duration: 300 });
-        } catch {
-          // no-op
-        }
-      });
-    } catch (e) {
-      console.error('ELK layout failed:', e);
-      message.error('Layout failed. See console for details.');
+      const result = await createCausationBetweenFailureModes(sourceFailureUuid, targetFailureUuid);
+      if (result.success) {
+        const causationName = `${sourceNode.data.label} → ${targetNode.data.label}`;
+        message.success(`Causation created: "${causationName}"`);
+        const newEdge = {
+          id: `causation-${result.causationUuid}`,
+          source: params.source!,
+          target: params.target!,
+          type: 'default',
+          animated: true,
+          style: { stroke: '#F59E0B', strokeWidth: 3, strokeDasharray: '5,5' },
+          markerEnd: { type: MarkerType.ArrowClosed, color: '#F59E0B' },
+          data: {
+            causationUuid: result.causationUuid,
+            causationName: causationName,
+            type: 'causation',
+          },
+        };
+        setEdges((eds) => addEdge(newEdge, eds));
+      } else {
+        message.error(`Failed to create causation: ${result.message || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error('Error creating causation:', err);
+      message.error('Error creating causation');
+    } finally {
+      setIsCreatingCausation(false);
     }
-  }, [nodes, edges, setNodes, rfInstance]);
+  }, [nodes, isCreatingCausation, setEdges]);
 
-  // Apply initial layout only when nodes are first loaded
-  const [hasAppliedInitialLayout, setHasAppliedInitialLayout] = useState(false);
-  
-  useEffect(() => {
-    if (nodes.length > 0 && !hasAppliedInitialLayout) {
-      // Use the same applyLayout function as the button
-      applyLayout();
-      setHasAppliedInitialLayout(true);
-    }
-  }, [nodes, hasAppliedInitialLayout, applyLayout]);
-
+  // Refresh Data: fetch from DB and rebuild the graph (no page reload)
   const handleRefresh = async () => {
+    console.log('[FMFlow] Refresh Data button clicked');
     setIsRefreshing(true);
     try {
-      // Refresh causation edges without affecting layout
-      await refreshCausationEdges();
+      await generateGraph();
     } catch (error) {
+      console.error('[FMFlow] Error during refresh:', error);
       Modal.error({
         title: 'Refresh Failed',
         content: 'Failed to refresh failure mode data. Please try again.',
@@ -676,35 +692,16 @@ export default function FMFlow({
   };
 
   return (
-    <Collapse 
-      bordered={true} 
-      defaultActiveKey={[]}
-      style={{ marginTop: '24px' }}
-    >
+    <Collapse bordered={true} defaultActiveKey={[]} style={{ marginTop: '24px' }}>
       <Collapse.Panel
-        header={
-          <Title level={4} style={{ margin: 0 }}>
-            Failure Mode Propagation Flow - {swComponent.name}
-          </Title>
-        }
+        header={<Title level={4} style={{ margin: 0 }}>Failure Mode Propagation Flow - {swComponent.name}</Title>}
         key="1"
         extra={
           <Space onClick={(e) => e.stopPropagation()}>
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={handleRefresh}
-              loading={isRefreshing}
-              type="default"
-              size="small"
-            >
+            <Button icon={<ReloadOutlined />} onClick={handleRefresh} loading={isRefreshing} type="default" size="small">
               Refresh Data
             </Button>
-            <Button
-              icon={<NodeCollapseOutlined />}
-              onClick={applyLayout}
-              type="primary"
-              size="small"
-            >
+            <Button icon={<NodeCollapseOutlined />} onClick={applyLayout} type="primary" size="small">
               Optimize Layout
             </Button>
           </Space>
@@ -769,9 +766,7 @@ export default function FMFlow({
             onNodeClick={handleNodeClick}
             onEdgeContextMenu={onEdgeContextMenu}
             nodeTypes={nodeTypes}
-            connectionLineType={ConnectionLineType.Straight}
-            fitView
-            attributionPosition="bottom-left"
+            connectionLineType={ConnectionLineType.Bezier}
             onInit={(instance) => setRfInstance(instance)}
           >
             <Background />

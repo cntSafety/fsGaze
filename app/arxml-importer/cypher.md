@@ -203,3 +203,11 @@ FOREACH (_ IN CASE WHEN lastModifiedEpoch IS NOT NULL THEN [1] ELSE [] END |
   SET n.lastModified = datetime({ epochMillis: lastModifiedEpoch })
 )
 RETURN count(*) AS nodesTouched;
+
+getSafetyGraphForComponent 
+MATCH (f:FAILUREMODE) -[:OCCURRENCE]->(cmp) WHERE cmp.uuid="ED71DD49-44AA-4D0C-B0AD-45699A225ED5" 
+MATCH (c:CAUSATION)-[]-(f) 
+MATCH (f)-[o:OCCURRENCE]->(src)
+MATCH (cause:FAILUREMODE)<-[:FIRST]-(c)-[:THEN]->(effect:FAILUREMODE)
+RETURN c.uuid AS cuuid, f.uuid AS failureUuid, f.name AS failureName, cause.uuid AS causeFailureUuid, cause.name AS causeFailureName, 
+                   effect.uuid AS effectFailureUuid, effect.name AS effectFailureName
