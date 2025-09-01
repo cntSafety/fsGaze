@@ -57,15 +57,16 @@ function SwFailureNode({ data }: { data: NodeData }) {
   const { token } = theme.useToken();
   const showBorder = ['A', 'B', 'C', 'D'].includes(data.asil);
   const isQM = data.asil === 'QM';
-  const textColor = isQM ? token.colorTextQuaternary : token.colorText;
+  // Force high-contrast text regardless of theme
+  const textColor = '#fff';
   
   return (
     <div style={{
       padding: '12px 16px',
       borderRadius: '8px',
-      // Legend update: SW should be green for readability (adaptive)
-      background: token.colorSuccessBg,
-      border: showBorder ? `3px solid ${token.colorWarning}` : 'none',
+  // Use Ant Design blue-7 with 70% transparency
+  background: 'rgba(9, 88, 217, 0.7)',
+  border: showBorder ? '3px solid #9254de' : 'none',
       boxShadow: token.boxShadow,
       width: 320,
       color: textColor,
@@ -79,22 +80,22 @@ function SwFailureNode({ data }: { data: NodeData }) {
         type="target"
         position={Position.Left}
         id="left"
-        style={{ background: token.colorTextSecondary, width: '10px', height: '10px', left: '-5px' }}
+        style={{ background: '#0958d9', width: '10px', height: '10px', left: '-5px' }}
       />
       <Handle
         type="source"
         position={Position.Right}
         id="right"
-        style={{ background: token.colorTextSecondary, width: '10px', height: '10px', right: '-5px' }}
+        style={{ background: '#0958d9', width: '10px', height: '10px', right: '-5px' }}
       />
       <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '4px' }}>
         {data.label}
       </div>
-      <div style={{ fontSize: '11px', color: token.colorTextSecondary }}>
+      <div style={{ fontSize: '11px', color: '#fff' }}>
         <span style={{ fontWeight: 'bold' }}>ASIL:</span> <span style={{ fontWeight: 'bold' }}>{data.asil}</span>
       </div>
       {data.description && (
-        <div style={{ fontSize: '10px', color: token.colorTextTertiary, marginTop: '2px' }}>
+        <div style={{ fontSize: '10px', color: '#fff', marginTop: '2px' }}>
           {data.description.length > 30 ? `${data.description.substring(0, 30)}...` : data.description}
         </div>
       )}
@@ -107,16 +108,17 @@ function ReceiverPortFailureNode({ data }: { data: NodeData }) {
   const { token } = theme.useToken();
   const showBorder = ['A', 'B', 'C', 'D'].includes(data.asil);
   const isQM = data.asil === 'QM';
-  // Receiver: solid primary background, light-solid text for contrast (adaptive)
-  const labelTextColor = token.colorTextLightSolid;
-  const asilTextColor = token.colorTextLightSolid;
+  // Receiver: force high-contrast white text regardless of theme
+  const labelTextColor = '#fff';
+  const asilTextColor = '#fff';
   
   return (
     <div style={{
       padding: '10px 14px',
       borderRadius: '6px',
-      background: token.colorPrimary,
-      border: showBorder ? `3px solid ${token.colorWarning}` : 'none',
+  // Ant Design gold-7 with 20% transparency
+  background: 'rgba(207, 144, 18, 0.8)',
+  border: showBorder ? '3px solid #9254de' : 'none',
       boxShadow: token.boxShadowSecondary,
       width: 300,
       position: 'relative',
@@ -129,16 +131,16 @@ function ReceiverPortFailureNode({ data }: { data: NodeData }) {
         type="target"
         position={Position.Left}
         id="left"
-        style={{ background: token.colorTextLightSolid, width: '8px', height: '8px', left: '-4px' }}
+        style={{ background: '#d48806', width: '8px', height: '8px', left: '-4px' }}
       />
       <Handle
         type="source"
         position={Position.Right}
         id="right"
-        style={{ background: token.colorTextLightSolid, width: '8px', height: '8px', right: '-4px' }}
+        style={{ background: '#d48806', width: '8px', height: '8px', right: '-4px' }}
       />
       <div style={{ fontSize: '12px', fontWeight: '600', color: labelTextColor, opacity: 0.85, marginBottom: '2px' }}>
-        {data.portName}
+        {`>> ${data.portName ?? ''}`}
       </div>
       <div style={{ fontSize: '13px', fontWeight: '700', color: labelTextColor }}>
         {data.label}
@@ -155,16 +157,17 @@ function ProviderPortFailureNode({ data }: { data: NodeData }) {
   const { token } = theme.useToken();
   const showBorder = ['A', 'B', 'C', 'D'].includes(data.asil);
   const isQM = data.asil === 'QM';
-  // Provider: lighter warning background so ASIL border is visible (adaptive)
-  const labelTextColor = token.colorText;
-  const asilTextColor = token.colorTextSecondary;
+  // Provider: cyan-7 @ 10% background so ASIL border is visible
+  const labelTextColor = '#fff';
+  const asilTextColor = '#fff';
   
   return (
     <div style={{
       padding: '10px 14px',
       borderRadius: '6px',
-      background: token.colorWarningBg,
-      border: showBorder ? `3px solid ${token.colorWarning}` : 'none',
+  // Ant Design cyan-7 with 10% transparency
+  background: 'rgba(8, 151, 156, 0.7)',
+  border: showBorder ? '3px solid #9254de' : 'none',
       boxShadow: token.boxShadowSecondary,
       width: 300,
       position: 'relative',
@@ -176,16 +179,16 @@ function ProviderPortFailureNode({ data }: { data: NodeData }) {
         type="target"
         position={Position.Left}
         id="left"
-        style={{ background: token.colorWarning, width: '8px', height: '8px', left: '-4px' }}
+        style={{ background: '#08979c', width: '8px', height: '8px', left: '-4px' }}
       />
       <Handle
         type="source"
         position={Position.Right}
         id="right"
-        style={{ background: token.colorWarning, width: '8px', height: '8px', right: '-4px' }}
+        style={{ background: '#08979c', width: '8px', height: '8px', right: '-4px' }}
       />
-      <div style={{ fontSize: '12px', fontWeight: '600', color: token.colorTextSecondary, marginBottom: '2px' }}>
-        {data.portName}
+  <div style={{ fontSize: '12px', fontWeight: '600', color: '#fff', marginBottom: '2px' }}>
+        {`${data.portName ?? ''} >>`}
       </div>
       <div style={{ fontSize: '13px', fontWeight: '700', color: labelTextColor }}>
         {data.label}
@@ -214,9 +217,42 @@ const DEFAULT_SIZES: Record<string, { width: number; height: number }> = {
   providerPortFailure: { width: 300, height: 92 },
 };
 
+// Roughly estimate extra lines for text given an average chars-per-line at the
+// current fixed widths. Adds height so long port names don't hide the ASIL.
+function estimateExtraLines(text?: string, charsPerLine = 30): number {
+  if (!text) return 0;
+  const lines = Math.ceil(text.length / charsPerLine);
+  return Math.max(0, lines - 1);
+}
+
+function getDynamicNodeSize(n: Node): { width: number; height: number } {
+  const typeKey = (n.type || '') as keyof typeof DEFAULT_SIZES;
+  const base = DEFAULT_SIZES[typeKey] || { width: 200, height: 60 };
+
+  // Heuristic: count extra wrapped lines for title/port fields and add ~16px/line.
+  // This keeps ASIL visible by growing the node used for ELK layout.
+  const perLinePx = 16; // line-height budget per extra wrapped line
+
+  if (n.type === 'receiverPortFailure' || n.type === 'providerPortFailure') {
+    const portName = (n as any).data?.portName as string | undefined;
+    const label = (n as any).data?.label as string | undefined;
+    const extraLines = estimateExtraLines(portName) + estimateExtraLines(label);
+    return { width: base.width, height: base.height + extraLines * perLinePx };
+  }
+
+  if (n.type === 'swFailure') {
+    const label = (n as any).data?.label as string | undefined;
+    const description = (n as any).data?.description as string | undefined;
+    const extraLines = estimateExtraLines(label) + estimateExtraLines(description, 36);
+    return { width: base.width, height: base.height + extraLines * perLinePx };
+  }
+
+  return base;
+}
+
 const layoutWithELK = async (nodes: Node[], edges: Edge[]) => {
   const elkNodes: ElkNode[] = nodes.map((n) => {
-    const size = DEFAULT_SIZES[n.type as keyof typeof DEFAULT_SIZES] ?? { width: 200, height: 60 };
+    const size = getDynamicNodeSize(n);
     return {
       id: n.id,
       width: size.width,
@@ -347,57 +383,55 @@ export default function FMFlow({
         const rows: any[] = result.data as any[];
 
         const nodesMap = new Map<string, Node>();
-        const failureUuidToNodeId = new Map<string, string>();
+        const failureUuidToNodeId = new Map<string, string[]>();
 
         // Build nodes from service rows (SW failures and port failures)
         rows.forEach((row) => {
-          // SW failure on component
-          if (row.failureUuid && row.failureName) {
-            const swNodeId = `sw-${row.failureUuid}`;
-            if (!nodesMap.has(swNodeId)) {
-              const node: Node = {
-                id: swNodeId,
-                type: 'swFailure',
-                position: { x: 0, y: 0 },
-                data: {
-                  label: row.failureName,
-                  asil: 'N/A',
-                  description: undefined,
-                  failureUuid: row.failureUuid,
-                },
-              };
-              nodesMap.set(swNodeId, node);
-              failureUuidToNodeId.set(row.failureUuid, swNodeId);
-            }
+          if (!row.failureUuid || !row.failureName) return;
+
+          const isPort = row.locLabels.includes('P_PORT_PROTOTYPE') || row.locLabels.includes('R_PORT_PROTOTYPE');
+          const isReceiver = isPort && row.locLabels.includes('R_PORT_PROTOTYPE');
+          const isComponent = !isPort;
+
+          let nodeId: string;
+          let nodeType: string;
+          let nodeData: any;
+
+          if (isComponent) {
+            nodeId = `sw-${row.failureUuid}`;
+            nodeType = 'swFailure';
+            nodeData = {
+              label: row.failureName,
+              asil: row.failureAsil || 'N/A',
+              description: undefined,
+              failureUuid: row.failureUuid,
+            };
+          } else { // isPort
+            const prefix = isReceiver ? 'receiver' : 'provider';
+            nodeId = `${prefix}-${row.locationUuid}-${row.failureUuid}`;
+            nodeType = isReceiver ? 'receiverPortFailure' : 'providerPortFailure';
+            nodeData = {
+              label: row.failureName,
+              portName: row.locationName,
+              asil: row.failureAsil || 'N/A',
+              description: undefined,
+              failureUuid: row.failureUuid,
+              portUuid: row.locationUuid,
+            };
           }
 
-          // Port failure nodes (receiver/provider)
-          if (row.failurePortUuid && row.failurePortName && row.portUuid && row.portLabels) {
-            const isReceiver = Array.isArray(row.portLabels) && row.portLabels.includes('R_PORT_PROTOTYPE');
-            const isProvider = Array.isArray(row.portLabels) && row.portLabels.includes('P_PORT_PROTOTYPE');
-            const nodeType = isReceiver ? 'receiverPortFailure' : 'providerPortFailure';
-            const prefix = isReceiver ? 'receiver' : 'provider';
-            // Only add if we can classify as receiver or provider
-            if (isReceiver || isProvider) {
-              const portNodeId = `${prefix}-${row.portUuid}-${row.failurePortUuid}`;
-              if (!nodesMap.has(portNodeId)) {
-                const node: Node = {
-                  id: portNodeId,
-                  type: nodeType as any,
-                  position: { x: 0, y: 0 },
-                  data: {
-                    label: row.failurePortName,
-                    portName: row.portName,
-                    asil: 'N/A',
-                    description: undefined,
-                    failureUuid: row.failurePortUuid,
-                    portUuid: row.portUuid,
-                  },
-                };
-                nodesMap.set(portNodeId, node);
-                failureUuidToNodeId.set(row.failurePortUuid, portNodeId);
-              }
+          if (!nodesMap.has(nodeId)) {
+            const node: Node = {
+              id: nodeId,
+              type: nodeType,
+              position: { x: 0, y: 0 },
+              data: nodeData,
+            };
+            nodesMap.set(nodeId, node);
+            if (!failureUuidToNodeId.has(row.failureUuid)) {
+              failureUuidToNodeId.set(row.failureUuid, []);
             }
+            failureUuidToNodeId.get(row.failureUuid)!.push(nodeId);
           }
         });
 
@@ -405,29 +439,36 @@ export default function FMFlow({
         const edgesSet = new Set<string>();
         rows.forEach((row, idx) => {
           if (!row.cuuid || !row.causeFailureUuid || !row.effectFailureUuid) return;
-          const sourceNodeId = failureUuidToNodeId.get(row.causeFailureUuid);
-          const targetNodeId = failureUuidToNodeId.get(row.effectFailureUuid);
-          if (!sourceNodeId || !targetNodeId) return;
-          const edgeKey = `${row.cuuid}|${sourceNodeId}|${targetNodeId}`;
-          if (edgesSet.has(edgeKey)) return;
-          edgesSet.add(edgeKey);
+          
+          const sourceNodeIds = failureUuidToNodeId.get(row.causeFailureUuid);
+          const targetNodeIds = failureUuidToNodeId.get(row.effectFailureUuid);
 
-          newEdges.push({
-            id: `causation-${row.cuuid}-${idx}`,
-            source: sourceNodeId,
-            target: targetNodeId,
-            type: 'default',
-            animated: true,
-            style: { stroke: '#F59E0B', strokeWidth: 3, strokeDasharray: '5,5' },
-            markerEnd: { type: MarkerType.ArrowClosed, color: '#F59E0B' },
-            data: {
-              causationUuid: row.cuuid,
-              causationName: row.causeFailureName && row.effectFailureName
-                ? `${row.causeFailureName} → ${row.effectFailureName}`
-                : undefined,
-              type: 'causation',
-            },
-          });
+          if (sourceNodeIds && targetNodeIds) {
+            sourceNodeIds.forEach(sourceNodeId => {
+              targetNodeIds.forEach(targetNodeId => {
+                const edgeKey = `${row.cuuid}|${sourceNodeId}|${targetNodeId}`;
+                if (edgesSet.has(edgeKey)) return;
+                edgesSet.add(edgeKey);
+
+                newEdges.push({
+                  id: `causation-${row.cuuid}-${sourceNodeId}-${targetNodeId}`,
+                  source: sourceNodeId,
+                  target: targetNodeId,
+                  type: 'default',
+                  animated: true,
+                  style: { stroke: '#F59E0B', strokeWidth: 3, strokeDasharray: '5,5' },
+                  markerEnd: { type: MarkerType.ArrowClosed, color: '#F59E0B' },
+                  data: {
+                    causationUuid: row.cuuid,
+                    causationName: row.causeFailureName && row.effectFailureName
+                      ? `${row.causeFailureName} → ${row.effectFailureName}`
+                      : undefined,
+                    type: 'causation',
+                  },
+                });
+              });
+            });
+          }
         });
 
         newNodes.push(...Array.from(nodesMap.values()));
@@ -607,9 +648,7 @@ export default function FMFlow({
       if (result.success) {
         message.success(`Causation "${contextMenu.causationName}" deleted successfully`);
         setEdges((edges) => edges.filter(edge => edge.id !== contextMenu.edgeId));
-        requestAnimationFrame(() => {
-          applyLayout();
-        });
+    // Do not re-run layout; keep current node positions intact after deletion
       } else {
         message.error(`Failed to delete causation: ${result.message}`);
       }
@@ -619,7 +658,7 @@ export default function FMFlow({
     } finally {
       hideContextMenu();
     }
-  }, [contextMenu, setEdges, applyLayout, hideContextMenu]);
+  }, [contextMenu, setEdges, hideContextMenu]);
 
   const handleNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
     hideContextMenu();
@@ -711,9 +750,24 @@ export default function FMFlow({
         {/* Legend */}
         <div style={{ marginBottom: '12px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
           <Space>
-            <Tag color="blue">Receiver Port Failures (Input)</Tag>
-            <Tag color="default">SW Component Failures (Internal)</Tag>
-            <Tag color="gold">Provider Port Failures (Output)</Tag>
+            {/* Receiver (gold-7 @ 70%) */}
+            <Tag style={{
+              background: 'rgba(250, 173, 20, 0.7)',
+              color: '#ffffffff',
+              borderColor: '#d48806'
+            }}>Receiver Port Failures (Input)</Tag>
+            {/* SW (blue-7 @ 70%) */}
+            <Tag style={{
+              background: 'rgba(9, 88, 217, 0.7)',
+              color: '#ffffffff',
+              borderColor: '#0958d9'
+            }}>SW Component Failures (Internal)</Tag>
+            {/* Provider (cyan-7 @ 70%) */}
+            <Tag style={{
+              background: 'rgba(8, 151, 156, 0.7)',
+              color: '#ffffffff',
+              borderColor: '#08979c'
+            }}>Provider Port Failures (Output)</Tag>
             <Tag 
               style={{ 
                 borderColor: '#F59E0B', 
@@ -725,8 +779,8 @@ export default function FMFlow({
             </Tag>
             <Tag 
               style={{ 
-                borderColor: '#F59E0B', 
-                color: '#F59E0B',
+                borderColor: '#9254de', 
+                color: '#9254de',
                 borderWidth: '2px',
                 fontWeight: 'bold'
               }}

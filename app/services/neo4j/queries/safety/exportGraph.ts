@@ -280,49 +280,66 @@ export async function getSafetyGraphForComponent(componentUuid: string): Promise
         cuuid: string;
         failureUuid: string;
         failureName: string;
+        failureAsil?: string;
         causeFailureUuid: string;
         causeFailureName: string;
         effectFailureUuid: string;
         effectFailureName: string;
-        failurePortUuid?: string;
-        failurePortName?: string;
-        portUuid?: string;
-        portName?: string;
-        portLabels?: string[];
+        locationUuid: string;
+        locationName: string;
+        locLabels: string[];
     }>;
     message?: string;
 }> {
     const session = driver.session();
     try {
         const query = `
-            MATCH (f:FAILUREMODE)-[:OCCURRENCE]->(cmp)
-            WHERE cmp.uuid = $componentUuid
-            OPTIONAL MATCH (port)<-[:CONTAINS]-(cmp)
-            WHERE port:P_PORT_PROTOTYPE OR port:R_PORT_PROTOTYPE
-            OPTIONAL MATCH (fport)-[:OCCURRENCE]->(port)
-            OPTIONAL MATCH (c:CAUSATION)-[]-(f)
-            OPTIONAL MATCH (f)-[:OCCURRENCE]->(src)
+            // 1. Find all failures that occur on the component or its ports
+            MATCH (cmp) WHERE cmp.uuid = $componentUuid
+            // Create a list of all relevant locations: the component itself plus its ports
+            WITH cmp, [(cmp)-[:CONTAINS]->(p) WHERE p:P_PORT_PROTOTYPE OR p:R_PORT_PROTOTYPE | p] + cmp as locations
+            UNWIND locations as loc
+            // Find all failures occurring at these locations. This merges component and port failures.
+            MATCH (scoped_failure:FAILUREMODE)-[:OCCURRENCE]->(loc)
+
+            // 2. For each of these scoped failures, find the causation it belongs to
+            WITH DISTINCT scoped_failure, loc
+            OPTIONAL MATCH (c:CAUSATION)-[]-(scoped_failure)
+
+            // 3. If a causation is found, get the full cause/effect chain
             OPTIONAL MATCH (cause:FAILUREMODE)<-[:FIRST]-(c)-[:THEN]->(effect:FAILUREMODE)
-            RETURN c.uuid AS cuuid, f.uuid AS failureUuid, f.name AS failureName,
-                   fport.uuid AS failurePortUuid, fport.name AS failurePortName,
-                   port.uuid AS portUuid, port.name AS portName, labels(port) AS portLabels,
-                   cause.uuid AS causeFailureUuid, cause.name AS causeFailureName,
-                   effect.uuid AS effectFailureUuid, effect.name AS effectFailureName
+            
+            // 4. Fetch ASIL rating for the failure
+            OPTIONAL MATCH (scoped_failure)-[:RATED]->(rr:RISKRATING)
+
+            // 5. Return the details of the chain, including the location of the scoped failure
+            RETURN
+                c.uuid AS cuuid,
+                scoped_failure.uuid AS failureUuid, // The failure that occurs in the component
+                scoped_failure.name AS failureName,
+                scoped_failure.asil AS failureAsil,
+                cause.uuid AS causeFailureUuid,
+                cause.name AS causeFailureName,
+                effect.uuid AS effectFailureUuid,
+                effect.name AS effectFailureName,
+                // Add location info for context
+                loc.uuid as locationUuid, // Named for compatibility; can be component or port
+                loc.name as locationName,
+                labels(loc) as locLabels
         `;
         const result = await session.run(query, { componentUuid });
         const rows = result.records.map(record => ({
             cuuid: record.get('cuuid'),
             failureUuid: record.get('failureUuid'),
             failureName: record.get('failureName'),
-            failurePortUuid: record.get('failurePortUuid') || undefined,
-            failurePortName: record.get('failurePortName') || undefined,
-            portUuid: record.get('portUuid') || undefined,
-            portName: record.get('portName') || undefined,
-            portLabels: record.get('portLabels') || undefined,
+            failureAsil: record.get('failureAsil'),
             causeFailureUuid: record.get('causeFailureUuid'),
             causeFailureName: record.get('causeFailureName'),
             effectFailureUuid: record.get('effectFailureUuid'),
             effectFailureName: record.get('effectFailureName'),
+            locationUuid: record.get('locationUuid'),
+            locationName: record.get('locationName'),
+            locLabels: record.get('locLabels'),
         }));
 
         return { success: true, data: rows };
