@@ -55,18 +55,18 @@ interface NodeData {
 // Custom node component for SW Component failures (center)
 function SwFailureNode({ data }: { data: NodeData }) {
   const { token } = theme.useToken();
-  const showBorder = ['A', 'B', 'C', 'D'].includes(data.asil);
   const isQM = data.asil === 'QM';
   // Force high-contrast text regardless of theme
   const textColor = '#fff';
+  const swAlpha = isQM ? 0.3 : 0.7;
   
   return (
     <div style={{
       padding: '12px 16px',
       borderRadius: '8px',
-  // Use Ant Design blue-7 with 70% transparency
-  background: 'rgba(9, 88, 217, 0.7)',
-  border: showBorder ? '3px solid #9254de' : 'none',
+  // Ant Design blue-7 with dynamic transparency (QM: 30%, ASIL: 70%)
+  background: `rgba(9, 88, 217, ${swAlpha})`,
+  border: 'none',
       boxShadow: token.boxShadow,
       width: 320,
       color: textColor,
@@ -91,11 +91,11 @@ function SwFailureNode({ data }: { data: NodeData }) {
       <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '4px' }}>
         {data.label}
       </div>
-      <div style={{ fontSize: '11px', color: '#fff' }}>
+      <div style={{ fontSize: '11px', color: textColor }}>
         <span style={{ fontWeight: 'bold' }}>ASIL:</span> <span style={{ fontWeight: 'bold' }}>{data.asil}</span>
       </div>
       {data.description && (
-        <div style={{ fontSize: '10px', color: '#fff', marginTop: '2px' }}>
+        <div style={{ fontSize: '10px', color: textColor, marginTop: '2px' }}>
           {data.description.length > 30 ? `${data.description.substring(0, 30)}...` : data.description}
         </div>
       )}
@@ -106,19 +106,19 @@ function SwFailureNode({ data }: { data: NodeData }) {
 // Custom node component for receiver port failures (left side)
 function ReceiverPortFailureNode({ data }: { data: NodeData }) {
   const { token } = theme.useToken();
-  const showBorder = ['A', 'B', 'C', 'D'].includes(data.asil);
   const isQM = data.asil === 'QM';
   // Receiver: force high-contrast white text regardless of theme
   const labelTextColor = '#fff';
   const asilTextColor = '#fff';
+  const recvAlpha = isQM ? 0.3 : 0.7;
   
   return (
     <div style={{
       padding: '10px 14px',
       borderRadius: '6px',
-  // Ant Design gold-7 with 20% transparency
-  background: 'rgba(207, 144, 18, 0.8)',
-  border: showBorder ? '3px solid #9254de' : 'none',
+  // Ant Design gold-7 with dynamic transparency (QM: 30%, ASIL: 70%)
+  background: `rgba(212, 136, 6, ${recvAlpha})`,
+  border: 'none',
       boxShadow: token.boxShadowSecondary,
       width: 300,
       position: 'relative',
@@ -139,7 +139,7 @@ function ReceiverPortFailureNode({ data }: { data: NodeData }) {
         id="right"
         style={{ background: '#d48806', width: '8px', height: '8px', right: '-4px' }}
       />
-      <div style={{ fontSize: '12px', fontWeight: '600', color: labelTextColor, opacity: 0.85, marginBottom: '2px' }}>
+  <div style={{ fontSize: '12px', fontWeight: '600', color: labelTextColor, opacity: 0.85, marginBottom: '2px' }}>
         {`>> ${data.portName ?? ''}`}
       </div>
       <div style={{ fontSize: '13px', fontWeight: '700', color: labelTextColor }}>
@@ -155,19 +155,19 @@ function ReceiverPortFailureNode({ data }: { data: NodeData }) {
 // Custom node component for provider port failures (right side)
 function ProviderPortFailureNode({ data }: { data: NodeData }) {
   const { token } = theme.useToken();
-  const showBorder = ['A', 'B', 'C', 'D'].includes(data.asil);
   const isQM = data.asil === 'QM';
   // Provider: cyan-7 @ 10% background so ASIL border is visible
   const labelTextColor = '#fff';
   const asilTextColor = '#fff';
+  const provAlpha = isQM ? 0.3 : 0.7;
   
   return (
     <div style={{
       padding: '10px 14px',
       borderRadius: '6px',
-  // Ant Design cyan-7 with 10% transparency
-  background: 'rgba(8, 151, 156, 0.7)',
-  border: showBorder ? '3px solid #9254de' : 'none',
+  // Ant Design cyan-7 with dynamic transparency (QM: 30%, ASIL: 70%)
+  background: `rgba(8, 151, 156, ${provAlpha})`,
+  border: 'none',
       boxShadow: token.boxShadowSecondary,
       width: 300,
       position: 'relative',
@@ -187,7 +187,7 @@ function ProviderPortFailureNode({ data }: { data: NodeData }) {
         id="right"
         style={{ background: '#08979c', width: '8px', height: '8px', right: '-4px' }}
       />
-  <div style={{ fontSize: '12px', fontWeight: '600', color: '#fff', marginBottom: '2px' }}>
+  <div style={{ fontSize: '12px', fontWeight: '600', color: labelTextColor, marginBottom: '2px' }}>
         {`${data.portName ?? ''} >>`}
       </div>
       <div style={{ fontSize: '13px', fontWeight: '700', color: labelTextColor }}>
@@ -750,21 +750,21 @@ export default function FMFlow({
         {/* Legend */}
         <div style={{ marginBottom: '12px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
           <Space>
-            {/* Receiver (gold-7 @ 70%) */}
+            {/* Receiver (gold-7 @ 30%) */}
             <Tag style={{
-              background: 'rgba(250, 173, 20, 0.7)',
+              background: 'rgba(212, 136, 6, 0.3)',
               color: '#ffffffff',
               borderColor: '#d48806'
             }}>Receiver Port Failures (Input)</Tag>
-            {/* SW (blue-7 @ 70%) */}
+            {/* SW (blue-7 @ 30%) */}
             <Tag style={{
-              background: 'rgba(9, 88, 217, 0.7)',
+              background: 'rgba(9, 88, 217, 0.3)',
               color: '#ffffffff',
               borderColor: '#0958d9'
             }}>SW Component Failures (Internal)</Tag>
-            {/* Provider (cyan-7 @ 70%) */}
+            {/* Provider (cyan-7 @ 30%) */}
             <Tag style={{
-              background: 'rgba(8, 151, 156, 0.7)',
+              background: 'rgba(8, 151, 156, 0.3)',
               color: '#ffffffff',
               borderColor: '#08979c'
             }}>Provider Port Failures (Output)</Tag>
@@ -777,17 +777,12 @@ export default function FMFlow({
             >
               ⚡ Causation Relationships
             </Tag>
-            <Tag 
-              style={{ 
-                borderColor: '#9254de', 
-                color: '#9254de',
-                borderWidth: '2px',
-                fontWeight: 'bold'
-              }}
-            >
-              🔶 ASIL A/B/C/D Border
-            </Tag>
           </Space>
+        </div>
+        <div style={{ marginTop: '-8px', marginBottom: '12px' }}>
+          <Text style={{ fontSize: '12px', color: '#6B7280' }}>
+            Note: QM components are rendered with a lighter color; ASIL A-D use a stronger fill.
+          </Text>
         </div>
 
         {/* Interaction help */}
