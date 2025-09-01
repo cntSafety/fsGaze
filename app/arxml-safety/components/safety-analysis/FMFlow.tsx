@@ -26,8 +26,67 @@ import { getSafetyGraphForComponent } from '@/app/services/neo4j/queries/safety/
 import { deleteCausationNode, createCausationBetweenFailureModes } from '@/app/services/neo4j/queries/safety/causation';
 import { useRouter } from 'next/navigation';
 import ELK from 'elkjs/lib/elk.bundled.js'; // added
+import { useTheme } from '@/app/components/ThemeProvider';
 
 const { Title, Text } = Typography;
+
+// =========================
+// Centralized Color Config
+// Based on Ant Design palettes and dark mode guidance
+// Docs: Colors and Dark Mode
+// - Colors: https://ant.design/docs/spec/colors
+// - Dark:   https://ant.design/docs/spec/dark
+// =========================
+
+// Helper to convert HEX to RGBA with alpha
+function hexToRgba(hex: string, alpha: number): string {
+  const normalized = hex.replace('#', '');
+  const bigint = parseInt(normalized.length === 3
+    ? normalized.split('').map((c) => c + c).join('')
+    : normalized, 16);
+  const r = (bigint >> 16) & 255;
+  const g = (bigint >> 8) & 255;
+  const b = bigint & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+// Alphas for background intensity depending on ASIL (QM lighter)
+// Tuned to make QM visibly lighter while keeping text contrast acceptable.
+const QM_ALPHA_LIGHT = 0.18;
+const ASIL_ALPHA_LIGHT = 0.72;
+const QM_ALPHA_DARK = 0.28;
+const ASIL_ALPHA_DARK = 0.62;
+
+const isNonSafetyAsil = (asil: string | undefined): boolean => {
+  const s = (asil || '').toUpperCase();
+  return /(^|\b)(QM|TBC)(\b|$)/.test(s);
+};
+
+const getAlphaByAsil = (asil: string | undefined, isDark: boolean): number => {
+  const isNonSafety = isNonSafetyAsil(asil);
+  if (isDark) return isNonSafety ? QM_ALPHA_DARK : ASIL_ALPHA_DARK;
+  return isNonSafety ? QM_ALPHA_LIGHT : ASIL_ALPHA_LIGHT;
+};
+
+// Base role colors from Ant Design palettes
+// Use 6/7 tones as per Ant palette guidance (brand primary at -6, stronger at -7)
+export const SwFailureNodeBackgroundLight = '#1677FF'; // blue-6
+export const SwFailureNodeBackgroundDark = '#0958D9';  // blue-7
+export const SwFailureNodeHandleLight = '#0958D9';      // blue-7
+export const SwFailureNodeHandleDark = '#003EB3';       // blue-8
+
+export const ReceiverPortFailureNodeBackgroundLight = '#FAAD14'; // gold-6
+export const ReceiverPortFailureNodeBackgroundDark = '#D48806';  // gold-7
+export const ReceiverPortFailureNodeHandleLight = '#D48806';     // gold-7
+export const ReceiverPortFailureNodeHandleDark = '#AD6800';      // gold-8
+
+export const ProviderPortFailureNodeBackgroundLight = '#13C2C2'; // cyan-6
+export const ProviderPortFailureNodeBackgroundDark = '#08979C';  // cyan-7
+export const ProviderPortFailureNodeHandleLight = '#08979C';     // cyan-7
+export const ProviderPortFailureNodeHandleDark = '#006D75';      // cyan-8
+
+export const CausationEdgeColorLight = '#FAAD14'; // warning (gold-6)
+export const CausationEdgeColorDark = '#D48806';  // warning deeper (gold-7)
 
 interface FMFlowProps {
   swComponent: SwComponent;
@@ -55,18 +114,22 @@ interface NodeData {
 // Custom node component for SW Component failures (center)
 function SwFailureNode({ data }: { data: NodeData }) {
   const { token } = theme.useToken();
-  const isQM = data.asil === 'QM';
-  // Force high-contrast text regardless of theme
-  const textColor = '#fff';
-  const swAlpha = isQM ? 0.3 : 0.7;
+  const { themeMode } = useTheme();
+  const isDark = themeMode === 'dark';
+  const isNonSafety = isNonSafetyAsil(data.asil);
+  const textColor = isDark && isNonSafety ? token.colorTextSecondary : token.colorTextLightSolid;
+  const background = hexToRgba(
+    isDark ? SwFailureNodeBackgroundDark : SwFailureNodeBackgroundLight,
+    getAlphaByAsil(data.asil, isDark)
+  );
+  const handleColor = isDark ? SwFailureNodeHandleDark : SwFailureNodeHandleLight;
   
   return (
     <div style={{
       padding: '12px 16px',
       borderRadius: '8px',
-  // Ant Design blue-7 with dynamic transparency (QM: 30%, ASIL: 70%)
-  background: `rgba(9, 88, 217, ${swAlpha})`,
-  border: 'none',
+      background,
+      border: 'none',
       boxShadow: token.boxShadow,
       width: 320,
       color: textColor,
@@ -80,13 +143,13 @@ function SwFailureNode({ data }: { data: NodeData }) {
         type="target"
         position={Position.Left}
         id="left"
-        style={{ background: '#0958d9', width: '10px', height: '10px', left: '-5px' }}
+        style={{ background: handleColor, width: '10px', height: '10px', left: '-5px' }}
       />
       <Handle
         type="source"
         position={Position.Right}
         id="right"
-        style={{ background: '#0958d9', width: '10px', height: '10px', right: '-5px' }}
+        style={{ background: handleColor, width: '10px', height: '10px', right: '-5px' }}
       />
       <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '4px' }}>
         {data.label}
@@ -106,19 +169,23 @@ function SwFailureNode({ data }: { data: NodeData }) {
 // Custom node component for receiver port failures (left side)
 function ReceiverPortFailureNode({ data }: { data: NodeData }) {
   const { token } = theme.useToken();
-  const isQM = data.asil === 'QM';
-  // Receiver: force high-contrast white text regardless of theme
-  const labelTextColor = '#fff';
-  const asilTextColor = '#fff';
-  const recvAlpha = isQM ? 0.3 : 0.7;
+  const { themeMode } = useTheme();
+  const isDark = themeMode === 'dark';
+  const isNonSafety = isNonSafetyAsil(data.asil);
+  const labelTextColor = isDark && isNonSafety ? token.colorTextSecondary : token.colorTextLightSolid;
+  const asilTextColor = isDark && isNonSafety ? token.colorTextTertiary : token.colorTextLightSolid;
+  const background = hexToRgba(
+    isDark ? ReceiverPortFailureNodeBackgroundDark : ReceiverPortFailureNodeBackgroundLight,
+    getAlphaByAsil(data.asil, isDark)
+  );
+  const handleColor = isDark ? ReceiverPortFailureNodeHandleDark : ReceiverPortFailureNodeHandleLight;
   
   return (
     <div style={{
       padding: '10px 14px',
       borderRadius: '6px',
-  // Ant Design gold-7 with dynamic transparency (QM: 30%, ASIL: 70%)
-  background: `rgba(212, 136, 6, ${recvAlpha})`,
-  border: 'none',
+      background,
+      border: 'none',
       boxShadow: token.boxShadowSecondary,
       width: 300,
       position: 'relative',
@@ -131,13 +198,13 @@ function ReceiverPortFailureNode({ data }: { data: NodeData }) {
         type="target"
         position={Position.Left}
         id="left"
-        style={{ background: '#d48806', width: '8px', height: '8px', left: '-4px' }}
+        style={{ background: handleColor, width: '8px', height: '8px', left: '-4px' }}
       />
       <Handle
         type="source"
         position={Position.Right}
         id="right"
-        style={{ background: '#d48806', width: '8px', height: '8px', right: '-4px' }}
+        style={{ background: handleColor, width: '8px', height: '8px', right: '-4px' }}
       />
   <div style={{ fontSize: '12px', fontWeight: '600', color: labelTextColor, opacity: 0.85, marginBottom: '2px' }}>
         {`>> ${data.portName ?? ''}`}
@@ -155,19 +222,23 @@ function ReceiverPortFailureNode({ data }: { data: NodeData }) {
 // Custom node component for provider port failures (right side)
 function ProviderPortFailureNode({ data }: { data: NodeData }) {
   const { token } = theme.useToken();
-  const isQM = data.asil === 'QM';
-  // Provider: cyan-7 @ 10% background so ASIL border is visible
-  const labelTextColor = '#fff';
-  const asilTextColor = '#fff';
-  const provAlpha = isQM ? 0.3 : 0.7;
+  const { themeMode } = useTheme();
+  const isDark = themeMode === 'dark';
+  const isNonSafety = isNonSafetyAsil(data.asil);
+  const labelTextColor = isDark && isNonSafety ? token.colorTextSecondary : token.colorTextLightSolid;
+  const asilTextColor = isDark && isNonSafety ? token.colorTextTertiary : token.colorTextLightSolid;
+  const background = hexToRgba(
+    isDark ? ProviderPortFailureNodeBackgroundDark : ProviderPortFailureNodeBackgroundLight,
+    getAlphaByAsil(data.asil, isDark)
+  );
+  const handleColor = isDark ? ProviderPortFailureNodeHandleDark : ProviderPortFailureNodeHandleLight;
   
   return (
     <div style={{
       padding: '10px 14px',
       borderRadius: '6px',
-  // Ant Design cyan-7 with dynamic transparency (QM: 30%, ASIL: 70%)
-  background: `rgba(8, 151, 156, ${provAlpha})`,
-  border: 'none',
+      background,
+      border: 'none',
       boxShadow: token.boxShadowSecondary,
       width: 300,
       position: 'relative',
@@ -179,13 +250,13 @@ function ProviderPortFailureNode({ data }: { data: NodeData }) {
         type="target"
         position={Position.Left}
         id="left"
-        style={{ background: '#08979c', width: '8px', height: '8px', left: '-4px' }}
+        style={{ background: handleColor, width: '8px', height: '8px', left: '-4px' }}
       />
       <Handle
         type="source"
         position={Position.Right}
         id="right"
-        style={{ background: '#08979c', width: '8px', height: '8px', right: '-4px' }}
+        style={{ background: handleColor, width: '8px', height: '8px', right: '-4px' }}
       />
   <div style={{ fontSize: '12px', fontWeight: '600', color: labelTextColor, marginBottom: '2px' }}>
         {`${data.portName ?? ''} >>`}
@@ -311,6 +382,8 @@ export default function FMFlow({
   selectedFailures
 }: FMFlowProps) {
   const { token } = theme.useToken();
+  const { themeMode } = useTheme();
+  const isDark = themeMode === 'dark';
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -456,8 +529,8 @@ export default function FMFlow({
                   target: targetNodeId,
                   type: 'default',
                   animated: true,
-                  style: { stroke: '#F59E0B', strokeWidth: 3, strokeDasharray: '5,5' },
-                  markerEnd: { type: MarkerType.ArrowClosed, color: '#F59E0B' },
+                  style: { stroke: token.colorWarning, strokeWidth: 3, strokeDasharray: '5,5' },
+                  markerEnd: { type: MarkerType.ArrowClosed, color: token.colorWarning },
                   data: {
                     causationUuid: row.cuuid,
                     causationName: row.causeFailureName && row.effectFailureName
@@ -559,8 +632,8 @@ export default function FMFlow({
               target: targetNodeId,
               type: 'default',
               animated: true,
-              style: { stroke: '#F59E0B', strokeWidth: 3, strokeDasharray: '5,5' },
-              markerEnd: { type: MarkerType.ArrowClosed, color: '#F59E0B' },
+              style: { stroke: token.colorWarning, strokeWidth: 3, strokeDasharray: '5,5' },
+              markerEnd: { type: MarkerType.ArrowClosed, color: token.colorWarning },
               data: {
                 causationUuid: link.causationUuid,
                 type: 'causation',
@@ -694,8 +767,8 @@ export default function FMFlow({
           target: params.target!,
           type: 'default',
           animated: true,
-          style: { stroke: '#F59E0B', strokeWidth: 3, strokeDasharray: '5,5' },
-          markerEnd: { type: MarkerType.ArrowClosed, color: '#F59E0B' },
+          style: { stroke: token.colorWarning, strokeWidth: 3, strokeDasharray: '5,5' },
+          markerEnd: { type: MarkerType.ArrowClosed, color: token.colorWarning },
           data: {
             causationUuid: result.causationUuid,
             causationName: causationName,
@@ -750,28 +823,28 @@ export default function FMFlow({
         {/* Legend */}
         <div style={{ marginBottom: '12px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
           <Space>
-            {/* Receiver (gold-7 @ 30%) */}
+            {/* Receiver */}
             <Tag style={{
-              background: 'rgba(212, 136, 6, 0.3)',
-              color: '#ffffffff',
-              borderColor: '#d48806'
+              background: hexToRgba(isDark ? ReceiverPortFailureNodeBackgroundDark : ReceiverPortFailureNodeBackgroundLight, isDark ? 0.25 : 0.3),
+              color: token.colorTextLightSolid,
+              borderColor: isDark ? ReceiverPortFailureNodeHandleDark : ReceiverPortFailureNodeHandleLight
             }}>Receiver Port Failures (Input)</Tag>
-            {/* SW (blue-7 @ 30%) */}
+            {/* SW */}
             <Tag style={{
-              background: 'rgba(9, 88, 217, 0.3)',
-              color: '#ffffffff',
-              borderColor: '#0958d9'
+              background: hexToRgba(isDark ? SwFailureNodeBackgroundDark : SwFailureNodeBackgroundLight, isDark ? 0.25 : 0.3),
+              color: token.colorTextLightSolid,
+              borderColor: isDark ? SwFailureNodeHandleDark : SwFailureNodeHandleLight
             }}>SW Component Failures (Internal)</Tag>
-            {/* Provider (cyan-7 @ 30%) */}
+            {/* Provider */}
             <Tag style={{
-              background: 'rgba(8, 151, 156, 0.3)',
-              color: '#ffffffff',
-              borderColor: '#08979c'
+              background: hexToRgba(isDark ? ProviderPortFailureNodeBackgroundDark : ProviderPortFailureNodeBackgroundLight, isDark ? 0.25 : 0.3),
+              color: token.colorTextLightSolid,
+              borderColor: isDark ? ProviderPortFailureNodeHandleDark : ProviderPortFailureNodeHandleLight
             }}>Provider Port Failures (Output)</Tag>
             <Tag 
               style={{ 
-                borderColor: '#F59E0B', 
-                color: '#F59E0B',
+                borderColor: token.colorWarning, 
+                color: token.colorWarning,
                 borderStyle: 'dashed'
               }}
             >
@@ -780,7 +853,7 @@ export default function FMFlow({
           </Space>
         </div>
         <div style={{ marginTop: '-8px', marginBottom: '12px' }}>
-          <Text style={{ fontSize: '12px', color: '#6B7280' }}>
+          <Text style={{ fontSize: '12px', color: token.colorTextSecondary }}>
             Note: QM components are rendered with a lighter color; ASIL A-D use a stronger fill.
           </Text>
         </div>
@@ -790,7 +863,7 @@ export default function FMFlow({
           marginBottom: '12px', 
           padding: '8px'
         }}>
-          <Text style={{ fontSize: '12px', color: isCreatingCausation ? '#fa8c16' : '#6B7280' }}>
+          <Text style={{ fontSize: '12px', color: isCreatingCausation ? token.colorWarning : token.colorTextSecondary }}>
             {isCreatingCausation 
               ? '⏳ Creating causation...' 
               : '💡 Drag from any failure node to another to create a causation relationship. Right-click on causation arrows to delete them.'
