@@ -12,37 +12,46 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
     const tx = session.beginTransaction();
     const logs: string[] = [];
 
-    // Helper: safely parse ISO date string to epoch ms number (or null if invalid/missing)
-    const parseToEpoch = (value: any): number | null => {
-        if (!value || typeof value !== 'string') return null;
-        const ms = Date.parse(value);
-        return isNaN(ms) ? null : ms;
+    // Helper: ensure we carry ISO 8601 strings (preserve incoming format)
+    const ensureIsoString = (value: any): string | null => {
+        if (!value) return null;
+        if (typeof value === 'string') {
+            const ms = Date.parse(value);
+            return isNaN(ms) ? null : value; // only accept valid ISO-like strings
+        }
+        if (typeof value === 'number') {
+            const d = new Date(value);
+            return isNaN(d.getTime()) ? null : d.toISOString();
+        }
+        return null;
     };
 
     // Build parameter objects for node import to avoid repeating logic
     const buildNodeParams = (rawProperties: any) => {
-        const createdMillis = parseToEpoch(rawProperties?.created);
-        const lastModifiedMillis = parseToEpoch(rawProperties?.lastModified);
+        const createdISO = ensureIsoString(rawProperties?.created);
+        const lastModifiedISO = ensureIsoString(rawProperties?.lastModified);
         // propsAll keeps original (minus uuid) for ON CREATE assignment
         const { uuid: _u, ...rest } = rawProperties || {};
         // Exclude timestamps from the merge-on-match set to preserve existing DB timestamps
         const { created: _c, lastModified: _l, ...propsWithoutTimestamps } = rest;
-        return { createdMillis, lastModifiedMillis, propsAll: rest, propsNoTS: propsWithoutTimestamps };
+        return { createdISO, lastModifiedISO, propsAll: rest, propsNoTS: propsWithoutTimestamps };
     };
 
-    const convertNeo4jTimestampToNumber = (value: any): number | null => {
+    // For logs/comparisons: normalize any timestamp-like value to epoch millis
+    const toEpochMillis = (value: any): number | null => {
         if (value === null || typeof value === 'undefined') return null;
-        if (typeof value === 'number') return value; // Already a JS number
-        if (value && typeof value.toNumber === 'function') { // Check for neo4j.int or similar BigInt objects
+        if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+        if (typeof value === 'string') {
+            const ms = Date.parse(value);
+            return isNaN(ms) ? null : ms;
+        }
+        if (value && typeof value.toNumber === 'function') {
             try {
                 return value.toNumber();
-            } catch { // toNumber() can fail if the number is too large for JS standard number
-                //logs.push(`[WARNING] Failed to convert Neo4j Integer to JS number (possibly too large): ${value.toString()}. Treating as an invalid timestamp for comparison.`);
+            } catch {
                 return null;
             }
         }
-        // Log if it's an unexpected type that wasn't handled above
-        //logs.push(`[WARNING] Unexpected timestamp type encountered: ${JSON.stringify(value)}. Cannot convert to number.`);
         return null;
     };
 
@@ -50,15 +59,15 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
         const failureNodeType = "FAILUREMODE";
         for (const failure of data.failures || []) {
             const { uuid, properties: rawProperties } = failure;
-            const { createdMillis, lastModifiedMillis, propsAll, propsNoTS } = buildNodeParams(rawProperties);
+            const { createdISO, lastModifiedISO, propsAll, propsNoTS } = buildNodeParams(rawProperties);
             const result = await tx.run(
                 'MERGE (f:FAILUREMODE {uuid: $uuid}) ' +
                 'ON CREATE SET f = $propsAll, f.uuid = $uuid, ' +
-                'f.created = coalesce($createdMillis, timestamp()), ' +
-                'f.lastModified = coalesce($lastModifiedMillis, timestamp()) ' +
+                "f.created = coalesce($createdISO, toString(datetime())), " +
+                "f.lastModified = coalesce($lastModifiedISO, toString(datetime())) " +
                 'ON MATCH SET f += $propsNoTS ' +
                 'RETURN f.name AS name, f.created AS created, f.lastModified AS lastModified',
-                { uuid, propsAll, propsNoTS, createdMillis, lastModifiedMillis }
+                { uuid, propsAll, propsNoTS, createdISO, lastModifiedISO }
             );
             const record = result.records[0];
             if (record) {
@@ -67,8 +76,8 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 const updatedAtRaw = record.get('lastModified');
                 let action = 'processed';
 
-                const createdAtNum = convertNeo4jTimestampToNumber(createdAtRaw);
-                const updatedAtNum = convertNeo4jTimestampToNumber(updatedAtRaw);
+                const createdAtNum = toEpochMillis(createdAtRaw);
+                const updatedAtNum = toEpochMillis(updatedAtRaw);
 
                 if (createdAtNum !== null && updatedAtNum !== null) {
                     if (createdAtNum === updatedAtNum) { 
@@ -89,15 +98,15 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
         const causationNodeType = "CAUSATION";
         for (const causation of data.causations || []) {
             const { uuid, properties: rawProperties } = causation;
-            const { createdMillis, lastModifiedMillis, propsAll, propsNoTS } = buildNodeParams(rawProperties);
+            const { createdISO, lastModifiedISO, propsAll, propsNoTS } = buildNodeParams(rawProperties);
             const result = await tx.run(
                 'MERGE (c:CAUSATION {uuid: $uuid}) ' +
                 'ON CREATE SET c = $propsAll, c.uuid = $uuid, ' +
-                'c.created = coalesce($createdMillis, timestamp()), ' +
-                'c.lastModified = coalesce($lastModifiedMillis, timestamp()) ' +
+                "c.created = coalesce($createdISO, toString(datetime())), " +
+                "c.lastModified = coalesce($lastModifiedISO, toString(datetime())) " +
                 'ON MATCH SET c += $propsNoTS ' +
                 'RETURN c.name AS name, c.created AS created, c.lastModified AS lastModified',
-                { uuid, propsAll, propsNoTS, createdMillis, lastModifiedMillis }
+                { uuid, propsAll, propsNoTS, createdISO, lastModifiedISO }
             );
             const record = result.records[0];
             if (record) {
@@ -106,8 +115,8 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 const updatedAtRaw = record.get('lastModified');
                 let action = 'processed';
 
-                const createdAtNum = convertNeo4jTimestampToNumber(createdAtRaw);
-                const updatedAtNum = convertNeo4jTimestampToNumber(updatedAtRaw);
+                const createdAtNum = toEpochMillis(createdAtRaw);
+                const updatedAtNum = toEpochMillis(updatedAtRaw);
 
                 if (createdAtNum !== null && updatedAtNum !== null) {
                     if (createdAtNum === updatedAtNum) { 
@@ -260,7 +269,7 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 'MATCH (f:FAILUREMODE {uuid: $failureUuid}) ' +
                 'MATCH (src {uuid: $occuranceSourceUuid}) ' +
                 'MERGE (f)-[r:OCCURRENCE]->(src) ' +
-                'ON CREATE SET r.created = timestamp(), r.lastModified = timestamp() ' +
+                'ON CREATE SET r.created = toString(datetime()), r.lastModified = toString(datetime()) ' +
                 'RETURN type(r) AS relType', // We can return something to confirm creation/match
                 { failureUuid: occ.failureUuid, occuranceSourceUuid: sourceUuidToUse }
             );
@@ -298,7 +307,7 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 'MATCH (cause:FAILUREMODE {uuid: $causeFailureUuid}) ' +
                 'MATCH (c:CAUSATION {uuid: $causationUuid}) ' +
                 'MERGE (cause)<-[r:FIRST]-(c) ' +
-                'ON CREATE SET r.created = timestamp(), r.lastModified = timestamp() ',
+                'ON CREATE SET r.created = toString(datetime()), r.lastModified = toString(datetime()) ',
                 { causeFailureUuid: link.causeFailureUuid, causationUuid: link.causationUuid }
             );
             logs.push(`[SUCCESS] FIRST relationship linked: (FAILUREMODE ${link.causeFailureName || link.causeFailureUuid})-[FIRST]->(CAUSATION ${link.causationName || link.causationUuid}).`);
@@ -308,7 +317,7 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 'MATCH (c:CAUSATION {uuid: $causationUuid}) ' +
                 'MATCH (effect:FAILUREMODE {uuid: $effectFailureUuid}) ' +
                 'MERGE (c)-[r:THEN]->(effect) ' +
-                'ON CREATE SET r.created = timestamp(), r.lastModified = timestamp() ',
+                'ON CREATE SET r.created = toString(datetime()), r.lastModified = toString(datetime()) ',
                 { causationUuid: link.causationUuid, effectFailureUuid: link.effectFailureUuid }
             );
             logs.push(`[SUCCESS] THEN relationship linked: (CAUSATION ${link.causationName || link.causationUuid})-[THEN]->(FAILUREMODE ${link.effectFailureName || link.effectFailureUuid}).`);
@@ -318,15 +327,15 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
         const riskRatingNodeType = "RISKRATING";
         for (const riskRating of data.riskRatings || []) {
             const { uuid, properties: rawProperties } = riskRating;
-            const { createdMillis, lastModifiedMillis, propsAll, propsNoTS } = buildNodeParams(rawProperties);
+            const { createdISO, lastModifiedISO, propsAll, propsNoTS } = buildNodeParams(rawProperties);
             const result = await tx.run(
                 'MERGE (r:RISKRATING {uuid: $uuid}) ' +
                 'ON CREATE SET r = $propsAll, r.uuid = $uuid, ' +
-                'r.created = coalesce($createdMillis, timestamp()), ' +
-                'r.lastModified = coalesce($lastModifiedMillis, timestamp()) ' +
+                "r.created = coalesce($createdISO, toString(datetime())), " +
+                "r.lastModified = coalesce($lastModifiedISO, toString(datetime())) " +
                 'ON MATCH SET r += $propsNoTS ' +
                 'RETURN r.name AS name, r.created AS created, r.lastModified AS lastModified',
-                { uuid, propsAll, propsNoTS, createdMillis, lastModifiedMillis }
+                { uuid, propsAll, propsNoTS, createdISO, lastModifiedISO }
             );
             const record = result.records[0];
             if (record) {
@@ -335,14 +344,14 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 const updatedAtRaw = record.get('lastModified');
                 let action = 'processed';
 
-                const createdAtNum = convertNeo4jTimestampToNumber(createdAtRaw);
-                const updatedAtNum = convertNeo4jTimestampToNumber(updatedAtRaw);
+                const createdAtNum = toEpochMillis(createdAtRaw);
+                const updatedAtNum = toEpochMillis(updatedAtRaw);
 
                 if (createdAtNum !== null && updatedAtNum !== null) {
                     if (createdAtNum === updatedAtNum) {
                         action = 'created';
                     } else {
-                        action = 'updated (timestamps refreshed)';
+                        action = 'updated (timestamps preserved)';
                     }
                 }
                 logs.push(`[SUCCESS] ${riskRatingNodeType} node '${name || uuid}' (uuid: ${uuid}) ${action}.`);
@@ -375,7 +384,7 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 'MATCH (f:FAILUREMODE {uuid: $failureUuid}) ' +
                 'MATCH (r:RISKRATING {uuid: $riskRatingUuid}) ' +
                 'MERGE (f)-[rel:RATED]->(r) ' +
-                'ON CREATE SET rel.created = timestamp(), rel.lastModified = timestamp() ',
+                'ON CREATE SET rel.created = toString(datetime()), rel.lastModified = toString(datetime()) ',
                 { failureUuid: link.failureUuid, riskRatingUuid: link.riskRatingUuid }
             );
             logs.push(`[SUCCESS] RATED relationship linked: (FAILUREMODE ${link.failureName || link.failureUuid})-[RATED]->(RISKRATING ${link.riskRatingName || link.riskRatingUuid}).`);
@@ -385,15 +394,15 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
         const safetyTaskNodeType = "SAFETYTASKS";
         for (const safetyTask of data.safetyTasks || []) {
             const { uuid, properties: rawProperties } = safetyTask;
-            const { createdMillis, lastModifiedMillis, propsAll, propsNoTS } = buildNodeParams(rawProperties);
+            const { createdISO, lastModifiedISO, propsAll, propsNoTS } = buildNodeParams(rawProperties);
             const result = await tx.run(
                 'MERGE (task:SAFETYTASKS {uuid: $uuid}) ' +
                 'ON CREATE SET task = $propsAll, task.uuid = $uuid, ' +
-                'task.created = coalesce($createdMillis, timestamp()), ' +
-                'task.lastModified = coalesce($lastModifiedMillis, timestamp()) ' +
+                "task.created = coalesce($createdISO, toString(datetime())), " +
+                "task.lastModified = coalesce($lastModifiedISO, toString(datetime())) " +
                 'ON MATCH SET task += $propsNoTS ' +
                 'RETURN task.name AS name, task.created AS created, task.lastModified AS lastModified',
-                { uuid, propsAll, propsNoTS, createdMillis, lastModifiedMillis }
+                { uuid, propsAll, propsNoTS, createdISO, lastModifiedISO }
             );
             const record = result.records[0];
             if (record) {
@@ -402,8 +411,8 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 const updatedAtRaw = record.get('lastModified');
                 let action = 'processed';
 
-                const createdAtNum = convertNeo4jTimestampToNumber(createdAtRaw);
-                const updatedAtNum = convertNeo4jTimestampToNumber(updatedAtRaw);
+                const createdAtNum = toEpochMillis(createdAtRaw);
+                const updatedAtNum = toEpochMillis(updatedAtRaw);
 
                 if (createdAtNum !== null && updatedAtNum !== null) {
                     if (createdAtNum === updatedAtNum) {
@@ -486,7 +495,7 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 'MATCH (n {uuid: $nodeUuid}) ' +
                 'MATCH (task:SAFETYTASKS {uuid: $safetyTaskUuid}) ' +
                 'MERGE (n)-[rel:TASKREF]->(task) ' +
-                'ON CREATE SET rel.created = timestamp(), rel.lastModified = timestamp() ',
+                'ON CREATE SET rel.created = toString(datetime()), rel.lastModified = toString(datetime()) ',
                 { nodeUuid: nodeUuidToUse, safetyTaskUuid: link.safetyTaskUuid }
             );
             logs.push(`[SUCCESS] TASKREF relationship linked: (${link.nodeName || nodeUuidToUse})-[TASKREF]->(SAFETYTASKS ${link.safetyTaskName || link.safetyTaskUuid}).`);
@@ -496,15 +505,15 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
         const safetyReqNodeType = "SAFETYREQ";
         for (const safetyReq of data.safetyReqs || []) {
             const { uuid, properties: rawProperties } = safetyReq;
-            const { createdMillis, lastModifiedMillis, propsAll, propsNoTS } = buildNodeParams(rawProperties);
+            const { createdISO, lastModifiedISO, propsAll, propsNoTS } = buildNodeParams(rawProperties);
             const result = await tx.run(
                 'MERGE (req:SAFETYREQ {uuid: $uuid}) ' +
                 'ON CREATE SET req = $propsAll, req.uuid = $uuid, ' +
-                'req.created = coalesce($createdMillis, timestamp()), ' +
-                'req.lastModified = coalesce($lastModifiedMillis, timestamp()) ' +
+                "req.created = coalesce($createdISO, toString(datetime())), " +
+                "req.lastModified = coalesce($lastModifiedISO, toString(datetime())) " +
                 'ON MATCH SET req += $propsNoTS ' +
                 'RETURN req.name AS name, req.created AS created, req.lastModified AS lastModified',
-                { uuid, propsAll, propsNoTS, createdMillis, lastModifiedMillis }
+                { uuid, propsAll, propsNoTS, createdISO, lastModifiedISO }
             );
             const record = result.records[0];
             if (record) {
@@ -513,8 +522,8 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 const updatedAtRaw = record.get('lastModified');
                 let action = 'processed';
 
-                const createdAtNum = convertNeo4jTimestampToNumber(createdAtRaw);
-                const updatedAtNum = convertNeo4jTimestampToNumber(updatedAtRaw);
+                const createdAtNum = toEpochMillis(createdAtRaw);
+                const updatedAtNum = toEpochMillis(updatedAtRaw);
 
                 if (createdAtNum !== null && updatedAtNum !== null) {
                     if (createdAtNum === updatedAtNum) {
@@ -557,7 +566,7 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 'MATCH (n {uuid: $nodeUuid}) ' +
                 'MATCH (req:SAFETYREQ {uuid: $safetyReqUuid}) ' +
                 'MERGE (n)-[rel:HAS_SAFETY_REQUIREMENT]->(req) ' +
-                'ON CREATE SET rel.created = timestamp(), rel.lastModified = timestamp() ',
+                'ON CREATE SET rel.created = toString(datetime()), rel.lastModified = toString(datetime()) ',
                 { nodeUuid: link.nodeUuid, safetyReqUuid: link.safetyReqUuid }
             );
             logs.push(`[SUCCESS] HAS_SAFETY_REQUIREMENT relationship linked: (${link.nodeName || link.nodeUuid})-[HAS_SAFETY_REQUIREMENT]->(SAFETYREQ ${link.safetyReqName || link.safetyReqUuid}).`);
@@ -567,15 +576,15 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
         const safetyNoteNodeType = "SAFETYNOTE";
         for (const safetyNote of data.safetyNotes || []) {
             const { uuid, properties: rawProperties } = safetyNote;
-            const { createdMillis, lastModifiedMillis, propsAll, propsNoTS } = buildNodeParams(rawProperties);
+            const { createdISO, lastModifiedISO, propsAll, propsNoTS } = buildNodeParams(rawProperties);
             const result = await tx.run(
                 'MERGE (note:SAFETYNOTE {uuid: $uuid}) ' +
                 'ON CREATE SET note = $propsAll, note.uuid = $uuid, ' +
-                'note.created = coalesce($createdMillis, timestamp()), ' +
-                'note.lastModified = coalesce($lastModifiedMillis, timestamp()) ' +
+                "note.created = coalesce($createdISO, toString(datetime())), " +
+                "note.lastModified = coalesce($lastModifiedISO, toString(datetime())) " +
                 'ON MATCH SET note += $propsNoTS ' +
                 'RETURN note.note AS noteContent, note.created AS created, note.lastModified AS lastModified',
-                { uuid, propsAll, propsNoTS, createdMillis, lastModifiedMillis }
+                { uuid, propsAll, propsNoTS, createdISO, lastModifiedISO }
             );
             const record = result.records[0];
             if (record) {
@@ -584,8 +593,8 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 const updatedAtRaw = record.get('lastModified');
                 let action = 'processed';
 
-                const createdAtNum = convertNeo4jTimestampToNumber(createdAtRaw);
-                const updatedAtNum = convertNeo4jTimestampToNumber(updatedAtRaw);
+                const createdAtNum = toEpochMillis(createdAtRaw);
+                const updatedAtNum = toEpochMillis(updatedAtRaw);
 
                 if (createdAtNum !== null && updatedAtNum !== null) {
                     if (createdAtNum === updatedAtNum) {
@@ -674,7 +683,7 @@ export async function importSafetyGraphData(data: SafetyGraphData): Promise<{
                 'MATCH (n {uuid: $nodeUuid}) ' +
                 'MATCH (note:SAFETYNOTE {uuid: $safetyNoteUuid}) ' +
                 'MERGE (n)-[rel:NOTEREF]->(note) ' +
-                'ON CREATE SET rel.created = timestamp(), rel.lastModified = timestamp() ',
+                'ON CREATE SET rel.created = toString(datetime()), rel.lastModified = toString(datetime()) ',
                 { nodeUuid: nodeUuidToUse, safetyNoteUuid: link.safetyNoteUuid }
             );
             logs.push(`[SUCCESS] NOTEREF relationship linked: (${nodeLabels} ${link.nodeName || nodeUuidToUse})-[NOTEREF]->(SAFETYNOTE ${link.safetyNoteName || link.safetyNoteUuid}).`);
