@@ -522,6 +522,7 @@ const ArchViewerInner = () => {
   debugLog(`🚀 Executing OPTIMIZED connection fetching...`);
       
       const partnerResult = await getPartnerPortsForComponentsOptimized(componentIds);
+
   debugLog(`✅ OPTIMIZED query completed successfully`);
       
       const connectionFetchEnd = performance.now();
@@ -537,8 +538,38 @@ const ArchViewerInner = () => {
             if (record && typeof record.get === 'function') {
               const sourcePortUUID = record.get('sourcePortUUID');
               const partnerPortUUID = record.get('partnerPortUUID');
+              const partnerPortOwnerUUID = record.get('partnerPortOwnerUUID');
+              const partnerPortName = record.get('partnerPortName');
+              const partnerPortType = record.get('partnerPortType');
+
+              // Normalize to provider (P) -> receiver (R)
               if (sourcePortUUID && partnerPortUUID) {
-                newConnections.set(sourcePortUUID, partnerPortUUID);
+                const srcType = allPortsList.find(p => p.uuid === sourcePortUUID)?.type;
+                const tgtType = partnerPortType as string | undefined;
+                if (srcType === 'P_PORT_PROTOTYPE' && tgtType === 'R_PORT_PROTOTYPE') {
+                  newConnections.set(sourcePortUUID, partnerPortUUID);
+                } else if (srcType === 'R_PORT_PROTOTYPE' && tgtType === 'P_PORT_PROTOTYPE') {
+                  newConnections.set(partnerPortUUID, sourcePortUUID);
+                } else {
+                  // Skip non P<->R or unknown type pairs; helpful debug
+                  console.debug('[ArchViewer] Skipping non P<->R pair', { sourcePortUUID, srcType, partnerPortUUID, tgtType });
+                }
+              }
+
+              // Ensure we have a port->component mapping for the partner port even if
+              // the partner component wasn't included in the initial ports batch.
+              if (partnerPortUUID && partnerPortOwnerUUID && !newPortToComponentMap.has(partnerPortUUID)) {
+                newPortToComponentMap.set(partnerPortUUID, partnerPortOwnerUUID);
+              }
+
+              // If the partner port wasn't returned by getAllPortsForComponents, add a lightweight
+              // placeholder PortInfo so `portById.get(...)` in the renderer can find it.
+              if (partnerPortUUID && !allPortsList.find(p => p.uuid === partnerPortUUID)) {
+                allPortsList.push({
+                  uuid: partnerPortUUID,
+                  name: partnerPortName || 'Unknown Port',
+                  type: partnerPortType || 'UNKNOWN_PORT_TYPE'
+                });
               }
             }
           });
