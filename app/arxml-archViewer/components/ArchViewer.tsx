@@ -320,7 +320,7 @@ const ArchViewerInner = () => {
   const [isMobile, setIsMobile] = useState(false);
   const [allComponents, setAllComponents] = useState<SWComponent[]>([]);
   const [allPorts, setAllPorts] = useState<PortInfo[]>([]);
-  const [connections, setConnections] = useState<Map<string, string>>(new Map());
+  const [connections, setConnections] = useState<Map<string, string[]>>(new Map());
   const [portToComponentMap, setPortToComponentMap] = useState<Map<string, string>>(new Map());
   const [selectedComponentIds, setSelectedComponentIds] = useState<string[]>([]);
   const [pendingComponentIds, setPendingComponentIds] = useState<string[]>([]);
@@ -376,13 +376,15 @@ const ArchViewerInner = () => {
   // Precompute adjacency (partners) once; reused by ordering and condensed grouping
   const portPartners = useMemo(() => {
     const map = new Map<string, {ports: string[]; components: string[]}>();
-    connections.forEach((targetPortUuid, sourcePortUuid) => {
-      const a = sourcePortUuid, b = targetPortUuid;
-      const compA = portToComponentMap.get(a); const compB = portToComponentMap.get(b);
-      if (!map.has(a)) map.set(a,{ports:[],components:[]});
-      if (!map.has(b)) map.set(b,{ports:[],components:[]});
-      map.get(a)!.ports.push(b); if (compB) map.get(a)!.components.push(compB);
-      map.get(b)!.ports.push(a); if (compA) map.get(b)!.components.push(compA);
+    connections.forEach((targetPortUuids, sourcePortUuid) => {
+      for (const targetPortUuid of targetPortUuids) {
+        const a = sourcePortUuid, b = targetPortUuid;
+        const compA = portToComponentMap.get(a); const compB = portToComponentMap.get(b);
+        if (!map.has(a)) map.set(a,{ports:[],components:[]});
+        if (!map.has(b)) map.set(b,{ports:[],components:[]});
+        map.get(a)!.ports.push(b); if (compB) map.get(a)!.components.push(compB);
+        map.get(b)!.ports.push(a); if (compA) map.get(b)!.components.push(compA);
+      }
     });
     return map;
   }, [connections, portToComponentMap]);
@@ -452,8 +454,8 @@ const ArchViewerInner = () => {
         
         setAllComponents(filteredComponents);
         
-        // Don't load ports and connections initially - only when user selects components
-        setConnections(new Map());
+  // Don't load ports and connections initially - only when user selects components
+  setConnections(new Map<string, string[]>());
         setPortToComponentMap(new Map());
         setAllPorts([]);
         
@@ -472,7 +474,7 @@ const ArchViewerInner = () => {
   // Function to load ports and connections for selected components
   const loadComponentData = useCallback(async (componentIds: string[]) => {
     if (componentIds.length === 0) {
-      setConnections(new Map());
+      setConnections(new Map<string, string[]>());
       setPortToComponentMap(new Map());
       setAllPorts([]);
       return;
@@ -487,7 +489,7 @@ const ArchViewerInner = () => {
       
       const selectedComponents = allComponents.filter(c => componentIds.includes(c.uuid));
 
-      const newConnections = new Map<string, string>();
+  const newConnections = new Map<string, string[]>();
       const newPortToComponentMap = new Map<string, string>();
       const allPortsList: PortInfo[] = [];
 
@@ -546,10 +548,18 @@ const ArchViewerInner = () => {
               if (sourcePortUUID && partnerPortUUID) {
                 const srcType = allPortsList.find(p => p.uuid === sourcePortUUID)?.type;
                 const tgtType = partnerPortType as string | undefined;
+                const addConn = (from: string, to: string) => {
+                  const arr = newConnections.get(from);
+                  if (arr) {
+                    if (!arr.includes(to)) arr.push(to);
+                  } else {
+                    newConnections.set(from, [to]);
+                  }
+                };
                 if (srcType === 'P_PORT_PROTOTYPE' && tgtType === 'R_PORT_PROTOTYPE') {
-                  newConnections.set(sourcePortUUID, partnerPortUUID);
+                  addConn(sourcePortUUID, partnerPortUUID);
                 } else if (srcType === 'R_PORT_PROTOTYPE' && tgtType === 'P_PORT_PROTOTYPE') {
-                  newConnections.set(partnerPortUUID, sourcePortUUID);
+                  addConn(partnerPortUUID, sourcePortUUID);
                 } else {
                   // Skip non P<->R or unknown type pairs; helpful debug
                   console.debug('[ArchViewer] Skipping non P<->R pair', { sourcePortUUID, srcType, partnerPortUUID, tgtType });
@@ -579,7 +589,7 @@ const ArchViewerInner = () => {
       const connectionProcessingTime = connectionProcessingEnd - connectionProcessingStart;
   debugLog(`⚡ Connection processing completed in ${connectionProcessingTime.toFixed(2)}ms`);
 
-      setConnections(newConnections);
+  setConnections(newConnections);
       setPortToComponentMap(newPortToComponentMap);
       setAllPorts(allPortsList);
       
@@ -587,6 +597,7 @@ const ArchViewerInner = () => {
       const endTime = performance.now();
       const totalTime = endTime - startTime;
   debugLog(`✅ Component data loading completed in ${totalTime.toFixed(2)}ms total`);
+  const totalPairs = Array.from(newConnections.values()).reduce((sum, arr) => sum + arr.length, 0);
   debugLog(`📊 DETAILED Performance breakdown:
         - Port fetching: ${(portFetchEnd - portFetchStart).toFixed(2)}ms (${((portFetchEnd - portFetchStart) / totalTime * 100).toFixed(1)}%)
         - Connection fetching: ${connectionFetchTime.toFixed(2)}ms (${(connectionFetchTime / totalTime * 100).toFixed(1)}%)
@@ -594,11 +605,11 @@ const ArchViewerInner = () => {
         - Other processing: ${(totalTime - (portFetchEnd - portFetchStart) - connectionFetchTime - connectionProcessingTime).toFixed(2)}ms
         - Components processed: ${selectedComponents.length}
         - Total ports loaded: ${allPortsList.length}
-        - Total connections found: ${newConnections.size}
+        - Total connections found: ${totalPairs}
         - PORT OPTIMIZATION: Used SINGLE BATCH QUERY for port fetching
         - CONNECTION OPTIMIZATION: Used OPTIMIZED ASSEMBLY CONNECTOR query
-        - Connection efficiency: ${newConnections.size > 0 ? (newConnections.size / connectionFetchTime * 1000).toFixed(0) : 0} connections/second
-        - Overall efficiency: ${((allPortsList.length + newConnections.size) / totalTime * 1000).toFixed(0)} total records/second`);
+        - Connection efficiency: ${totalPairs > 0 ? (totalPairs / connectionFetchTime * 1000).toFixed(0) : 0} connections/second
+        - Overall efficiency: ${((allPortsList.length + totalPairs) / totalTime * 1000).toFixed(0)} total records/second`);
         
     } catch (error) {
       console.error('Failed to load component data:', error);
@@ -758,62 +769,59 @@ const ArchViewerInner = () => {
 
   // Helper function to create condensed connections from detailed connections
   const createCondensedConnections = useCallback((
-    allConnections: Map<string, string>,
+    allConnections: Map<string, string[]>,
     selectedComponents: SWComponent[]
   ): Map<string, ConnectionGroup> => {
     const componentConnections = new Map<string, ConnectionGroup>();
     const selectedComponentUuids = selectedComponents.map(c => c.uuid);
     
-    allConnections.forEach((targetPortUuid, sourcePortUuid) => {
-      const sourcePort = portById.get(sourcePortUuid);
-      const targetPort = portById.get(targetPortUuid);
-      
-      if (!sourcePort || !targetPort) return;
-      
-      const sourceCompId = portToComponentMap.get(sourcePortUuid);
-      const targetCompId = portToComponentMap.get(targetPortUuid);
-      
-      if (!sourceCompId || !targetCompId) return;
-      if (!selectedComponentUuids.includes(sourceCompId) || !selectedComponentUuids.includes(targetCompId)) return;
-      if (sourceCompId === targetCompId) return;
-      
-      // Determine correct direction based on port types
-      let providerCompId: string, receiverCompId: string;
-      let providerPort: PortInfo, receiverPort: PortInfo;
-      
-      if (sourcePort.type === 'P_PORT_PROTOTYPE' && targetPort.type === 'R_PORT_PROTOTYPE') {
-        providerCompId = sourceCompId;
-        receiverCompId = targetCompId;
-        providerPort = sourcePort;
-        receiverPort = targetPort;
-      } else if (sourcePort.type === 'R_PORT_PROTOTYPE' && targetPort.type === 'P_PORT_PROTOTYPE') {
-        providerCompId = targetCompId;
-        receiverCompId = sourceCompId;
-        providerPort = targetPort;
-        receiverPort = sourcePort;
-      } else {
-        return; // Skip invalid connections
-      }
-      
-      const connectionKey = `${providerCompId}->${receiverCompId}`;
-      
-      if (!componentConnections.has(connectionKey)) {
-        componentConnections.set(connectionKey, {
-          sourceComponentId: providerCompId,
-          targetComponentId: receiverCompId,
-          connections: [],
-          connectionCount: 0
+    allConnections.forEach((targetPortUuids, sourcePortUuid) => {
+      for (const targetPortUuid of targetPortUuids) {
+        const sourcePort = portById.get(sourcePortUuid);
+        const targetPort = portById.get(targetPortUuid);
+        if (!sourcePort || !targetPort) continue;
+
+        const sourceCompId = portToComponentMap.get(sourcePortUuid);
+        const targetCompId = portToComponentMap.get(targetPortUuid);
+        if (!sourceCompId || !targetCompId) continue;
+        if (!selectedComponentUuids.includes(sourceCompId) || !selectedComponentUuids.includes(targetCompId)) continue;
+        if (sourceCompId === targetCompId) continue;
+
+        // Determine correct direction based on port types
+        let providerCompId: string, receiverCompId: string;
+        let providerPort: PortInfo, receiverPort: PortInfo;
+        if (sourcePort.type === 'P_PORT_PROTOTYPE' && targetPort.type === 'R_PORT_PROTOTYPE') {
+          providerCompId = sourceCompId;
+          receiverCompId = targetCompId;
+          providerPort = sourcePort;
+          receiverPort = targetPort;
+        } else if (sourcePort.type === 'R_PORT_PROTOTYPE' && targetPort.type === 'P_PORT_PROTOTYPE') {
+          providerCompId = targetCompId;
+          receiverCompId = sourceCompId;
+          providerPort = targetPort;
+          receiverPort = sourcePort;
+        } else {
+          continue; // Skip invalid connections
+        }
+
+        const connectionKey = `${providerCompId}->${receiverCompId}`;
+        if (!componentConnections.has(connectionKey)) {
+          componentConnections.set(connectionKey, {
+            sourceComponentId: providerCompId,
+            targetComponentId: receiverCompId,
+            connections: [],
+            connectionCount: 0
+          });
+        }
+        const group = componentConnections.get(connectionKey)!;
+        group.connections.push({
+          sourcePortId: sourcePortUuid,
+          targetPortId: targetPortUuid,
+          sourcePort: providerPort,
+          targetPort: receiverPort
         });
+        group.connectionCount++;
       }
-      
-      const group = componentConnections.get(connectionKey)!;
-      group.connections.push({
-        sourcePortId: sourcePortUuid,
-        targetPortId: targetPortUuid,
-        sourcePort: providerPort,
-        targetPort: receiverPort
-      });
-      group.connectionCount++;
     });
     
     return componentConnections;
@@ -851,13 +859,25 @@ const ArchViewerInner = () => {
     for (const port of ports) {
       const partners: number[] = [];
       // A connection can list this port as key (source) OR value (target)
-      connections.forEach((targetPortUuid, sourcePortUuid) => {
-        if (sourcePortUuid === port.uuid || targetPortUuid === port.uuid) {
-          const partnerPortUuid = sourcePortUuid === port.uuid ? targetPortUuid : sourcePortUuid;
-          const partnerComponentUuid = portToComponentMap.get(partnerPortUuid);
-          if (partnerComponentUuid) {
-            const idx = componentIndexMap.get(partnerComponentUuid);
-            if (idx !== undefined) partners.push(idx);
+      connections.forEach((targetPortUuids, sourcePortUuid) => {
+        // source side
+        if (sourcePortUuid === port.uuid) {
+          for (const partnerPortUuid of targetPortUuids) {
+            const partnerComponentUuid = portToComponentMap.get(partnerPortUuid);
+            if (partnerComponentUuid) {
+              const idx = componentIndexMap.get(partnerComponentUuid);
+              if (idx !== undefined) partners.push(idx);
+            }
+          }
+        }
+        // target side (reverse)
+        for (const targetPortUuid of targetPortUuids) {
+          if (targetPortUuid === port.uuid) {
+            const partnerComponentUuid = portToComponentMap.get(sourcePortUuid);
+            if (partnerComponentUuid) {
+              const idx = componentIndexMap.get(partnerComponentUuid);
+              if (idx !== undefined) partners.push(idx);
+            }
           }
         }
       });
@@ -888,13 +908,23 @@ const ArchViewerInner = () => {
   // Compute average Y position of partner nodes for a given port (barycenter). Ports with partners higher up get placed earlier.
   const averagePartnerY = useCallback((portUuid: string, yMap: Map<string, number>): number => {
     const ys: number[] = [];
-    connections.forEach((targetPortUuid, sourcePortUuid) => {
-      if (sourcePortUuid === portUuid || targetPortUuid === portUuid) {
-        const partnerPortUuid = sourcePortUuid === portUuid ? targetPortUuid : sourcePortUuid;
-        const partnerComponentUuid = portToComponentMap.get(partnerPortUuid);
-        if (partnerComponentUuid) {
-          const y = yMap.get(partnerComponentUuid);
-          if (y !== undefined) ys.push(y);
+    connections.forEach((targetPortUuids, sourcePortUuid) => {
+      if (sourcePortUuid === portUuid) {
+        for (const partnerPortUuid of targetPortUuids) {
+          const partnerComponentUuid = portToComponentMap.get(partnerPortUuid);
+          if (partnerComponentUuid) {
+            const y = yMap.get(partnerComponentUuid);
+            if (y !== undefined) ys.push(y);
+          }
+        }
+      }
+      for (const targetPortUuid of targetPortUuids) {
+        if (targetPortUuid === portUuid) {
+          const partnerComponentUuid = portToComponentMap.get(sourcePortUuid);
+          if (partnerComponentUuid) {
+            const y = yMap.get(partnerComponentUuid);
+            if (y !== undefined) ys.push(y);
+          }
         }
       }
     });
@@ -1050,64 +1080,59 @@ const ArchViewerInner = () => {
       let edgeCount = 0;
       const processedConnections = new Set<string>();
       
-      connections.forEach((targetPortUuid, sourcePortUuid) => {
-        const sourcePort = portById.get(sourcePortUuid);
-        const targetPort = portById.get(targetPortUuid);
+      connections.forEach((targetPortUuids, sourcePortUuid) => {
+        for (const targetPortUuid of targetPortUuids) {
+          const sourcePort = portById.get(sourcePortUuid);
+          const targetPort = portById.get(targetPortUuid);
+          if (!sourcePort || !targetPort) continue;
 
-        if (!sourcePort || !targetPort) return;
-        
-        let providerPort: PortInfo;
-        let receiverPort: PortInfo;
-        let providerPortUuid: string;
-        let receiverPortUuid: string;
-        
-        if (sourcePort.type === 'P_PORT_PROTOTYPE' && targetPort.type === 'R_PORT_PROTOTYPE') {
-          providerPort = sourcePort;
-          receiverPort = targetPort;
-          providerPortUuid = sourcePortUuid;
-          receiverPortUuid = targetPortUuid;
-        } else if (sourcePort.type === 'R_PORT_PROTOTYPE' && targetPort.type === 'P_PORT_PROTOTYPE') {
-          providerPort = targetPort;
-          receiverPort = sourcePort;
-          providerPortUuid = targetPortUuid;
-          receiverPortUuid = sourcePortUuid;
-        } else {
-          return;
-        }
-
-        const sortedIds = [providerPortUuid, receiverPortUuid].sort();
-        const connectionId = `${sortedIds[0]}<->${sortedIds[1]}`;
-        
-        if (processedConnections.has(connectionId)) return;
-        processedConnections.add(connectionId);
-
-        const providerComponentUuid = portToComponentMap.get(providerPortUuid);
-        const receiverComponentUuid = portToComponentMap.get(receiverPortUuid);
-
-        if (!providerComponentUuid || !receiverComponentUuid) return;
-        if (!selectedComponentUuids.includes(providerComponentUuid) || !selectedComponentUuids.includes(receiverComponentUuid)) return;
-        if (providerComponentUuid === receiverComponentUuid) return;
-        
-        edgeCount++;
-        const edge = {
-          id: `${providerComponentUuid}->${receiverComponentUuid}-${edgeCount}`,
-          source: providerComponentUuid,
-          target: receiverComponentUuid,
-          sourceHandle: providerPortUuid,
-          targetHandle: receiverPortUuid,
-          animated: true,
-          style: {
-            strokeWidth: 1.5
-          },
-          data: {
-            sourcePort: providerPort,
-            targetPort: receiverPort,
-            connectionMapping: `${sourcePortUuid}->${targetPortUuid}`,
-            isCondensed: false
+          let providerPort: PortInfo;
+          let receiverPort: PortInfo;
+          let providerPortUuid: string;
+          let receiverPortUuid: string;
+          if (sourcePort.type === 'P_PORT_PROTOTYPE' && targetPort.type === 'R_PORT_PROTOTYPE') {
+            providerPort = sourcePort;
+            receiverPort = targetPort;
+            providerPortUuid = sourcePortUuid;
+            receiverPortUuid = targetPortUuid;
+          } else if (sourcePort.type === 'R_PORT_PROTOTYPE' && targetPort.type === 'P_PORT_PROTOTYPE') {
+            providerPort = targetPort;
+            receiverPort = sourcePort;
+            providerPortUuid = targetPortUuid;
+            receiverPortUuid = sourcePortUuid;
+          } else {
+            continue;
           }
-        };
-        
-        newEdges.push(edge);
+
+          const sortedIds = [providerPortUuid, receiverPortUuid].sort();
+          const connectionId = `${sortedIds[0]}<->${sortedIds[1]}`;
+          if (processedConnections.has(connectionId)) continue;
+          processedConnections.add(connectionId);
+
+          const providerComponentUuid = portToComponentMap.get(providerPortUuid);
+          const receiverComponentUuid = portToComponentMap.get(receiverPortUuid);
+          if (!providerComponentUuid || !receiverComponentUuid) continue;
+          if (!selectedComponentUuids.includes(providerComponentUuid) || !selectedComponentUuids.includes(receiverComponentUuid)) continue;
+          if (providerComponentUuid === receiverComponentUuid) continue;
+
+          edgeCount++;
+          const edge = {
+            id: `${providerComponentUuid}->${receiverComponentUuid}-${edgeCount}`,
+            source: providerComponentUuid,
+            target: receiverComponentUuid,
+            sourceHandle: providerPortUuid,
+            targetHandle: receiverPortUuid,
+            animated: true,
+            style: { strokeWidth: 1.5 },
+            data: {
+              sourcePort: providerPort,
+              targetPort: receiverPort,
+              connectionMapping: `${sourcePortUuid}->${targetPortUuid}`,
+              isCondensed: false
+            }
+          };
+          newEdges.push(edge);
+        }
       });
 
       elkLayout(newNodes, newEdges).then(({nodes: layoutedNodes, edges: layoutedEdges}) => {
@@ -1116,13 +1141,15 @@ const ArchViewerInner = () => {
 
         // Cache: port -> partner port uuids, partner component uuids
         const portPartners = new Map<string, {ports: string[]; components: string[]}>();
-        connections.forEach((targetPortUuid, sourcePortUuid) => {
-          const a = sourcePortUuid, b = targetPortUuid;
-          const compA = portToComponentMap.get(a); const compB = portToComponentMap.get(b);
+        connections.forEach((targetPortUuids, sourcePortUuid) => {
+          for (const targetPortUuid of targetPortUuids) {
+            const a = sourcePortUuid, b = targetPortUuid;
+            const compA = portToComponentMap.get(a); const compB = portToComponentMap.get(b);
             if (!portPartners.has(a)) portPartners.set(a,{ports:[],components:[]});
             if (!portPartners.has(b)) portPartners.set(b,{ports:[],components:[]});
             portPartners.get(a)!.ports.push(b); if (compB) portPartners.get(a)!.components.push(compB);
             portPartners.get(b)!.ports.push(a); if (compA) portPartners.get(b)!.components.push(compA);
+          }
         });
 
         const median = (nums: number[]) => {
@@ -1765,53 +1792,55 @@ const ArchViewerInner = () => {
     const pairKey = (a: string, b: string) => `${a} -> ${b}`;
     const byPair = new Map<string, { lower: SWComponent; higher: SWComponent; count: number }>();
 
-    connections.forEach((targetPortUuid, sourcePortUuid) => {
-      const sourcePort = portById.get(sourcePortUuid);
-      const targetPort = portById.get(targetPortUuid);
-      if (!sourcePort || !targetPort) return;
+    connections.forEach((targetPortUuids, sourcePortUuid) => {
+      for (const targetPortUuid of targetPortUuids) {
+        const sourcePort = portById.get(sourcePortUuid);
+        const targetPort = portById.get(targetPortUuid);
+        if (!sourcePort || !targetPort) continue;
 
-      // Normalize to provider/receiver
-      let providerPort: PortInfo | undefined;
-      let receiverPort: PortInfo | undefined;
-      if (sourcePort.type === 'P_PORT_PROTOTYPE' && targetPort.type === 'R_PORT_PROTOTYPE') {
-        providerPort = sourcePort;
-        receiverPort = targetPort;
-      } else if (sourcePort.type === 'R_PORT_PROTOTYPE' && targetPort.type === 'P_PORT_PROTOTYPE') {
-        providerPort = targetPort;
-        receiverPort = sourcePort;
-      } else {
-        return;
+        // Normalize to provider/receiver
+        let providerPort: PortInfo | undefined;
+        let receiverPort: PortInfo | undefined;
+        if (sourcePort.type === 'P_PORT_PROTOTYPE' && targetPort.type === 'R_PORT_PROTOTYPE') {
+          providerPort = sourcePort;
+          receiverPort = targetPort;
+        } else if (sourcePort.type === 'R_PORT_PROTOTYPE' && targetPort.type === 'P_PORT_PROTOTYPE') {
+          providerPort = targetPort;
+          receiverPort = sourcePort;
+        } else {
+          continue;
+        }
+
+        const providerCompId = providerPort ? portToComponentMap.get(providerPort.uuid) : undefined;
+        const receiverCompId = receiverPort ? portToComponentMap.get(receiverPort.uuid) : undefined;
+        if (!providerCompId || !receiverCompId) continue;
+        if (!selectedSet.has(providerCompId) || !selectedSet.has(receiverCompId)) continue;
+        if (providerCompId === receiverCompId) continue;
+
+        const providerComp = compById.get(providerCompId);
+        const receiverComp = compById.get(receiverCompId);
+        if (!providerComp || !receiverComp) continue;
+
+        const pRank = asilRank[providerComp.asil] ?? -1;
+        const rRank = asilRank[receiverComp.asil] ?? -1;
+        if (pRank < 0 || rRank < 0) continue; // skip unknown
+
+        inspectedConnections += 1;
+
+        let lower: SWComponent | null = null;
+        let higher: SWComponent | null = null;
+        if (pRank < rRank) {
+          lower = providerComp; higher = receiverComp;
+        } else if (rRank < pRank) {
+          lower = receiverComp; higher = providerComp;
+        }
+        if (!lower || !higher) continue;
+
+        const key = pairKey(lower.uuid, higher.uuid);
+        const entry = byPair.get(key) ?? { lower, higher, count: 0 };
+        entry.count += 1;
+        byPair.set(key, entry);
       }
-
-      const providerCompId = providerPort ? portToComponentMap.get(providerPort.uuid) : undefined;
-      const receiverCompId = receiverPort ? portToComponentMap.get(receiverPort.uuid) : undefined;
-      if (!providerCompId || !receiverCompId) return;
-      if (!selectedSet.has(providerCompId) || !selectedSet.has(receiverCompId)) return;
-      if (providerCompId === receiverCompId) return;
-
-      const providerComp = compById.get(providerCompId);
-      const receiverComp = compById.get(receiverCompId);
-      if (!providerComp || !receiverComp) return;
-
-      const pRank = asilRank[providerComp.asil] ?? -1;
-      const rRank = asilRank[receiverComp.asil] ?? -1;
-      if (pRank < 0 || rRank < 0) return; // skip unknown
-
-      inspectedConnections += 1;
-
-      let lower: SWComponent | null = null;
-      let higher: SWComponent | null = null;
-      if (pRank < rRank) {
-        lower = providerComp; higher = receiverComp;
-      } else if (rRank < pRank) {
-        lower = receiverComp; higher = providerComp;
-      }
-      if (!lower || !higher) return;
-
-      const key = pairKey(lower.uuid, higher.uuid);
-      const entry = byPair.get(key) ?? { lower, higher, count: 0 };
-      entry.count += 1;
-      byPair.set(key, entry);
     });
 
     return { byPair, inspectedConnections };
