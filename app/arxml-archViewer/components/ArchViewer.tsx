@@ -942,20 +942,18 @@ const ArchViewerInner = () => {
       return;
     }
 
+    // Build component -> ports map in a single pass for performance
+    const selectedSet = new Set(selectedComponents.map(c => c.uuid));
     const componentPorts = new Map<string, { provider: PortInfo[], receiver: PortInfo[] }>();
-    
-    for (const component of selectedComponents) {
-        const providerPorts = allPorts.filter(p => 
-            portToComponentMap.get(p.uuid) === component.uuid && p.type === 'P_PORT_PROTOTYPE'
-        );
-        const receiverPorts = allPorts.filter(p => 
-            portToComponentMap.get(p.uuid) === component.uuid && p.type === 'R_PORT_PROTOTYPE'
-        );
-        
-        componentPorts.set(component.uuid, {
-            provider: providerPorts,
-            receiver: receiverPorts
-        });
+    for (const port of allPorts) {
+      const compId = portToComponentMap.get(port.uuid);
+      if (!compId || !selectedSet.has(compId)) continue;
+      if (!componentPorts.has(compId)) {
+        componentPorts.set(compId, { provider: [], receiver: [] });
+      }
+      const entry = componentPorts.get(compId)!;
+      if (port.type === 'P_PORT_PROTOTYPE') entry.provider.push(port);
+      else if (port.type === 'R_PORT_PROTOTYPE') entry.receiver.push(port);
     }
 
     if (condensedView) {
@@ -1075,7 +1073,8 @@ const ArchViewerInner = () => {
       });
       
       // Create detailed edges (original logic)
-      const selectedComponentUuids: string[] = selectedComponents.map((c: SWComponent) => c.uuid);
+  const selectedComponentUuids: string[] = selectedComponents.map((c: SWComponent) => c.uuid);
+  const selectedSetFast = new Set(selectedComponentUuids);
       const newEdges: Edge[] = [];
       let edgeCount = 0;
       const processedConnections = new Set<string>();
@@ -1112,7 +1111,7 @@ const ArchViewerInner = () => {
           const providerComponentUuid = portToComponentMap.get(providerPortUuid);
           const receiverComponentUuid = portToComponentMap.get(receiverPortUuid);
           if (!providerComponentUuid || !receiverComponentUuid) continue;
-          if (!selectedComponentUuids.includes(providerComponentUuid) || !selectedComponentUuids.includes(receiverComponentUuid)) continue;
+          if (!selectedSetFast.has(providerComponentUuid) || !selectedSetFast.has(receiverComponentUuid)) continue;
           if (providerComponentUuid === receiverComponentUuid) continue;
 
           edgeCount++;
@@ -1139,18 +1138,7 @@ const ArchViewerInner = () => {
         // Build quick lookup for node vertical positions
         const yMap = new Map(layoutedNodes.map(n => [n.id, n.position.y] as const));
 
-        // Cache: port -> partner port uuids, partner component uuids
-        const portPartners = new Map<string, {ports: string[]; components: string[]}>();
-        connections.forEach((targetPortUuids, sourcePortUuid) => {
-          for (const targetPortUuid of targetPortUuids) {
-            const a = sourcePortUuid, b = targetPortUuid;
-            const compA = portToComponentMap.get(a); const compB = portToComponentMap.get(b);
-            if (!portPartners.has(a)) portPartners.set(a,{ports:[],components:[]});
-            if (!portPartners.has(b)) portPartners.set(b,{ports:[],components:[]});
-            portPartners.get(a)!.ports.push(b); if (compB) portPartners.get(a)!.components.push(compB);
-            portPartners.get(b)!.ports.push(a); if (compA) portPartners.get(b)!.components.push(compA);
-          }
-        });
+  // Reuse precomputed portPartners (from useMemo) instead of rebuilding it here
 
         const median = (nums: number[]) => {
           if (!nums.length) return Number.MAX_SAFE_INTEGER - 1;
