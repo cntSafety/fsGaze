@@ -1,8 +1,8 @@
 import neo4j from "neo4j-driver";
 
-const URI = "neo4j://localhost";
-const USER = "neo4j";
-const PASSWORD = "testtest"; // Make sure to use environment variables for credentials in production
+export const URI = "neo4j://localhost";
+export const USER = "neo4j";
+export const PASSWORD = "testtest"; // Make sure to use environment variables for credentials in production
 
 // Create a single driver instance to reuse across the application
 export const driver = neo4j.driver(URI, neo4j.auth.basic(USER, PASSWORD));

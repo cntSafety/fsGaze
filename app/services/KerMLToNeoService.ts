@@ -1,8 +1,5 @@
 import neo4j, { Session } from "neo4j-driver";
-
-const URI = "neo4j://localhost";
-const USER = "neo4j";
-const PASSWORD = "testtest";
+import { URI, USER, PASSWORD } from "./neo4j/config";
 
 // Create a single driver instance to reuse across the application
 const driver = neo4j.driver(URI, neo4j.auth.basic(USER, PASSWORD));

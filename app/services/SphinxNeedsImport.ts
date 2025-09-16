@@ -1,8 +1,5 @@
 import neo4j, { Session } from "neo4j-driver";
-
-const URI = "neo4j://localhost";
-const USER = "neo4j";
-const PASSWORD = "testtest";
+import { URI, USER, PASSWORD } from "./neo4j/config";
 
 /**
  * Imports Sphinx Needs data from a JSON file into Neo4j database
