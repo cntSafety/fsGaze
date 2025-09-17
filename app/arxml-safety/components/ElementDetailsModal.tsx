@@ -508,8 +508,16 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
                 );
               })()}
 
-              {/* Collapsible Card: SR Interfaces */}
-              {(srInterfaceConnections.length > 0 || srInterfaceConnectionsR.length > 0) && (
+              {/* Collapsible Card: SR Interfaces (render only when filtered lists have content) */}
+              {(() => {
+                const srPFiltered = srInterfaceConnections.filter(conn =>
+                  Boolean(conn.SRInterfaceName || conn.swComponentClassName || conn.receiverPortName || conn.failureModeName)
+                );
+                const srRFiltered = srInterfaceConnectionsR.filter(conn =>
+                  Boolean(conn.SRInterfaceName || conn.swComponentClassName || conn.providerPortName || conn.failureModeName)
+                );
+                if (srPFiltered.length === 0 && srRFiltered.length === 0) return null;
+                return (
                 <Card
                   size="small"
                   style={{ marginTop: token.marginMD }}
@@ -519,7 +527,7 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
                       style={{ cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 8 }}
                     >
                       <span>📡 Shared SENDER-RECEIVER Interfaces</span>
-                      <Text type="secondary">({srInterfaceConnections.length + srInterfaceConnectionsR.length})</Text>
+                      <Text type="secondary">({srPFiltered.length + srRFiltered.length})</Text>
                     </div>
                   }
                   extra={
@@ -530,14 +538,14 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
                   bodyStyle={{ display: showSrInterfaces ? 'block' : 'none', paddingTop: token.paddingXS }}
                 >
                   {/* SR Interface-based Connections for P-Ports */}
-                  {srInterfaceConnections.length > 0 && (
+                  {srPFiltered.length > 0 && (
                     <Card
                       type="inner"
-                      title={`📡 Shared SENDER_RECEIVER_INTERFACE definitions (${srInterfaceConnections.length})`}
+                      title={`📡 Shared SENDER_RECEIVER_INTERFACE definitions (${srPFiltered.length})`}
                       style={{ marginTop: token.marginSM }}
                     >
                       <Space direction="vertical" style={{ width: '100%' }}>
-                        {srInterfaceConnections.map((conn, index) => (
+                        {srPFiltered.map((conn, index) => (
                           <Card key={`sr-conn-${index}`} size="small">
                             <Descriptions column={1} size="small" labelStyle={{ width: '140px' }}>
                               {conn.SRInterfaceName && (
@@ -545,21 +553,23 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
                                   <Tag color="purple">{conn.SRInterfaceName}</Tag>
                                 </Descriptions.Item>
                               )}
-                              <Descriptions.Item label="Component">
-                                {conn.swComponentClassUUID ? (
-                                  <Link href={`/arxml-safety/${conn.swComponentClassUUID}`} legacyBehavior>
-                                    <a>
-                                      <Tag color={getAsilColor(conn.failureModeASIL || '') || 'cyan'}>
-                                        {conn.swComponentClassName || 'Unknown Component'}
-                                      </Tag>
-                                    </a>
-                                  </Link>
-                                ) : (
-                                  <Tag color={getAsilColor(conn.failureModeASIL || '') || 'cyan'}>
-                                    {conn.swComponentClassName || 'Unknown Component'}
-                                  </Tag>
-                                )}
-                              </Descriptions.Item>
+                              {conn.swComponentClassName && (
+                                <Descriptions.Item label="Component">
+                                  {conn.swComponentClassUUID ? (
+                                    <Link href={`/arxml-safety/${conn.swComponentClassUUID}`} legacyBehavior>
+                                      <a>
+                                        <Tag color={getAsilColor(conn.failureModeASIL || '') || 'cyan'}>
+                                          {conn.swComponentClassName}
+                                        </Tag>
+                                      </a>
+                                    </Link>
+                                  ) : (
+                                    <Tag color={getAsilColor(conn.failureModeASIL || '') || 'cyan'}>
+                                      {conn.swComponentClassName}
+                                    </Tag>
+                                  )}
+                                </Descriptions.Item>
+                              )}
                               {conn.receiverPortName && (
                                 <Descriptions.Item label="Receiver Port">
                                   <Text code>{conn.receiverPortName}</Text>
@@ -609,14 +619,14 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
                   )}
 
                   {/* SR Interface-based Connections for R-Ports */}
-                  {srInterfaceConnectionsR.length > 0 && (
+                  {srRFiltered.length > 0 && (
                     <Card
                       type="inner"
-                      title={`📡 Shared SENDER_RECEIVER_INTERFACE definitions (${srInterfaceConnectionsR.length})`}
+                      title={`📡 Shared SENDER_RECEIVER_INTERFACE definitions (${srRFiltered.length})`}
                       style={{ marginTop: token.marginSM }}
                     >
                       <Space direction="vertical" style={{ width: '100%' }}>
-                        {srInterfaceConnectionsR.map((conn, index) => (
+                        {srRFiltered.map((conn, index) => (
                           <Card key={`sr-conn-r-${index}`} size="small">
                             <Descriptions column={1} size="small" labelStyle={{ width: '140px' }}>
                               {conn.SRInterfaceName && (
@@ -624,21 +634,23 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
                                   <Tag color="purple">{conn.SRInterfaceName}</Tag>
                                 </Descriptions.Item>
                               )}
-                              <Descriptions.Item label="Component">
-                                {conn.swComponentClassUUID ? (
-                                  <Link href={`/arxml-safety/${conn.swComponentClassUUID}`} legacyBehavior>
-                                    <a>
-                                      <Tag color={getAsilColor(conn.failureModeASIL || '') || 'cyan'}>
-                                        {conn.swComponentClassName || 'Unknown Component'}
-                                      </Tag>
-                                    </a>
-                                  </Link>
-                                ) : (
-                                  <Tag color={getAsilColor(conn.failureModeASIL || '') || 'cyan'}>
-                                    {conn.swComponentClassName || 'Unknown Component'}
-                                  </Tag>
-                                )}
-                              </Descriptions.Item>
+                              {conn.swComponentClassName && (
+                                <Descriptions.Item label="Component">
+                                  {conn.swComponentClassUUID ? (
+                                    <Link href={`/arxml-safety/${conn.swComponentClassUUID}`} legacyBehavior>
+                                      <a>
+                                        <Tag color={getAsilColor(conn.failureModeASIL || '') || 'cyan'}>
+                                          {conn.swComponentClassName}
+                                        </Tag>
+                                      </a>
+                                    </Link>
+                                  ) : (
+                                    <Tag color={getAsilColor(conn.failureModeASIL || '') || 'cyan'}>
+                                      {conn.swComponentClassName}
+                                    </Tag>
+                                  )}
+                                </Descriptions.Item>
+                              )}
                               {conn.providerPortName && (
                                 <Descriptions.Item label="Provider Port">
                                   <Text code>{conn.providerPortName}</Text>
@@ -687,11 +699,18 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
                     </Card>
                   )}
                 </Card>
-              )}
+              )})()}
 
               
-              {/* Collapsible Card: Client-Server Operation for this Port (independent of SR Interfaces section) */}
-              {clientServerOps.length > 0 && (
+              {/* Collapsible Card: Client-Server Operation for this Port (render only with meaningful data) */}
+              {(() => {
+                const filteredCsoRows = clientServerOps.filter(r =>
+                  Boolean(r.clientServerOpUuid || r.clientServerOpName || r.partnerPortOwnerName || r.partnerPortName)
+                );
+                if (filteredCsoRows.length === 0) return null;
+                // Compute count of unique operations from filtered rows
+                const uniqueOps = new Set(filteredCsoRows.map(r => r.clientServerOpUuid || r.clientServerOpName));
+                return (
                 <Card
                   size="small"
                   style={{ marginTop: token.marginSM }}
@@ -701,7 +720,7 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
                       style={{ cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 8 }}
                     >
                       <span>🔁 Client Server Operations</span>
-                      <Text type="secondary">({new Set(clientServerOps.map(r => r.clientServerOpUuid || r.clientServerOpName)).size})</Text>
+                      <Text type="secondary">({uniqueOps.size})</Text>
                     </div>
                   }
                   extra={
@@ -713,37 +732,49 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
                 >
                   {(() => {
                     // Group rows by operation UUID (fallback to name)
-                    const groups = new Map<string, { name: string; uuid: string; partners: Array<{ ownerName: string | null; portName: string | null }> }>();
-                    clientServerOps.forEach(r => {
+                    const groups = new Map<string, { name?: string; uuid?: string; partners: Array<{ ownerName?: string | null; portName?: string | null }> }>();
+                    filteredCsoRows.forEach(r => {
                       const key = r.clientServerOpUuid || r.clientServerOpName;
+                      if (!key) return; // skip rows with no operation id/name
                       if (!groups.has(key)) {
-                        groups.set(key, { name: r.clientServerOpName, uuid: r.clientServerOpUuid, partners: [] });
+                        groups.set(key, { name: r.clientServerOpName || undefined, uuid: r.clientServerOpUuid || undefined, partners: [] });
                       }
-                      groups.get(key)!.partners.push({ ownerName: r.partnerPortOwnerName, portName: r.partnerPortName });
+                      // push partner only if at least one field present
+                      if (r.partnerPortOwnerName || r.partnerPortName) {
+                        groups.get(key)!.partners.push({ ownerName: r.partnerPortOwnerName, portName: r.partnerPortName });
+                      }
                     });
 
                     return (
                       <Space direction="vertical" style={{ width: '100%' }}>
-                        {Array.from(groups.values()).map((group, idx) => (
+                        {Array.from(groups.values())
+                          .filter(g => Boolean(g.name || g.uuid || (g.partners && g.partners.length)))
+                          .map((group, idx) => (
                           <Card key={`cso-group-${group.uuid || idx}`} size="small">
                             <Descriptions column={1} size="small" labelStyle={{ width: '160px' }}>
-                              <Descriptions.Item label="Operation">
-                                <Tag color="gold" style={{ whiteSpace: 'nowrap' }}>{group.name || 'Unknown Operation'}</Tag>
-                              </Descriptions.Item>
-                              <Descriptions.Item label="UUID">
-                                <Text code>{group.uuid}</Text>
-                              </Descriptions.Item>
+                              {group.name && (
+                                <Descriptions.Item label="Operation">
+                                  <Tag color="gold" style={{ whiteSpace: 'nowrap' }}>{group.name}</Tag>
+                                </Descriptions.Item>
+                              )}
+                              {group.uuid && (
+                                <Descriptions.Item label="UUID">
+                                  <Text code>{group.uuid}</Text>
+                                </Descriptions.Item>
+                              )}
                             </Descriptions>
                             <div style={{ marginTop: 6 }}>
                               <Text strong>Related Partners:</Text>
                               <div style={{ marginTop: 6 }}>
-                                {group.partners.map((p, pi) => (
-                                  <div key={`partner-${pi}`} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'nowrap' }}>
-                                    <Tag color="purple" style={{ whiteSpace: 'nowrap' }}>{p.ownerName || 'Unknown Owner'}</Tag>
-                                    <span>—</span>
-                                    <Tag style={{ whiteSpace: 'nowrap' }}>{p.portName || 'Unknown Port'}</Tag>
-                                  </div>
-                                ))}
+                                {group.partners
+                                  .filter(p => Boolean(p.ownerName || p.portName))
+                                  .map((p, pi) => (
+                                    <div key={`partner-${pi}`} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'nowrap' }}>
+                                      {p.ownerName && <Tag color="purple" style={{ whiteSpace: 'nowrap' }}>{p.ownerName}</Tag>}
+                                      {p.ownerName && p.portName && <span>—</span>}
+                                      {p.portName && <Tag style={{ whiteSpace: 'nowrap' }}>{p.portName}</Tag>}
+                                    </div>
+                                  ))}
                               </div>
                             </div>
                           </Card>
@@ -752,7 +783,7 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
                     );
                   })()}
                 </Card>
-              )}
+              )})()}
 
               {/* Communication Partners via Required Interface */}
               {communicationPartners.length > 0 && (
