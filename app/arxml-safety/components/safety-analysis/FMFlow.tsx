@@ -88,6 +88,12 @@ export const ProviderPortFailureNodeHandleDark = '#006D75';      // cyan-8
 export const CausationEdgeColorLight = '#FAAD14'; // warning (gold-6)
 export const CausationEdgeColorDark = '#D48806';  // warning deeper (gold-7)
 
+// Special highlight for locations tied to CLIENT_SERVER_OPERATION
+// Dark mode: Ant-like green-8 approximation; Light mode: deeper green-4 tone
+
+export const ClientServerBgLight = '#6abe39';
+export const ClientServerBgDark = '#8fd460';
+
 interface FMFlowProps {
   swComponent: SwComponent;
   failures: Failure[];
@@ -109,6 +115,9 @@ interface NodeData {
   failureUuid: string;
   portName?: string;
   portUuid?: string;
+  // Optional: flags when location is related to a CLIENT_SERVER_OPERATION
+  clientServerOpUuid?: string;
+  clientServerOpName?: string;
 }
 
 // Custom node component for SW Component failures (center)
@@ -117,19 +126,24 @@ function SwFailureNode({ data }: { data: NodeData }) {
   const { themeMode } = useTheme();
   const isDark = themeMode === 'dark';
   const isNonSafety = isNonSafetyAsil(data.asil);
-  const textColor = isDark && isNonSafety ? token.colorTextSecondary : token.colorTextLightSolid;
+  // In light mode use dark text; in dark mode keep light/secondary
+  const textColor = isDark
+    ? (isNonSafety ? token.colorTextSecondary : token.colorTextLightSolid)
+    : token.colorText;
   const background = hexToRgba(
-    isDark ? SwFailureNodeBackgroundDark : SwFailureNodeBackgroundLight,
+    // If linked to CLIENT_SERVER_OPERATION, use special green base color
+    data.clientServerOpUuid ? (isDark ? ClientServerBgDark : ClientServerBgLight)
+      : (isDark ? SwFailureNodeBackgroundDark : SwFailureNodeBackgroundLight),
     getAlphaByAsil(data.asil, isDark)
   );
   const handleColor = isDark ? SwFailureNodeHandleDark : SwFailureNodeHandleLight;
+  // No frame; we highlight background color instead
   
   return (
     <div style={{
       padding: '12px 16px',
       borderRadius: '8px',
       background,
-      border: 'none',
       boxShadow: token.boxShadow,
       width: 320,
       color: textColor,
@@ -172,20 +186,26 @@ function ReceiverPortFailureNode({ data }: { data: NodeData }) {
   const { themeMode } = useTheme();
   const isDark = themeMode === 'dark';
   const isNonSafety = isNonSafetyAsil(data.asil);
-  const labelTextColor = isDark && isNonSafety ? token.colorTextSecondary : token.colorTextLightSolid;
-  const asilTextColor = isDark && isNonSafety ? token.colorTextTertiary : token.colorTextLightSolid;
+  // In light mode prefer dark text for better contrast
+  const labelTextColor = isDark
+    ? (isNonSafety ? token.colorTextSecondary : token.colorTextLightSolid)
+    : token.colorText;
+  const asilTextColor = isDark
+    ? (isNonSafety ? token.colorTextTertiary : token.colorTextLightSolid)
+    : token.colorTextSecondary;
   const background = hexToRgba(
-    isDark ? ReceiverPortFailureNodeBackgroundDark : ReceiverPortFailureNodeBackgroundLight,
+    data.clientServerOpUuid ? (isDark ? ClientServerBgDark : ClientServerBgLight)
+      : (isDark ? ReceiverPortFailureNodeBackgroundDark : ReceiverPortFailureNodeBackgroundLight),
     getAlphaByAsil(data.asil, isDark)
   );
   const handleColor = isDark ? ReceiverPortFailureNodeHandleDark : ReceiverPortFailureNodeHandleLight;
+  // No frame when client-server op; background handles highlight
   
   return (
     <div style={{
       padding: '10px 14px',
       borderRadius: '6px',
       background,
-      border: 'none',
       boxShadow: token.boxShadowSecondary,
       width: 300,
       position: 'relative',
@@ -225,20 +245,26 @@ function ProviderPortFailureNode({ data }: { data: NodeData }) {
   const { themeMode } = useTheme();
   const isDark = themeMode === 'dark';
   const isNonSafety = isNonSafetyAsil(data.asil);
-  const labelTextColor = isDark && isNonSafety ? token.colorTextSecondary : token.colorTextLightSolid;
-  const asilTextColor = isDark && isNonSafety ? token.colorTextTertiary : token.colorTextLightSolid;
+  // In light mode prefer dark text for better contrast
+  const labelTextColor = isDark
+    ? (isNonSafety ? token.colorTextSecondary : token.colorTextLightSolid)
+    : token.colorText;
+  const asilTextColor = isDark
+    ? (isNonSafety ? token.colorTextTertiary : token.colorTextLightSolid)
+    : token.colorTextSecondary;
   const background = hexToRgba(
-    isDark ? ProviderPortFailureNodeBackgroundDark : ProviderPortFailureNodeBackgroundLight,
+    data.clientServerOpUuid ? (isDark ? ClientServerBgDark : ClientServerBgLight)
+      : (isDark ? ProviderPortFailureNodeBackgroundDark : ProviderPortFailureNodeBackgroundLight),
     getAlphaByAsil(data.asil, isDark)
   );
   const handleColor = isDark ? ProviderPortFailureNodeHandleDark : ProviderPortFailureNodeHandleLight;
+  // No frame; background color denotes client-server relation
   
   return (
     <div style={{
       padding: '10px 14px',
       borderRadius: '6px',
       background,
-      border: 'none',
       boxShadow: token.boxShadowSecondary,
       width: 300,
       position: 'relative',
@@ -444,7 +470,6 @@ export default function FMFlow({
 
   // Build nodes from props, fetch component-scoped causations, build edges, apply layout
   const generateGraph = useCallback(async () => {
-    console.log(`[FMFlow] Generating graph for component: ${swComponent.uuid}`);
     const newNodes: Node[] = [];
     const newEdges: Edge[] = [];
     let usedServiceData = false;
@@ -452,6 +477,7 @@ export default function FMFlow({
     // 1) Try to fetch component-scoped graph data from Neo4j
     try {
       const result = await getSafetyGraphForComponent(swComponent.uuid);
+      console.log("the result of the query is:", result);
       if (result.success && result.data && result.data.length > 0) {
         const rows: any[] = result.data as any[];
 
@@ -478,6 +504,8 @@ export default function FMFlow({
               asil: row.failureAsil || 'N/A',
               description: undefined,
               failureUuid: row.failureUuid,
+              clientServerOpUuid: row.clientServerOpUuid || undefined,
+              clientServerOpName: row.clientServerOpName || undefined,
             };
           } else { // isPort
             const prefix = isReceiver ? 'receiver' : 'provider';
@@ -490,6 +518,8 @@ export default function FMFlow({
               description: undefined,
               failureUuid: row.failureUuid,
               portUuid: row.locationUuid,
+              clientServerOpUuid: row.clientServerOpUuid || undefined,
+              clientServerOpName: row.clientServerOpName || undefined,
             };
           }
 
@@ -546,7 +576,6 @@ export default function FMFlow({
 
         newNodes.push(...Array.from(nodesMap.values()));
         usedServiceData = newNodes.length > 0;
-        console.log(`[FMFlow] Created ${newNodes.length} nodes and ${newEdges.length} edges from component-scoped service data`);
       }
     } catch (e) {
       console.warn('[FMFlow] getSafetyGraphForComponent failed, will fallback to props:', e);
@@ -648,24 +677,19 @@ export default function FMFlow({
 
     // Apply ELK layout on freshly built graph
     setEdges(newEdges);
-    console.log('[FMFlow] Set edges:', newEdges.length);
     try {
       const layouted = await layoutWithELK(newNodes, newEdges);
       setNodes(layouted);
-      console.log('[FMFlow] Set nodes:', layouted.length);
       requestAnimationFrame(() => {
         try {
           rfInstance?.fitView({ padding: 0.15, duration: 300 });
-          console.log('[FMFlow] Fit view applied');
         } catch { /* no-op */ }
       });
       setHasAppliedInitialLayout(true);
     } catch (e) {
       console.error('[FMFlow] ELK layout failed, setting raw nodes:', e);
       setNodes(newNodes);
-      console.log('[FMFlow] Set raw nodes:', newNodes.length);
     }
-    console.log('[FMFlow] generateGraph completed');
   }, [
     fetchCausationRelationships,
     setNodes,
@@ -789,7 +813,6 @@ export default function FMFlow({
 
   // Refresh Data: fetch from DB and rebuild the graph (no page reload)
   const handleRefresh = async () => {
-    console.log('[FMFlow] Refresh Data button clicked');
     setIsRefreshing(true);
     try {
       await generateGraph();
@@ -826,21 +849,26 @@ export default function FMFlow({
             {/* Receiver */}
             <Tag style={{
               background: hexToRgba(isDark ? ReceiverPortFailureNodeBackgroundDark : ReceiverPortFailureNodeBackgroundLight, isDark ? 0.25 : 0.3),
-              color: token.colorTextLightSolid,
+              color: isDark ? token.colorTextLightSolid : token.colorText,
               borderColor: isDark ? ReceiverPortFailureNodeHandleDark : ReceiverPortFailureNodeHandleLight
             }}>Receiver Port Failures (Input)</Tag>
             {/* SW */}
             <Tag style={{
               background: hexToRgba(isDark ? SwFailureNodeBackgroundDark : SwFailureNodeBackgroundLight, isDark ? 0.25 : 0.3),
-              color: token.colorTextLightSolid,
+              color: isDark ? token.colorTextLightSolid : token.colorText,
               borderColor: isDark ? SwFailureNodeHandleDark : SwFailureNodeHandleLight
             }}>SW Component Failures (Internal)</Tag>
             {/* Provider */}
             <Tag style={{
               background: hexToRgba(isDark ? ProviderPortFailureNodeBackgroundDark : ProviderPortFailureNodeBackgroundLight, isDark ? 0.25 : 0.3),
-              color: token.colorTextLightSolid,
+              color: isDark ? token.colorTextLightSolid : token.colorText,
               borderColor: isDark ? ProviderPortFailureNodeHandleDark : ProviderPortFailureNodeHandleLight
             }}>Provider Port Failures (Output)</Tag>
+            {/* Client-Server Operation highlight */}
+            <Tag style={{
+              background: hexToRgba(isDark ? ClientServerBgDark : ClientServerBgLight, isDark ? 0.25 : 0.3),
+              color: isDark ? token.colorTextLightSolid : token.colorText,
+            }}>FM related to Client-Server Port</Tag>
             <Tag 
               style={{ 
                 borderColor: token.colorWarning, 

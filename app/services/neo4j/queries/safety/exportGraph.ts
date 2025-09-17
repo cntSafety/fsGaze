@@ -288,6 +288,8 @@ export async function getSafetyGraphForComponent(componentUuid: string): Promise
         locationUuid: string;
         locationName: string;
         locLabels: string[];
+        clientServerOpUuid: string;
+        clientServerOpName: string;
     }>;
     message?: string;
 }> {
@@ -312,7 +314,10 @@ export async function getSafetyGraphForComponent(componentUuid: string): Promise
             // 4. Fetch ASIL rating for the failure
             OPTIONAL MATCH (scoped_failure)-[:RATED]->(rr:RISKRATING)
 
-            // 5. Return the details of the chain, including the location of the scoped failure
+            //5. Check if it the location has a "OPERATION-REF" to a CLIENT-SERVER-OPERATION
+            OPTIONAL MATCH (loc)-[]->(clienServerOp:CLIENT_SERVER_OPERATION)
+
+            // 6. Return the details of the chain, including the location of the scoped failure
             RETURN
                 c.uuid AS cuuid,
                 scoped_failure.uuid AS failureUuid, // The failure that occurs in the component
@@ -325,7 +330,10 @@ export async function getSafetyGraphForComponent(componentUuid: string): Promise
                 // Add location info for context
                 loc.uuid as locationUuid, // Named for compatibility; can be component or port
                 loc.name as locationName,
-                labels(loc) as locLabels
+                labels(loc) as locLabels,
+                clienServerOp.uuid as clientServerOpUuid,
+                clienServerOp.name as clientServerOpName
+
         `;
         const result = await session.run(query, { componentUuid });
         const rows = result.records.map(record => ({
@@ -340,6 +348,8 @@ export async function getSafetyGraphForComponent(componentUuid: string): Promise
             locationUuid: record.get('locationUuid'),
             locationName: record.get('locationName'),
             locLabels: record.get('locLabels'),
+            clientServerOpUuid: record.get('clientServerOpUuid'),
+            clientServerOpName: record.get('clientServerOpName')
         }));
 
         return { success: true, data: rows };

@@ -46,13 +46,15 @@ First read the sphinx needs instructions see https://sphinx-needs.readthedocs.io
 create the virtual enviroment (.venv) by running
 
 ```bash
-python -m venv .venv
+python -m venv .
 ```
 
 activate the .venv
 
 ```bash
-.venv\Scripts\activate
+.venv\Scripts\activate 
+or for Linux
+source .venv/bin/activate
 ```
 
 install the packages from requirements.txt then generate html and the needs.json
