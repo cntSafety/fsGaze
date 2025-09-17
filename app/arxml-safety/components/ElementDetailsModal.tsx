@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Typography, Descriptions, Tag, Spin, Alert, Button, Space, Card, theme, Flex } from 'antd';
-import { InfoCircleOutlined, LinkOutlined } from '@ant-design/icons';
+import { InfoCircleOutlined, LinkOutlined, DownOutlined, RightOutlined } from '@ant-design/icons';
 import { 
   getAssemblyContextForPPort, 
   getAssemblyContextForRPort, 
@@ -10,7 +10,9 @@ import {
   getSRInterfaceBasedConforRPort, 
   SRInterfaceConnectionInfoRPort,
   getPartnerPort,
-  PartnerPortInfo
+  PartnerPortInfo,
+  getClientServerOperation,
+  ClientServerOperationRelation
 } from '@/app/services/neo4j/queries/ports';
 import { AssemblyContextInfo } from '@/app/services/neo4j/types';
 import Link from 'next/link';
@@ -52,12 +54,14 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
   const [srInterfaceConnectionsR, setSrInterfaceConnectionsR] = useState<SRInterfaceConnectionInfoRPort[]>([]);
   const [partnerPorts, setPartnerPorts] = useState<PartnerPortInfo[]>([]);
   const [showSrInterfaces, setShowSrInterfaces] = useState(false);
+  const [showClientServerOps, setShowClientServerOps] = useState(false);
   const [showCompositions, setShowCompositions] = useState(false);
   const [communicationPartners, setCommunicationPartners] = useState<Array<{
     partnerName: string;
     partnerUUID: string;
     partnerPath: string;
   }>>([]);
+  const [clientServerOps, setClientServerOps] = useState<ClientServerOperationRelation[]>([]);
   const [isLoadingContext, setIsLoadingContext] = useState(false);
   const [contextError, setContextError] = useState<string | null>(null);
 
@@ -70,7 +74,9 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
       setSrInterfaceConnectionsR([]);
       setPartnerPorts([]);
       setShowSrInterfaces(false);
+  setShowClientServerOps(false);
       setShowCompositions(false);
+  setClientServerOps([]);
       setContextError(null);
       return;
     }
@@ -129,6 +135,19 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
           } else {
             setSrInterfaceConnectionsR([]);
           }
+        }
+
+        // Fetch Client-Server Operation for this port (if any)
+        try {
+          const csoRes = await getClientServerOperation(elementDetails.uuid);
+          if (csoRes.success && csoRes.data) {
+            setClientServerOps(csoRes.data);
+          } else {
+            setClientServerOps([]);
+          }
+        } catch (e) {
+          console.warn('Failed to fetch Client-Server Operation:', e);
+          setClientServerOps([]);
         }
 
         if (result && result.records) {
@@ -216,7 +235,7 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
       open={isVisible}
       onCancel={onClose}
       footer={null}
-      width={700}
+  width={910}
       destroyOnClose
       styles={{
         body: { 
@@ -489,17 +508,27 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
                 );
               })()}
 
-              {/* Toggle for SR Interfaces */}
+              {/* Collapsible Card: SR Interfaces */}
               {(srInterfaceConnections.length > 0 || srInterfaceConnectionsR.length > 0) && (
-                <div style={{ marginTop: token.marginMD }}>
-                  <Button onClick={() => setShowSrInterfaces(!showSrInterfaces)}>
-                    {showSrInterfaces ? 'Hide' : 'Show'} Shared SENDER-RECEIVER Interfaces
-                  </Button>
-                </div>
-              )}
-
-              {showSrInterfaces && (
-                <>
+                <Card
+                  size="small"
+                  style={{ marginTop: token.marginMD }}
+                  title={
+                    <div
+                      onClick={() => setShowSrInterfaces(!showSrInterfaces)}
+                      style={{ cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 8 }}
+                    >
+                      <span>📡 Shared SENDER-RECEIVER Interfaces</span>
+                      <Text type="secondary">({srInterfaceConnections.length + srInterfaceConnectionsR.length})</Text>
+                    </div>
+                  }
+                  extra={
+                    <span onClick={() => setShowSrInterfaces(!showSrInterfaces)} style={{ cursor: 'pointer' }}>
+                      {showSrInterfaces ? <DownOutlined /> : <RightOutlined />}
+                    </span>
+                  }
+                  bodyStyle={{ display: showSrInterfaces ? 'block' : 'none', paddingTop: token.paddingXS }}
+                >
                   {/* SR Interface-based Connections for P-Ports */}
                   {srInterfaceConnections.length > 0 && (
                     <Card
@@ -657,7 +686,72 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
                       </Space>
                     </Card>
                   )}
-                </>
+                </Card>
+              )}
+
+              
+              {/* Collapsible Card: Client-Server Operation for this Port (independent of SR Interfaces section) */}
+              {clientServerOps.length > 0 && (
+                <Card
+                  size="small"
+                  style={{ marginTop: token.marginSM }}
+                  title={
+                    <div
+                      onClick={() => setShowClientServerOps(!showClientServerOps)}
+                      style={{ cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 8 }}
+                    >
+                      <span>🔁 Client Server Operations</span>
+                      <Text type="secondary">({new Set(clientServerOps.map(r => r.clientServerOpUuid || r.clientServerOpName)).size})</Text>
+                    </div>
+                  }
+                  extra={
+                    <span onClick={() => setShowClientServerOps(!showClientServerOps)} style={{ cursor: 'pointer' }}>
+                      {showClientServerOps ? <DownOutlined /> : <RightOutlined />}
+                    </span>
+                  }
+                  bodyStyle={{ display: showClientServerOps ? 'block' : 'none', paddingTop: token.paddingXS }}
+                >
+                  {(() => {
+                    // Group rows by operation UUID (fallback to name)
+                    const groups = new Map<string, { name: string; uuid: string; partners: Array<{ ownerName: string | null; portName: string | null }> }>();
+                    clientServerOps.forEach(r => {
+                      const key = r.clientServerOpUuid || r.clientServerOpName;
+                      if (!groups.has(key)) {
+                        groups.set(key, { name: r.clientServerOpName, uuid: r.clientServerOpUuid, partners: [] });
+                      }
+                      groups.get(key)!.partners.push({ ownerName: r.partnerPortOwnerName, portName: r.partnerPortName });
+                    });
+
+                    return (
+                      <Space direction="vertical" style={{ width: '100%' }}>
+                        {Array.from(groups.values()).map((group, idx) => (
+                          <Card key={`cso-group-${group.uuid || idx}`} size="small">
+                            <Descriptions column={1} size="small" labelStyle={{ width: '160px' }}>
+                              <Descriptions.Item label="Operation">
+                                <Tag color="gold" style={{ whiteSpace: 'nowrap' }}>{group.name || 'Unknown Operation'}</Tag>
+                              </Descriptions.Item>
+                              <Descriptions.Item label="UUID">
+                                <Text code>{group.uuid}</Text>
+                              </Descriptions.Item>
+                            </Descriptions>
+                            <div style={{ marginTop: 6 }}>
+                              <Text strong>Related Partners:</Text>
+                              <div style={{ marginTop: 6 }}>
+                                {group.partners.map((p, pi) => (
+                                  <div key={`partner-${pi}`} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'nowrap' }}>
+                                    <Tag color="purple" style={{ whiteSpace: 'nowrap' }}>{p.ownerName || 'Unknown Owner'}</Tag>
+                                    <span>—</span>
+                                    <Tag style={{ whiteSpace: 'nowrap' }}>{p.portName || 'Unknown Port'}</Tag>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </Card>
+                        ))}
+                      </Space>
+                    );
+                  })()}
+                </Card>
               )}
 
               {/* Communication Partners via Required Interface */}

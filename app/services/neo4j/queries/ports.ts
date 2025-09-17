@@ -38,6 +38,24 @@ export interface SRInterfaceConnectionInfoRPort {
   swComponentClassType: string | null;
 }
 
+/** Basic info for a CLIENT_SERVER_OPERATION */
+export interface ClientServerOperationInfo {
+  uuid: string;
+  name: string;
+  arxmlPath: string;
+}
+
+/** Row describing a CLIENT_SERVER_OPERATION and its partner port/component relation */
+export interface ClientServerOperationRelation {
+  clientServerOpUuid: string;
+  clientServerOpName: string;
+  partnerPortUuid: string | null;
+  partnerPortName: string | null;
+  partnerPortOwnerUuid: string | null;
+  partnerPortOwnerName: string | null;
+  partnerPortOwnerType: string[] | null;
+}
+
 /**
  * Defines the structure for information about a partner port found via connection traversal.
  */
@@ -110,6 +128,60 @@ export const getAssemblyContextForPPort = async (pPortUuid: string): Promise<Que
       { pPortUuid }
     );
     return result;
+  } finally {
+    await session.close();
+  }
+};
+
+/**
+ * Finds a CLIENT_SERVER_OPERATION associated with a port by OPERATION-REF.
+ * Returns the operation's uuid, name and arxmlPath when present.
+ *
+ * @param portUuid UUID of the port node (P_PORT_PROTOTYPE or R_PORT_PROTOTYPE)
+ */
+export const getClientServerOperation = async (portUuid: string): Promise<{
+  success: boolean;
+  data?: ClientServerOperationRelation[];
+  message?: string;
+  error?: string;
+}> => {
+  const session = driver.session();
+  try {
+    const result = await session.run(
+      `MATCH (portNode) WHERE portNode.uuid = $portUuid
+       OPTIONAL MATCH (portNode)-[portToClientRel:\`OPERATION-REF\`]->(clientServerOp:CLIENT_SERVER_OPERATION)
+       OPTIONAL MATCH (clientServerOp)<-[ClientToPartnerPortRel:\`OPERATION-REF\`]-(partnerPort)
+       OPTIONAL MATCH (partnerPort)<-[:CONTAINS]-(partnerPortOwner)
+       RETURN DISTINCT
+         clientServerOp.uuid AS clientServerOpUuid,
+         clientServerOp.name AS clientServerOpName,
+         partnerPort.uuid AS partnerPortUuid,
+         partnerPort.name AS partnerPortName,
+         partnerPortOwner.uuid AS partnerPortOwnerUuid,
+         partnerPortOwner.name AS partnerPortOwnerName,
+         labels(partnerPortOwner) AS partnerPortOwnerType`,
+      { portUuid }
+    );
+
+    if (result.records.length === 0) {
+      return { success: true, data: [], message: 'No CLIENT_SERVER_OPERATION found for port' };
+    }
+
+    const rows: ClientServerOperationRelation[] = result.records.map((record) => ({
+      clientServerOpUuid: (record.get('clientServerOpUuid') as string) || '',
+      clientServerOpName: (record.get('clientServerOpName') as string) || '',
+      partnerPortUuid: (record.get('partnerPortUuid') as string) || null,
+      partnerPortName: (record.get('partnerPortName') as string) || null,
+      partnerPortOwnerUuid: (record.get('partnerPortOwnerUuid') as string) || null,
+      partnerPortOwnerName: (record.get('partnerPortOwnerName') as string) || null,
+      partnerPortOwnerType: (record.get('partnerPortOwnerType') as string[]) || null,
+    }));
+
+    return { success: true, data: rows };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('❌ Error in getClientServerOperation:', errorMessage);
+    return { success: false, message: 'Error fetching CLIENT_SERVER_OPERATION for port', error: errorMessage };
   } finally {
     await session.close();
   }
