@@ -49,7 +49,8 @@ export async function POST(request: Request) {
     const nodesByLabelGroups: Record<string, any[]> = {};
     
     for (const node of nodes) {
-      const primaryLabel = sanitizeFileName(node.labels[0] || 'UNKNOWN');
+      // Choose a deterministic primary label (alphabetical first), then sanitize
+      const primaryLabel = sanitizeFileName(([...node.labels].sort()[0]) || 'UNKNOWN');
       nodesByLabel[primaryLabel] = (nodesByLabel[primaryLabel] || 0) + 1;
       if (!nodesByLabelGroups[primaryLabel]) {
         nodesByLabelGroups[primaryLabel] = [];
@@ -76,30 +77,51 @@ export async function POST(request: Request) {
       archive.on('error', reject);
     });
 
-    // Add nodes to ZIP by label groups
-    for (const [labelName, labelNodes] of Object.entries(nodesByLabelGroups)) {
+    // Add nodes to ZIP by label groups (sorted for deterministic output)
+    const sortedGroupNames = Object.keys(nodesByLabelGroups).sort((a, b) =>
+      a.localeCompare(b, 'en', { numeric: true, sensitivity: 'base' })
+    );
+    for (const labelName of sortedGroupNames) {
+      const labelNodes = nodesByLabelGroups[labelName];
       console.log(`[ZIP EXPORT] Adding ${labelNodes.length} nodes for label: ${labelName}`);
       
       const filename = `nodes/${labelName}.json`;
       
-      // Prepare all nodes for this label, ensuring properties are sorted for consistency
-      const nodesForFile = labelNodes.map(node => ({
-        uuid: node.uuid,
-        labels: node.labels.sort(),
-        properties: Object.keys(node.properties)
-          .sort()
-          .reduce((sorted: Record<string, any>, key) => {
-            sorted[key] = node.properties[key];
-            return sorted;
-          }, {})
-      }));
+      // Prepare nodes with stable ordering (by name/shortName/uuid) and sorted properties
+      const nodesForFile = [...labelNodes]
+        .sort((a, b) => {
+          const an = String(a?.properties?.name ?? a?.properties?.shortName ?? a?.uuid ?? '');
+          const bn = String(b?.properties?.name ?? b?.properties?.shortName ?? b?.uuid ?? '');
+          const byName = an.localeCompare(bn, 'en', { numeric: true, sensitivity: 'base' });
+          if (byName !== 0) return byName;
+          return String(a?.uuid ?? '').localeCompare(String(b?.uuid ?? ''));
+        })
+        .map(node => ({
+          uuid: node.uuid,
+          labels: [...node.labels].sort(),
+          properties: Object.keys(node.properties)
+            .sort()
+            .reduce((sorted: Record<string, any>, key) => {
+              sorted[key] = node.properties[key];
+              return sorted;
+            }, {})
+        }));
       
       archive.append(JSON.stringify(nodesForFile, null, 2), { name: filename });
     }
 
     // Add relationships to ZIP
     console.log(`[ZIP EXPORT] Adding ${relationships.length} relationships`);
-    const relationshipsData = relationships.map((rel: any) => ({
+    // Ensure deterministic ordering for relationships as well
+    const relationshipsData = [...relationships]
+      .sort((a: any, b: any) => {
+        const t = String(a?.type ?? '').localeCompare(String(b?.type ?? ''), 'en', { sensitivity: 'base' });
+        if (t !== 0) return t;
+        const s = String(a?.startNodeUuid ?? '').localeCompare(String(b?.startNodeUuid ?? ''));
+        if (s !== 0) return s;
+        return String(a?.endNodeUuid ?? '').localeCompare(String(b?.endNodeUuid ?? ''));
+      })
+      .map((rel: any) => ({
       endNodeUuid: rel.endNodeUuid,
       properties: Object.keys(rel.properties)
         .sort()
@@ -147,12 +169,12 @@ export async function POST(request: Request) {
     console.log(`[ZIP EXPORT] Export completed! Total time: ${totalTime}ms (Neo4j: ${fetchTime}ms, ZIP: ${zipCreationTime}ms)`);
 
     // Return the ZIP file
-    const response = new NextResponse(zipBuffer, {
+    const response = new Response(new Uint8Array(zipBuffer), {
       status: 200,
       headers: {
         'Content-Type': 'application/zip',
         'Content-Disposition': `attachment; filename="graph-export-${new Date().toISOString().split('T')[0]}.zip"`,
-        'Content-Length': zipBuffer.length.toString(),
+        'Content-Length': String(zipBuffer.length),
       },
     });
 
