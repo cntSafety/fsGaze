@@ -1,8 +1,8 @@
 // Moved from app/arxml-importer/ArxmlImporter.tsx
 import React, { useState } from 'react';
-import { Button, Card, Typography, Space, message, Table, Checkbox, Input, Progress, theme } from 'antd';
-import { FolderOpenOutlined, SearchOutlined, CheckSquareOutlined, BorderOutlined } from '@ant-design/icons';
-import { uploadArxmlToNeo4j } from '../../services/ArxmlToNeoService'; 
+import { Button, Card, Typography, Space, message, Table, Checkbox, Input, Progress, theme, Spin, Modal, Alert } from 'antd';
+import { FolderOpenOutlined, FilterOutlined, CheckSquareOutlined, BorderOutlined, MergeCellsOutlined } from '@ant-design/icons';
+import { uploadArxmlToNeo4j, getLatestArxmlImportInfo } from '../../services/ArxmlToNeoService'; 
 
 const { Title, Text } = Typography;
 const { Search } = Input;
@@ -26,6 +26,16 @@ const ArxmlImporter: React.FC<ArxmlImporterProps> = () => {
   const [files, setFiles] = useState<ArxmlFile[]>([]);
   const [filteredFiles, setFilteredFiles] = useState<ArxmlFile[]>([]);
   const [dirHandle, setDirHandle] = useState<FileSystemDirectoryHandle | null>(null);
+  const [mergeNewFiles, setMergeNewFiles] = useState<boolean>(false);
+  const [isLoadingLastImport, setIsLoadingLastImport] = useState<boolean>(false);
+  const [isMetaModalOpen, setIsMetaModalOpen] = useState<boolean>(false);
+  const [lastImportMeta, setLastImportMeta] = useState<{
+    importTimestamp: string;
+    nodeCount: number;
+    relationshipCount: number;
+    fileNames: string[];
+    fileSizes: number[];
+  } | null>(null);
   const [selectedFilter] = useState<FilterType>('all');
   const [searchText, setSearchText] = useState('');
   const [isExtracting, setIsExtracting] = useState(false);
@@ -124,6 +134,37 @@ const ArxmlImporter: React.FC<ArxmlImporterProps> = () => {
   const handleSearch = (value: string) => {
     setSearchText(value);
     applyFilters(value, selectedFilter);
+  };
+
+  const handleMergeToggle = async (checked: boolean) => {
+    setMergeNewFiles(checked);
+    if (checked) {
+      setIsMetaModalOpen(true);
+      setIsLoadingLastImport(true);
+      try {
+        const res = await getLatestArxmlImportInfo();
+        if (res.success && res.data) {
+          const { importTimestamp, nodeCount, relationshipCount, fileNames = [], fileSizes = [] } = res.data as any;
+          setLastImportMeta({ importTimestamp, nodeCount, relationshipCount, fileNames, fileSizes });
+          const joined = (fileNames || []).join(', ');
+          if (joined) {
+            setSearchText(joined);
+            applyFilters(joined, selectedFilter);
+          }
+        } else {
+          setLastImportMeta(null);
+          messageApi.info(res.message || 'No previous import metadata found.');
+        }
+      } catch (e: any) {
+        setLastImportMeta(null);
+        messageApi.error(e?.message || 'Failed to load last import metadata');
+      } finally {
+        setIsLoadingLastImport(false);
+      }
+    } else {
+      setLastImportMeta(null);
+      setIsMetaModalOpen(false);
+    }
   };
 
   const handleFileSelect = (id: string, checked: boolean) => {
@@ -408,16 +449,35 @@ const ArxmlImporter: React.FC<ArxmlImporterProps> = () => {
       <Card
         title={<Title level={4}>ARXML File Importer</Title>}
         extra={
-          <Button type="primary" icon={<FolderOpenOutlined />} onClick={handleFolderSelect} disabled={isExtracting}>
-            Change Folder
-          </Button>
+          <Space>
+            <Button
+              icon={<MergeCellsOutlined />}
+              onClick={() => handleMergeToggle(true)}
+              disabled={isExtracting}
+            >
+              Get ARXML file names from last import
+            </Button>
+            <Button type="primary" icon={<FolderOpenOutlined />} onClick={handleFolderSelect} disabled={isExtracting}>
+              Change Folder
+            </Button>
+          </Space>
         }
       >
         <Space direction="vertical" style={{ width: '100%' }}>
           <Search
             placeholder="Search by filename or path (use commas to separate multiple terms)"
+            value={searchText}
+            allowClear
+            onChange={(e) => {
+              const v = e.target.value;
+              setSearchText(v);
+              if (!v.trim()) {
+                // If cleared, immediately reset filters
+                applyFilters('', selectedFilter);
+              }
+            }}
             onSearch={handleSearch}
-            enterButton={<SearchOutlined />}
+            enterButton={<FilterOutlined />}
             disabled={isExtracting}
           />
           <Space>
@@ -440,6 +500,57 @@ const ArxmlImporter: React.FC<ArxmlImporterProps> = () => {
           </Space>
         </Space>
       </Card>
+      <Modal
+        open={isMetaModalOpen}
+        onCancel={() => setIsMetaModalOpen(false)}
+        footer={null}
+        title="Last import metadata"
+        width={800}
+        destroyOnClose
+      >
+        <Spin spinning={isLoadingLastImport}>
+          {lastImportMeta ? (
+            <>
+              <Space direction="vertical" size={0} style={{ marginBottom: 12 }}>
+                <Text>
+                  <strong>Import Timestamp:</strong> {new Date(lastImportMeta.importTimestamp).toLocaleString()}
+                </Text>
+                <Text>
+                  <strong>Nodes:</strong> {lastImportMeta.nodeCount} <strong style={{ marginLeft: 8 }}>Relationships:</strong> {lastImportMeta.relationshipCount}
+                </Text>
+              </Space>
+              <Table
+                size="small"
+                pagination={false}
+                rowKey={(row) => row.fileName}
+                columns={[
+                  {
+                    title: 'File Name',
+                    dataIndex: 'fileName',
+                    key: 'fileName',
+                    sorter: (a: any, b: any) => a.fileName.localeCompare(b.fileName),
+                  },
+                  {
+                    title: 'Size (MB)',
+                    dataIndex: 'fileSize',
+                    key: 'fileSize',
+                    width: 140,
+                    sorter: (a: any, b: any) => (a.fileSize ?? 0) - (b.fileSize ?? 0),
+                    render: (size: number | null | undefined) =>
+                      size != null ? `${(size / (1024 * 1024)).toFixed(2)} MB` : '-',
+                  },
+                ]}
+                dataSource={(lastImportMeta.fileNames || []).map((fileName, idx) => ({
+                  fileName,
+                  fileSize: lastImportMeta.fileSizes?.[idx] ?? null,
+                }))}
+              />
+            </>
+          ) : (
+            !isLoadingLastImport && <Text type="secondary">No metadata available.</Text>
+          )}
+        </Spin>
+      </Modal>
       
       {isExtracting && (
         <Card style={{ marginTop: 16 }}>
