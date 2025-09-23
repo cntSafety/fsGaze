@@ -129,6 +129,30 @@ export class GlobalJamaService {
     }
 
     /**
+     * Get upstream related items for a given item ID
+     */
+    async getUpstreamRelated(itemId: number): Promise<number[]> {
+        const jamaService = await this.ensureValidConnection();
+        return jamaService.getUpstreamRelated(itemId);
+    }
+
+    /**
+     * Get downstream related items for a given item ID
+     */
+    async getDownstreamRelated(itemId: number): Promise<number[]> {
+        const jamaService = await this.ensureValidConnection();
+        return jamaService.getDownstreamRelated(itemId);
+    }
+
+    /**
+     * Get children items for a given item ID
+     */
+    async getChildren(itemId: number): Promise<number[]> {
+        const jamaService = await this.ensureValidConnection();
+        return jamaService.getChildren(itemId);
+    }
+
+    /**
      * Disconnect from Jama
      */
     disconnect(): void {

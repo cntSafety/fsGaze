@@ -4,6 +4,7 @@ import React from 'react';
 import { Card, Tabs } from 'antd';
 import JamaConnection from './components/JamaConnection';
 import RequirementsViewer from './components/RequirementsViewer';
+import JamaServiceDemo from '../components/JamaServiceDemo';
 import { useJamaConnection } from '../components/JamaConnectionProvider';
 
 const { TabPane } = Tabs;
@@ -31,8 +32,11 @@ const JamaDataPage: React.FC = () => {
                         <RequirementsViewer />
                     )}
                 </TabPane>
-                
 
+                <TabPane tab="Service Demo" key="demo" disabled={!isConnected}>
+                    {isConnected && <JamaServiceDemo />}
+                </TabPane>
+                
 
             </Tabs>
         </div>

@@ -15,7 +15,11 @@ import {
 } from 'antd';
 import { 
     SearchOutlined, 
-    FileTextOutlined
+    FileTextOutlined,
+    ArrowUpOutlined,
+    ArrowDownOutlined,
+    DownOutlined,
+    DownloadOutlined
 } from '@ant-design/icons';
 import { JamaItem } from '../types/jama';
 import { globalJamaService } from '../../services/globalJamaService';
@@ -49,11 +53,16 @@ const RequirementsViewer: React.FC = () => {
     
     // State
     const [loading, setLoading] = useState(false);
+    const [exportLoading, setExportLoading] = useState(false);
+    const [exportProgress, setExportProgress] = useState({ current: 0, total: 0, message: '' });
     const [itemId, setItemId] = useState<string>('');
     const [item, setItem] = useState<JamaItem | null>(null);
     const [asilInfo, setAsilInfo] = useState<{ field: string; value: string; optionName: string } | null>(null);
     const [reasonInfo, setReasonInfo] = useState<{ field: string; value: string } | null>(null);
     const [itemTypeInfo, setItemTypeInfo] = useState<{ id: number; display: string } | null>(null);
+    const [upstreamRelated, setUpstreamRelated] = useState<number[]>([]);
+    const [downstreamRelated, setDownstreamRelated] = useState<number[]>([]);
+    const [children, setChildren] = useState<number[]>([]);
     const [error, setError] = useState<string | null>(null);
 
     const handleItemIdChange = (value: string) => {
@@ -62,6 +71,9 @@ const RequirementsViewer: React.FC = () => {
         setAsilInfo(null);
         setReasonInfo(null);
         setItemTypeInfo(null);
+        setUpstreamRelated([]);
+        setDownstreamRelated([]);
+        setChildren([]);
         setError(null);
     };
 
@@ -116,6 +128,18 @@ const RequirementsViewer: React.FC = () => {
             const itemData = await globalJamaService.getItem(numericItemId);
             
             setItem(itemData);
+
+            // Fetch upstream related items
+            const upstreamIds = await globalJamaService.getUpstreamRelated(numericItemId);
+            setUpstreamRelated(upstreamIds);
+
+            // Fetch downstream related items
+            const downstreamIds = await globalJamaService.getDownstreamRelated(numericItemId);
+            setDownstreamRelated(downstreamIds);
+
+            // Fetch children items
+            const childrenIds = await globalJamaService.getChildren(numericItemId);
+            setChildren(childrenIds);
 
             // Get item type information
             try {
@@ -176,8 +200,200 @@ const RequirementsViewer: React.FC = () => {
             setAsilInfo(null);
             setReasonInfo(null);
             setItemTypeInfo(null);
+            setUpstreamRelated([]);
+            setDownstreamRelated([]);
+            setChildren([]);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleExportToRst = async () => {
+        if (!item) return;
+
+        setExportLoading(true);
+        setExportProgress({ current: 0, total: 0, message: 'Initializing export...' });
+
+        // Check if this is a folder (based on item type display name)
+        const isFolder = itemTypeInfo?.display?.toLowerCase().includes('folder');
+
+        const generateRstContent = async () => {
+            let content = `Export\n========\n\nRequirements\n------------------------\n\n`;
+            
+            setExportProgress({ current: 1, total: 5, message: 'Analyzing item type...' });
+            
+            if (isFolder) {
+                setExportProgress({ current: 2, total: 5, message: 'Processing folder structure...' });
+                
+                // Generate folder block
+                content += `.. fld:: ${item.fields.name || 'Unnamed Folder'}\n`;
+                content += `   :id: ${item.id}\n`;
+                content += `   :collapse: false\n\n`;
+                
+                // Add folder description
+                if (item.fields.description) {
+                    content += `   ${stripHtmlTags(item.fields.description)}\n\n`;
+                } else {
+                    content += `   This folder contains the following elements:\n\n`;
+                }
+                
+                // Add children as nested requirements
+                if (children.length > 0) {
+                    setExportProgress({ 
+                        current: 3, 
+                        total: 3 + children.length, 
+                        message: `Processing ${children.length} child requirements...` 
+                    });
+                    
+                    for (let i = 0; i < children.length; i++) {
+                        const childId = children[i];
+                        setExportProgress({ 
+                            current: 4 + i, 
+                            total: 3 + children.length, 
+                            message: `Loading child requirement ${i + 1} of ${children.length} (ID: ${childId})...` 
+                        });
+                        
+                        try {
+                            const childItem = await globalJamaService.getItem(childId);
+                            const childItemType = await globalJamaService.getItemType(childItem.itemType);
+                            
+                            // Get child's upstream/downstream relations
+                            const childUpstream = await globalJamaService.getUpstreamRelated(childId);
+                            const childDownstream = await globalJamaService.getDownstreamRelated(childId);
+                            
+                            // Get child's ASIL info
+                            const childAsilData = extractAsilFromFields(childItem.fields, childItem.itemType);
+                            let childAsilInfo = null;
+                            if (childAsilData) {
+                                try {
+                                    const picklistOption = await globalJamaService.getPicklistOption(childAsilData.value);
+                                    childAsilInfo = { optionName: picklistOption.name };
+                                } catch {
+                                    childAsilInfo = { optionName: 'Unknown' };
+                                }
+                            }
+                            
+                            content += `   .. req:: ${childItem.fields.name || 'Unnamed Requirement'}\n`;
+                            content += `      :id: ${childItem.id}\n`;
+                            
+                            if (childItem.fields.statuscrnd) {
+                                content += `      :status: ${childItem.fields.statuscrnd}\n`;
+                            }
+                            
+                            if (childAsilInfo) {
+                                content += `      :asil: ${childAsilInfo.optionName}\n`;
+                            }
+                            
+                            if (childItemType) {
+                                content += `      :sreqtype: ${childItemType.display}\n`;
+                            }
+                            
+                            const childAllLinks = [...childUpstream, ...childDownstream];
+                            if (childAllLinks.length > 0) {
+                                content += `      :related: ${childAllLinks.join(', ')}\n`;
+                            }
+                            
+                            content += `      :collapse: false\n\n`;
+                            
+                            if (childItem.fields.description) {
+                                content += `      ${stripHtmlTags(childItem.fields.description)}\n\n`;
+                            } else {
+                                content += `      No description available.\n\n`;
+                            }
+                        } catch (error) {
+                            console.error(`Failed to load child item ${childId}:`, error);
+                            content += `   .. req:: Failed to load requirement\n`;
+                            content += `      :id: ${childId}\n`;
+                            content += `      :collapse: false\n\n`;
+                            content += `   Error loading requirement data.\n\n`;
+                        }
+                    }
+                }
+            } else {
+                setExportProgress({ current: 2, total: 5, message: 'Processing requirement data...' });
+                
+                // Generate regular requirement block
+                content += `.. req:: ${item.fields.name || 'Unnamed Requirement'}\n`;
+                content += `   :id: ${item.id}\n`;
+                
+                if (item.fields.statuscrnd) {
+                    content += `   :status: ${item.fields.statuscrnd}\n`;
+                }
+                
+                if (asilInfo) {
+                    content += `   :asil: ${asilInfo.optionName}\n`;
+                }
+                
+                if (itemTypeInfo) {
+                    content += `   :sreqtype: ${itemTypeInfo.display}\n`;
+                }
+                
+                const allLinks = [...upstreamRelated, ...downstreamRelated];
+                if (allLinks.length > 0) {
+                    content += `   :related: ${allLinks.join(', ')}\n`;
+                }
+                
+                content += `   :collapse: true\n\n`;
+                
+                if (item.fields.description) {
+                    content += `   ${stripHtmlTags(item.fields.description)}\n\n`;
+                } else {
+                    content += `   No description available.\n\n`;
+                }
+            }
+            
+            setExportProgress({ 
+                current: isFolder ? 3 + children.length : 4, 
+                total: isFolder ? 4 + children.length : 5, 
+                message: 'Adding flow diagram...' 
+            });
+            
+            // Add needflow diagram at the end
+            content += `.. needflow::\n`;
+            content += `   :filter: id == "${item.id}" or parent_need == "${item.id}"\n`;
+            content += `   :link_types: links, related\n`;
+            content += `   :show_link_names:\n`;
+            content += `   :config: lefttoright\n`;
+            
+            return content;
+        };
+
+        try {
+            const rstContent = await generateRstContent();
+            
+            setExportProgress({ 
+                current: isFolder ? 4 + children.length : 5, 
+                total: isFolder ? 4 + children.length : 5, 
+                message: 'Generating file download...' 
+            });
+            
+            const blob = new Blob([rstContent], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `requirement_${item.id}.rst`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            
+            setExportProgress({ 
+                current: isFolder ? 4 + children.length : 5, 
+                total: isFolder ? 4 + children.length : 5, 
+                message: 'Export completed successfully!' 
+            });
+            
+            // Clear progress after a delay
+            setTimeout(() => {
+                setExportLoading(false);
+                setExportProgress({ current: 0, total: 0, message: '' });
+            }, 2000);
+            
+        } catch (error) {
+            console.error('Failed to generate RST content:', error);
+            setError('Failed to generate RST export');
+            setExportLoading(false);
+            setExportProgress({ current: 0, total: 0, message: '' });
         }
     };
 
@@ -230,6 +446,20 @@ const RequirementsViewer: React.FC = () => {
                             Load Item
                         </Button>
                     </Col>
+
+                    {item && (
+                        <Col xs={24} sm={24} md={6} lg={4}>
+                            <Button 
+                                type="default"
+                                onClick={handleExportToRst}
+                                loading={exportLoading}
+                                icon={<DownloadOutlined />}
+                                style={{ width: '100%' }}
+                            >
+                                Export to .rst
+                            </Button>
+                        </Col>
+                    )}
 
                     <Col xs={24} sm={24} md={10} lg={12}>
                         <Text type="secondary" style={{ fontSize: '12px' }}>
@@ -314,6 +544,24 @@ const RequirementsViewer: React.FC = () => {
                                 </Descriptions.Item>
                             )}
                             
+                            {upstreamRelated.length > 0 && (
+                                <Descriptions.Item label={<><ArrowUpOutlined /> Upstream Related</>}>
+                                    <Text>{upstreamRelated.join(', ')}</Text>
+                                </Descriptions.Item>
+                            )}
+                            
+                            {downstreamRelated.length > 0 && (
+                                <Descriptions.Item label={<><ArrowDownOutlined /> Downstream Related</>}>
+                                    <Text>{downstreamRelated.join(', ')}</Text>
+                                </Descriptions.Item>
+                            )}
+                            
+                            {children.length > 0 && (
+                                <Descriptions.Item label={<><DownOutlined /> Children</>}>
+                                    <Text>{children.join(', ')}</Text>
+                                </Descriptions.Item>
+                            )}
+                            
                             {asilInfo && (
                                 <Descriptions.Item label="ASIL Classification">
                                     <Text strong style={{ color: '#52c41a' }}>
@@ -339,6 +587,21 @@ const RequirementsViewer: React.FC = () => {
                             </Card>
                         )}
                     </Space>
+                </Card>
+            )}
+
+            {/* Export Progress Display */}
+            {exportLoading && (
+                <Card style={{ textAlign: 'center', marginBottom: 16 }}>
+                    <Spin size="large" />
+                    <div style={{ marginTop: 16 }}>
+                        <div style={{ marginBottom: 8 }}>{exportProgress.message}</div>
+                        {exportProgress.total > 0 && (
+                            <div style={{ fontSize: '12px', color: '#666' }}>
+                                Progress: {exportProgress.current} / {exportProgress.total}
+                            </div>
+                        )}
+                    </div>
                 </Card>
             )}
         </div>

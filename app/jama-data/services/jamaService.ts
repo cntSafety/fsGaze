@@ -79,6 +79,7 @@ export class JamaService {
     async getProjects(): Promise<JamaProject[]> {
         const response = await this.makeApiCall('/projects');
         const data = await response.json() as JamaApiResponse<JamaProject[]>;
+        console.log('Fetched projects:', data.data);
         return data.data;
     }
 
@@ -180,6 +181,33 @@ export class JamaService {
         const response = await this.makeApiCall(url);
         const data = await response.json() as JamaApiResponse<JamaItem[]>;
         return data.data;
+    }
+
+    /**
+     * Get upstream related items for a given item ID
+     */
+    async getUpstreamRelated(itemId: number): Promise<number[]> {
+        const response = await this.makeApiCall(`/items/${itemId}/upstreamrelated`);
+        const data = await response.json() as JamaApiResponse<JamaItem[]>;
+        return data.data.map(item => item.id);
+    }
+
+    /**
+     * Get downstream related items for a given item ID
+     */
+    async getDownstreamRelated(itemId: number): Promise<number[]> {
+        const response = await this.makeApiCall(`/items/${itemId}/downstreamrelated`);
+        const data = await response.json() as JamaApiResponse<JamaItem[]>;
+        return data.data.map(item => item.id);
+    }
+
+    /**
+     * Get children items for a given item ID
+     */
+    async getChildren(itemId: number): Promise<number[]> {
+        const response = await this.makeApiCall(`/items/${itemId}/children`);
+        const data = await response.json() as JamaApiResponse<JamaItem[]>;
+        return data.data.map(item => item.id);
     }
 
     /**
