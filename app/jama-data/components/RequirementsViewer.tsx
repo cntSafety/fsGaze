@@ -218,7 +218,8 @@ const RequirementsViewer: React.FC = () => {
         const isFolder = itemTypeInfo?.display?.toLowerCase().includes('folder');
 
         const generateRstContent = async () => {
-            let content = `Export\n========\n\nRequirements\n------------------------\n\n`;
+            const exportTitle = item.fields.name || 'Unnamed item';
+            let content = `${exportTitle}\n${'='.repeat(exportTitle.length)}\n\nRequirements\n------------------------\n\n`;
             
             setExportProgress({ current: 1, total: 5, message: 'Analyzing item type...' });
             
@@ -257,6 +258,9 @@ const RequirementsViewer: React.FC = () => {
                             const childItem = await globalJamaService.getItem(childId);
                             const childItemType = await globalJamaService.getItemType(childItem.itemType);
                             
+                            // Check if this child is also a folder
+                            const isChildFolder = childItemType?.display?.toLowerCase().includes('folder');
+                            
                             // Get child's upstream/downstream relations
                             const childUpstream = await globalJamaService.getUpstreamRelated(childId);
                             const childDownstream = await globalJamaService.getDownstreamRelated(childId);
@@ -273,7 +277,12 @@ const RequirementsViewer: React.FC = () => {
                                 }
                             }
                             
-                            content += `   .. req:: ${childItem.fields.name || 'Unnamed Requirement'}\n`;
+                            // Use appropriate directive based on item type
+                            if (isChildFolder) {
+                                content += `   .. fld:: ${childItem.fields.name || 'Unnamed Folder'}\n`;
+                            } else {
+                                content += `   .. req:: ${childItem.fields.name || 'Unnamed Requirement'}\n`;
+                            }
                             content += `      :id: ${childItem.id}\n`;
                             
                             if (childItem.fields.statuscrnd) {
@@ -305,7 +314,7 @@ const RequirementsViewer: React.FC = () => {
                             content += `   .. req:: Failed to load requirement\n`;
                             content += `      :id: ${childId}\n`;
                             content += `      :collapse: false\n\n`;
-                            content += `   Error loading requirement data.\n\n`;
+                            content += `      Error loading requirement data.\n\n`;
                         }
                     }
                 }
@@ -367,11 +376,20 @@ const RequirementsViewer: React.FC = () => {
                 message: 'Generating file download...' 
             });
             
+            // Create filename from item name or fallback to ID
+            const sanitizeName = (name: string) => {
+                return name.replace(/[^a-zA-Z0-9\-_]/g, '_').replace(/_{2,}/g, '_').replace(/^_|_$/g, '');
+            };
+            
+            const filename = item.fields.name 
+                ? `${sanitizeName(item.fields.name)}.rst`
+                : `requirement_${item.id}.rst`;
+            
             const blob = new Blob([rstContent], { type: 'text/plain;charset=utf-8' });
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = `requirement_${item.id}.rst`;
+            link.download = filename;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
