@@ -5,7 +5,8 @@ import {
     JamaProject, 
     JamaItem, 
     JamaItemType,
-    RequirementSearchFilters 
+    RequirementSearchFilters,
+    PaginatedRequestOptions
 } from '../jama-data/types/jama';
 
 /**
@@ -14,6 +15,9 @@ import {
  */
 export class GlobalJamaService {
     private static instance: GlobalJamaService;
+    private cachedJamaService: BaseJamaService | null = null;
+    private lastConnectionCheck: number = 0;
+    private CONNECTION_CACHE_DURATION = 30000; // 30 seconds
     
     private constructor() {}
     
@@ -36,11 +40,33 @@ export class GlobalJamaService {
     }
 
     /**
-     * Ensure we have a valid token before making API calls
+     * Ensure we have a valid token before making API calls with caching
      */
     private async ensureValidConnection(): Promise<BaseJamaService> {
+        const now = Date.now();
+        
+        // If we have a cached service and it's within the cache duration, use it
+        if (this.cachedJamaService && (now - this.lastConnectionCheck) < this.CONNECTION_CACHE_DURATION) {
+            // Quick check if connection is still valid
+            if (useJamaStore.getState().isConnected) {
+                return this.cachedJamaService;
+            }
+        }
+        
+        // Need to ensure valid connection
         await useJamaStore.getState().ensureValidToken();
-        return this.getJamaService();
+        this.cachedJamaService = this.getJamaService();
+        this.lastConnectionCheck = now;
+        
+        return this.cachedJamaService;
+    }
+
+    /**
+     * Clear the cached connection (useful when disconnecting)
+     */
+    private clearConnectionCache(): void {
+        this.cachedJamaService = null;
+        this.lastConnectionCheck = 0;
     }
 
     /**
@@ -83,9 +109,9 @@ export class GlobalJamaService {
     /**
      * Get items from a project with optional filtering
      */
-    async getItems(projectId: number, filters?: RequirementSearchFilters): Promise<JamaItem[]> {
+    async getItems(projectId: number, filters?: RequirementSearchFilters, options?: PaginatedRequestOptions): Promise<JamaItem[]> {
         const jamaService = await this.ensureValidConnection();
-        return jamaService.getItems(projectId, filters);
+        return jamaService.getItems(projectId, filters, options);
     }
 
     /**
@@ -131,31 +157,53 @@ export class GlobalJamaService {
     /**
      * Get upstream related items for a given item ID
      */
-    async getUpstreamRelated(itemId: number): Promise<number[]> {
+    async getUpstreamRelated(itemId: number, options?: PaginatedRequestOptions): Promise<number[]> {
         const jamaService = await this.ensureValidConnection();
-        return jamaService.getUpstreamRelated(itemId);
+        return jamaService.getUpstreamRelated(itemId, options);
     }
 
     /**
      * Get downstream related items for a given item ID
      */
-    async getDownstreamRelated(itemId: number): Promise<number[]> {
+    async getDownstreamRelated(itemId: number, options?: PaginatedRequestOptions): Promise<number[]> {
         const jamaService = await this.ensureValidConnection();
-        return jamaService.getDownstreamRelated(itemId);
+        return jamaService.getDownstreamRelated(itemId, options);
     }
 
     /**
      * Get children items for a given item ID
      */
-    async getChildren(itemId: number): Promise<number[]> {
+    async getChildren(itemId: number, options?: PaginatedRequestOptions): Promise<number[]> {
         const jamaService = await this.ensureValidConnection();
-        return jamaService.getChildren(itemId);
+        return jamaService.getChildren(itemId, options);
+    }
+
+    /**
+     * Get multiple items efficiently with a single connection check
+     */
+    async getMultipleItems(itemIds: number[]): Promise<JamaItem[]> {
+        if (itemIds.length === 0) return [];
+        
+        const jamaService = await this.ensureValidConnection();
+        const results: JamaItem[] = [];
+        
+        // Process items in batches to avoid overwhelming the API
+        const batchSize = 10;
+        for (let i = 0; i < itemIds.length; i += batchSize) {
+            const batch = itemIds.slice(i, i + batchSize);
+            const batchPromises = batch.map(id => jamaService.getItem(id));
+            const batchResults = await Promise.all(batchPromises);
+            results.push(...batchResults);
+        }
+        
+        return results;
     }
 
     /**
      * Disconnect from Jama
      */
     disconnect(): void {
+        this.clearConnectionCache();
         useJamaStore.getState().disconnect();
     }
 

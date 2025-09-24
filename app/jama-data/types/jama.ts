@@ -119,3 +119,12 @@ export interface JamaConnectionError {
     statusCode?: number;
     details?: string;
 }
+
+export interface PaginationProgressCallback {
+    (current: number, total: number, message: string): void;
+}
+
+export interface PaginatedRequestOptions {
+    maxResults?: number;
+    onProgress?: PaginationProgressCallback;
+}

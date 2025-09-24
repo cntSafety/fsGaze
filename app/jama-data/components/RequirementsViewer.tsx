@@ -19,7 +19,8 @@ import {
     ArrowUpOutlined,
     ArrowDownOutlined,
     DownOutlined,
-    DownloadOutlined
+    DownloadOutlined,
+    TeamOutlined
 } from '@ant-design/icons';
 import { JamaItem } from '../types/jama';
 import { globalJamaService } from '../../services/globalJamaService';
@@ -138,7 +139,11 @@ const RequirementsViewer: React.FC = () => {
             setDownstreamRelated(downstreamIds);
 
             // Fetch children items
-            const childrenIds = await globalJamaService.getChildren(numericItemId);
+            const childrenIds = await globalJamaService.getChildren(numericItemId, {
+                onProgress: (current, total, message) => {
+                    setExportProgress({ current, total, message });
+                }
+            });
             setChildren(childrenIds);
 
             // Get item type information
@@ -155,7 +160,7 @@ const RequirementsViewer: React.FC = () => {
                     display: `Type ${itemData.itemType} (Failed to load name)`
                 });
             }
-
+            console.log('Item type information loaded successfully:', itemData);
             // Extract ASIL information
             const asilData = extractAsilFromFields(itemData.fields, itemData.itemType);
             
@@ -214,107 +219,150 @@ const RequirementsViewer: React.FC = () => {
         setExportLoading(true);
         setExportProgress({ current: 0, total: 0, message: 'Initializing export...' });
 
-        // Check if this is a folder (based on item type display name)
-        const isFolder = itemTypeInfo?.display?.toLowerCase().includes('folder');
+        // Check if this item has children
+        const hasChildren = children.length > 0;
 
         const generateRstContent = async () => {
             const exportTitle = item.fields.name || 'Unnamed item';
-            let content = `${exportTitle}\n${'='.repeat(exportTitle.length)}\n\nRequirements\n------------------------\n\n`;
+            let content = `${exportTitle}\n${'='.repeat(exportTitle.length)}\n\n`;
             
             setExportProgress({ current: 1, total: 5, message: 'Analyzing item type...' });
             
-            if (isFolder) {
+            if (hasChildren) {
                 setExportProgress({ current: 2, total: 5, message: 'Processing folder structure...' });
                 
                 // Generate folder block
-                content += `.. fld:: ${item.fields.name || 'Unnamed Folder'}\n`;
+                content += `.. sub:: ${item.fields.name || 'Unnamed Folder'}\n`;
                 content += `   :id: ${item.id}\n`;
+                content += `   :itemtype: ${itemTypeInfo?.display}\n`;
                 content += `   :collapse: false\n\n`;
                 
                 // Add folder description
                 if (item.fields.description) {
                     content += `   ${stripHtmlTags(item.fields.description)}\n\n`;
                 } else {
-                    content += `   This folder contains the following elements:\n\n`;
+                    content += `   This item contains the following child items:\n\n`;
                 }
                 
                 // Add children as nested requirements
                 if (children.length > 0) {
                     setExportProgress({ 
                         current: 3, 
-                        total: 3 + children.length, 
-                        message: `Processing ${children.length} child requirements...` 
+                        total: 4, 
+                        message: `Loading ${children.length} child requirements in batches...` 
                     });
                     
-                    for (let i = 0; i < children.length; i++) {
-                        const childId = children[i];
+                    try {
+                        // Load all child items in batches for better performance
+                        const childItems = await globalJamaService.getMultipleItems(children);
+                        
                         setExportProgress({ 
-                            current: 4 + i, 
-                            total: 3 + children.length, 
-                            message: `Loading child requirement ${i + 1} of ${children.length} (ID: ${childId})...` 
+                            current: 3, 
+                            total: 4, 
+                            message: `Processing ${childItems.length} loaded child requirements...` 
                         });
                         
-                        try {
-                            const childItem = await globalJamaService.getItem(childId);
-                            const childItemType = await globalJamaService.getItemType(childItem.itemType);
+                        // Cache for item types and picklist options to avoid repeated API calls
+                        const itemTypeCache = new Map<number, any>();
+                        const picklistCache = new Map<number, any>();
+                        
+                        // Process each child item
+                        for (let i = 0; i < childItems.length; i++) {
+                            const childItem = childItems[i];
                             
-                            // Check if this child is also a folder
-                            const isChildFolder = childItemType?.display?.toLowerCase().includes('folder');
-                            
-                            // Get child's upstream/downstream relations
-                            const childUpstream = await globalJamaService.getUpstreamRelated(childId);
-                            const childDownstream = await globalJamaService.getDownstreamRelated(childId);
-                            
-                            // Get child's ASIL info
-                            const childAsilData = extractAsilFromFields(childItem.fields, childItem.itemType);
-                            let childAsilInfo = null;
-                            if (childAsilData) {
-                                try {
-                                    const picklistOption = await globalJamaService.getPicklistOption(childAsilData.value);
-                                    childAsilInfo = { optionName: picklistOption.name };
-                                } catch {
-                                    childAsilInfo = { optionName: 'Unknown' };
+                            try {
+                                // Get child item type (with caching)
+                                let childItemType;
+                                if (itemTypeCache.has(childItem.itemType)) {
+                                    childItemType = itemTypeCache.get(childItem.itemType);
+                                } else {
+                                    childItemType = await globalJamaService.getItemType(childItem.itemType);
+                                    itemTypeCache.set(childItem.itemType, childItemType);
                                 }
+                                
+                                // Check if this child is also a folder or component
+                                const isChildFolder = childItemType?.display?.toLowerCase().includes('folder') || 
+                                                    childItemType?.display?.toLowerCase().includes('component');
+                                
+                                // Get child's upstream/downstream relations
+                                const childUpstream = await globalJamaService.getUpstreamRelated(childItem.id);
+                                const childDownstream = await globalJamaService.getDownstreamRelated(childItem.id);
+                                
+                                // Get child's ASIL info (with caching)
+                                const childAsilData = extractAsilFromFields(childItem.fields, childItem.itemType);
+                                let childAsilInfo = null;
+                                if (childAsilData) {
+                                    if (picklistCache.has(childAsilData.value)) {
+                                        const cachedOption = picklistCache.get(childAsilData.value);
+                                        childAsilInfo = { optionName: cachedOption.name };
+                                    } else {
+                                        try {
+                                            const picklistOption = await globalJamaService.getPicklistOption(childAsilData.value);
+                                            picklistCache.set(childAsilData.value, picklistOption);
+                                            childAsilInfo = { optionName: picklistOption.name };
+                                        } catch {
+                                            childAsilInfo = { optionName: 'Unknown' };
+                                        }
+                                    }
+                                }
+                                
+                                // Use appropriate directive based on item type
+                                if (isChildFolder) {
+                                    content += `   .. sub:: ${childItem.fields.name || 'Unnamed Folder'}\n`;
+                                } else {
+                                    content += `   .. item:: ${childItem.fields.name || 'Unnamed Requirement'}\n`;
+                                }
+                                content += `      :id: ${childItem.id}\n`;
+                                
+                                if (childItem.fields.statuscrnd) {
+                                    content += `      :status: ${childItem.fields.statuscrnd}\n`;
+                                }
+                                
+                                if (childAsilInfo) {
+                                    content += `      :asil: ${childAsilInfo.optionName}\n`;
+                                }
+                                
+                                if (childItemType) {
+                                    content += `      :itemtype: ${childItemType.display}\n`;
+                                }
+                                
+                                const childAllLinks = [...childUpstream, ...childDownstream];
+                                if (childAllLinks.length > 0) {
+                                    content += `      :related: ${childAllLinks.join(', ')}\n`;
+                                }
+                                
+                                content += `      :collapse: false\n\n`;
+                                
+                                if (childItem.fields.description) {
+                                    content += `      ${stripHtmlTags(childItem.fields.description)}\n\n`;
+                                } else {
+                                    content += `      No description available.\n\n`;
+                                }
+                            } catch (error) {
+                                console.error(`Failed to load child item ${childItem.id}:`, error);
+                                content += `   .. item:: Failed to load requirement\n`;
+                                content += `      :id: ${childItem.id}\n`;
+                                content += `      :collapse: false\n\n`;
+                                content += `      Error loading requirement data.\n\n`;
                             }
-                            
-                            // Use appropriate directive based on item type
-                            if (isChildFolder) {
-                                content += `   .. fld:: ${childItem.fields.name || 'Unnamed Folder'}\n`;
-                            } else {
-                                content += `   .. req:: ${childItem.fields.name || 'Unnamed Requirement'}\n`;
+                        }
+                    } catch (error) {
+                        console.error('Failed to load child items in batch:', error);
+                        // Fallback to individual loading if batch fails
+                        for (let i = 0; i < children.length; i++) {
+                            const childId = children[i];
+                            try {
+                                const childItem = await globalJamaService.getItem(childId);
+                                content += `   .. item:: ${childItem.fields.name || 'Failed to load requirement'}\n`;
+                                content += `      :id: ${childId}\n`;
+                                content += `      :collapse: false\n\n`;
+                                content += `      Error loading detailed requirement data.\n\n`;
+                            } catch {
+                                content += `   .. item:: Failed to load requirement\n`;
+                                content += `      :id: ${childId}\n`;
+                                content += `      :collapse: false\n\n`;
+                                content += `      Error loading requirement data.\n\n`;
                             }
-                            content += `      :id: ${childItem.id}\n`;
-                            
-                            if (childItem.fields.statuscrnd) {
-                                content += `      :status: ${childItem.fields.statuscrnd}\n`;
-                            }
-                            
-                            if (childAsilInfo) {
-                                content += `      :asil: ${childAsilInfo.optionName}\n`;
-                            }
-                            
-                            if (childItemType) {
-                                content += `      :sreqtype: ${childItemType.display}\n`;
-                            }
-                            
-                            const childAllLinks = [...childUpstream, ...childDownstream];
-                            if (childAllLinks.length > 0) {
-                                content += `      :related: ${childAllLinks.join(', ')}\n`;
-                            }
-                            
-                            content += `      :collapse: false\n\n`;
-                            
-                            if (childItem.fields.description) {
-                                content += `      ${stripHtmlTags(childItem.fields.description)}\n\n`;
-                            } else {
-                                content += `      No description available.\n\n`;
-                            }
-                        } catch (error) {
-                            console.error(`Failed to load child item ${childId}:`, error);
-                            content += `   .. req:: Failed to load requirement\n`;
-                            content += `      :id: ${childId}\n`;
-                            content += `      :collapse: false\n\n`;
-                            content += `      Error loading requirement data.\n\n`;
                         }
                     }
                 }
@@ -322,7 +370,7 @@ const RequirementsViewer: React.FC = () => {
                 setExportProgress({ current: 2, total: 5, message: 'Processing requirement data...' });
                 
                 // Generate regular requirement block
-                content += `.. req:: ${item.fields.name || 'Unnamed Requirement'}\n`;
+                content += `.. item:: ${item.fields.name || 'Unnamed Requirement'}\n`;
                 content += `   :id: ${item.id}\n`;
                 
                 if (item.fields.statuscrnd) {
@@ -334,7 +382,7 @@ const RequirementsViewer: React.FC = () => {
                 }
                 
                 if (itemTypeInfo) {
-                    content += `   :sreqtype: ${itemTypeInfo.display}\n`;
+                    content += `   :itemtype: ${itemTypeInfo.display}\n`;
                 }
                 
                 const allLinks = [...upstreamRelated, ...downstreamRelated];
@@ -352,8 +400,8 @@ const RequirementsViewer: React.FC = () => {
             }
             
             setExportProgress({ 
-                current: isFolder ? 3 + children.length : 4, 
-                total: isFolder ? 4 + children.length : 5, 
+                current: 4, 
+                total: 5, 
                 message: 'Adding flow diagram...' 
             });
             
@@ -371,8 +419,8 @@ const RequirementsViewer: React.FC = () => {
             const rstContent = await generateRstContent();
             
             setExportProgress({ 
-                current: isFolder ? 4 + children.length : 5, 
-                total: isFolder ? 4 + children.length : 5, 
+                current: 5, 
+                total: 5, 
                 message: 'Generating file download...' 
             });
             
@@ -396,8 +444,8 @@ const RequirementsViewer: React.FC = () => {
             URL.revokeObjectURL(url);
             
             setExportProgress({ 
-                current: isFolder ? 4 + children.length : 5, 
-                total: isFolder ? 4 + children.length : 5, 
+                current: 5, 
+                total: 5, 
                 message: 'Export completed successfully!' 
             });
             
@@ -575,7 +623,7 @@ const RequirementsViewer: React.FC = () => {
                             )}
                             
                             {children.length > 0 && (
-                                <Descriptions.Item label={<><DownOutlined /> Children</>}>
+                                <Descriptions.Item label={<><TeamOutlined /> Children ({children.length})</>}>
                                     <Text>{children.join(', ')}</Text>
                                 </Descriptions.Item>
                             )}

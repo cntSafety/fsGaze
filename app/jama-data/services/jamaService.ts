@@ -6,7 +6,9 @@ import {
     JamaItemType, 
     JamaApiResponse,
     JamaConnectionError,
-    RequirementSearchFilters 
+    RequirementSearchFilters,
+    PaginatedRequestOptions,
+    PaginationProgressCallback
 } from '../types/jama';
 
 export class JamaService {
@@ -86,7 +88,7 @@ export class JamaService {
     /**
      * Get items from a project with optional filtering
      */
-    async getItems(projectId: number, filters?: RequirementSearchFilters): Promise<JamaItem[]> {
+    async getItems(projectId: number, filters?: RequirementSearchFilters, options?: PaginatedRequestOptions): Promise<JamaItem[]> {
         let url = `/abstractitems?project=${projectId}`;
         
         if (filters) {
@@ -106,25 +108,7 @@ export class JamaService {
             }
         }
 
-        const items: JamaItem[] = [];
-        let startIndex = 0;
-        const maxResults = 50; // Jama's max per request
-        
-        do {
-            const paginatedUrl = `${url}&startAt=${startIndex}&maxResults=${maxResults}`;
-            const response = await this.makeApiCall(paginatedUrl);
-            const data = await response.json() as JamaApiResponse<JamaItem[]>;
-            
-            items.push(...data.data);
-            
-            if (!data.meta.pageInfo || data.meta.pageInfo.resultCount < maxResults) {
-                break;
-            }
-            
-            startIndex += maxResults;
-        } while (true);
-
-        return items;
+        return this.makePaginatedApiCall<JamaItem>(url, options);
     }
 
     /**
@@ -186,28 +170,80 @@ export class JamaService {
     /**
      * Get upstream related items for a given item ID
      */
-    async getUpstreamRelated(itemId: number): Promise<number[]> {
-        const response = await this.makeApiCall(`/items/${itemId}/upstreamrelated`);
-        const data = await response.json() as JamaApiResponse<JamaItem[]>;
-        return data.data.map(item => item.id);
+    async getUpstreamRelated(itemId: number, options?: PaginatedRequestOptions): Promise<number[]> {
+        const items = await this.makePaginatedApiCall<JamaItem>(`/items/${itemId}/upstreamrelated`, options);
+        return items.map(item => item.id);
     }
 
     /**
      * Get downstream related items for a given item ID
      */
-    async getDownstreamRelated(itemId: number): Promise<number[]> {
-        const response = await this.makeApiCall(`/items/${itemId}/downstreamrelated`);
-        const data = await response.json() as JamaApiResponse<JamaItem[]>;
-        return data.data.map(item => item.id);
+    async getDownstreamRelated(itemId: number, options?: PaginatedRequestOptions): Promise<number[]> {
+        const items = await this.makePaginatedApiCall<JamaItem>(`/items/${itemId}/downstreamrelated`, options);
+        return items.map(item => item.id);
     }
 
     /**
      * Get children items for a given item ID
      */
-    async getChildren(itemId: number): Promise<number[]> {
-        const response = await this.makeApiCall(`/items/${itemId}/children`);
-        const data = await response.json() as JamaApiResponse<JamaItem[]>;
-        return data.data.map(item => item.id);
+    async getChildren(itemId: number, options?: PaginatedRequestOptions): Promise<number[]> {
+        const items = await this.makePaginatedApiCall<JamaItem>(`/items/${itemId}/children`, options);
+        return items.map(item => item.id);
+    }
+
+    /**
+     * Make paginated API call to handle large result sets
+     */
+    private async makePaginatedApiCall<T>(
+        endpoint: string,
+        options: PaginatedRequestOptions = {}
+    ): Promise<T[]> {
+        const { maxResults = 20, onProgress } = options;
+        const results: T[] = [];
+        let startIndex = 0;
+        let totalResults = 0;
+
+        do {
+            // Add pagination parameters to endpoint
+            const separator = endpoint.includes('?') ? '&' : '?';
+            const paginatedEndpoint = `${endpoint}${separator}startAt=${startIndex}&maxResults=${maxResults}`;
+            
+            if (onProgress && totalResults > 0) {
+                onProgress(
+                    Math.min(results.length, totalResults),
+                    totalResults,
+                    `Loading items ${startIndex + 1}-${Math.min(startIndex + maxResults, totalResults)}...`
+                );
+            }
+
+            const response = await this.makeApiCall(paginatedEndpoint);
+            const data = await response.json() as JamaApiResponse<T[]>;
+
+            // Update total results from first response
+            if (startIndex === 0 && data.meta.pageInfo) {
+                totalResults = data.meta.pageInfo.totalResults;
+                if (onProgress) {
+                    onProgress(0, totalResults, `Found ${totalResults} total items. Loading...`);
+                }
+            }
+
+            results.push(...data.data);
+
+            // Check if we have more pages
+            if (!data.meta.pageInfo || 
+                data.meta.pageInfo.resultCount < maxResults || 
+                results.length >= totalResults) {
+                break;
+            }
+
+            startIndex += maxResults;
+        } while (true);
+
+        if (onProgress && totalResults > 0) {
+            onProgress(results.length, totalResults, `Completed loading ${results.length} items`);
+        }
+
+        return results;
     }
 
     /**
