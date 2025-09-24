@@ -20,12 +20,13 @@ import {
     ArrowDownOutlined,
     DownOutlined,
     DownloadOutlined,
-    TeamOutlined
+    TeamOutlined,
+    FolderOutlined
 } from '@ant-design/icons';
 import { JamaItem } from '../types/jama';
 import { globalJamaService } from '../../services/globalJamaService';
 import { useJamaConnection } from '../../components/JamaConnectionProvider';
-import { exportOneLayerToRst } from '../services/exportService';
+import { exportOneLayerToRst, exportRecursiveToRst } from '../services/exportService';
 
 // Utility function to strip HTML tags and convert to plain text (used for display)
 const stripHtmlTags = (html: string): string => {
@@ -161,7 +162,6 @@ const RequirementsViewer: React.FC = () => {
                     display: `Type ${itemData.itemType} (Failed to load name)`
                 });
             }
-            console.log('Item type information loaded successfully:', itemData);
             // Extract ASIL information
             const asilData = extractAsilFromFields(itemData.fields, itemData.itemType);
             
@@ -229,7 +229,7 @@ const RequirementsViewer: React.FC = () => {
                 downstreamRelated,
                 children,
                 {
-                    onProgress: (current, total, message) => {
+                    onProgress: (current: number, total: number, message: string) => {
                         setExportProgress({ current, total, message });
                     }
                 }
@@ -267,6 +267,63 @@ const RequirementsViewer: React.FC = () => {
         } catch (error) {
             console.error('Failed to generate RST content:', error);
             setError('Failed to generate RST export');
+            setExportLoading(false);
+            setExportProgress({ current: 0, total: 0, message: '' });
+        }
+    };
+
+    const handleRecursiveExportToRst = async () => {
+        if (!item) return;
+
+        setExportLoading(true);
+        setExportProgress({ current: 0, total: 0, message: 'Initializing recursive export...' });
+
+        try {
+            const exportResult = await exportRecursiveToRst(
+                item,
+                itemTypeInfo,
+                asilInfo,
+                upstreamRelated,
+                downstreamRelated,
+                children,
+                {
+                    onProgress: (current: number, total: number, message: string) => {
+                        setExportProgress({ current, total, message });
+                    }
+                }
+            );
+            
+            setExportProgress({ 
+                current: 10, 
+                total: 10, 
+                message: 'Generating ZIP download...' 
+            });
+            
+            // Download the ZIP file
+            const url = URL.createObjectURL(exportResult.zipBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = exportResult.filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            
+            setExportProgress({ 
+                current: 10, 
+                total: 10, 
+                message: 'Recursive export completed successfully!' 
+            });
+            
+            // Clear progress after a delay
+            setTimeout(() => {
+                setExportLoading(false);
+                setExportProgress({ current: 0, total: 0, message: '' });
+            }, 2000);
+            
+        } catch (error) {
+            console.error('Failed to generate recursive RST export:', error);
+            setError('Failed to generate recursive RST export');
             setExportLoading(false);
             setExportProgress({ current: 0, total: 0, message: '' });
         }
@@ -323,20 +380,36 @@ const RequirementsViewer: React.FC = () => {
                     </Col>
 
                     {item && (
-                        <Col xs={24} sm={24} md={6} lg={4}>
-                            <Button 
-                                type="default"
-                                onClick={handleExportToRst}
-                                loading={exportLoading}
-                                icon={<DownloadOutlined />}
-                                style={{ width: '100%' }}
-                            >
-                                Export to .rst
-                            </Button>
-                        </Col>
+                        <>
+                            <Col xs={24} sm={12} md={6} lg={4}>
+                                <Button 
+                                    type="default"
+                                    onClick={handleExportToRst}
+                                    loading={exportLoading}
+                                    icon={<DownloadOutlined />}
+                                    style={{ width: '100%' }}
+                                >
+                                    Export Single
+                                </Button>
+                            </Col>
+                            
+                            {children.length > 0 && (
+                                <Col xs={24} sm={12} md={6} lg={4}>
+                                    <Button 
+                                        type="default"
+                                        onClick={handleRecursiveExportToRst}
+                                        loading={exportLoading}
+                                        icon={<FolderOutlined />}
+                                        style={{ width: '100%', backgroundColor: '#52c41a', borderColor: '#52c41a', color: 'white' }}
+                                    >
+                                        Export Recursive
+                                    </Button>
+                                </Col>
+                            )}
+                        </>
                     )}
 
-                    <Col xs={24} sm={24} md={10} lg={12}>
+                    <Col xs={24} sm={24} md={children.length > 0 && item ? 6 : 10} lg={children.length > 0 && item ? 4 : 12}>
                         <Text type="secondary" style={{ fontSize: '12px' }}>
                             {isConnected 
                                 ? 'Enter a Jama item ID to load requirement information'
