@@ -11,7 +11,8 @@ import {
     Row,
     Col,
     Typography,
-    Spin
+    Spin,
+    message
 } from 'antd';
 import { 
     SearchOutlined, 
@@ -21,12 +22,14 @@ import {
     DownOutlined,
     DownloadOutlined,
     TeamOutlined,
-    FolderOutlined
+    FolderOutlined,
+    InfoCircleOutlined
 } from '@ant-design/icons';
 import { JamaItem } from '../types/jama';
 import { globalJamaService } from '../../services/globalJamaService';
 import { useJamaConnection } from '../../components/JamaConnectionProvider';
-import { exportOneLayerToRst, exportRecursiveToRst } from '../services/exportService';
+import { useJamaStore } from '../../stores/jamaStore';
+import { exportRecursiveToRst } from '../services/exportService';
 
 // Utility function to strip HTML tags and convert to plain text (used for display)
 const stripHtmlTags = (html: string): string => {
@@ -58,6 +61,7 @@ const RequirementsViewer: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [exportLoading, setExportLoading] = useState(false);
     const [exportProgress, setExportProgress] = useState({ current: 0, total: 0, message: '' });
+    const [serverLogs, setServerLogs] = useState<string[]>([]);
     const [itemId, setItemId] = useState<string>('');
     const [item, setItem] = useState<JamaItem | null>(null);
     const [asilInfo, setAsilInfo] = useState<{ field: string; value: string; optionName: string } | null>(null);
@@ -218,80 +222,80 @@ const RequirementsViewer: React.FC = () => {
         if (!item) return;
 
         setExportLoading(true);
-        setExportProgress({ current: 0, total: 0, message: 'Initializing export...' });
+        setExportProgress({ current: 0, total: 10, message: 'Preparing export request...' });
+        setServerLogs([]);
+
+        // Generate unique export ID
+        const exportId = `export_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
         try {
-            const exportResult = await exportOneLayerToRst(
-                item,
-                itemTypeInfo,
-                asilInfo,
-                upstreamRelated,
-                downstreamRelated,
-                children,
-                {
-                    onProgress: (current: number, total: number, message: string) => {
-                        setExportProgress({ current, total, message });
+            // Start SSE connection for progress updates
+            const eventSource = new EventSource(`/api/jama/export/rst/progress?exportId=${exportId}`);
+            
+            eventSource.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.message) {
+                        setServerLogs(prev => [...prev, data.message]);
+                        setExportProgress(prev => ({
+                            ...prev,
+                            message: data.message
+                        }));
                     }
-                }
-            );
-            
-            setExportProgress({ 
-                current: 5, 
-                total: 5, 
-                message: 'Generating file download...' 
-            });
-            
-            // Download the file
-            const blob = new Blob([exportResult.content], { type: 'text/plain;charset=utf-8' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = exportResult.filename;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-            
-            setExportProgress({ 
-                current: 5, 
-                total: 5, 
-                message: 'Export completed successfully!' 
-            });
-            
-            // Clear progress after a delay
-            setTimeout(() => {
-                setExportLoading(false);
-                setExportProgress({ current: 0, total: 0, message: '' });
-            }, 2000);
-            
-        } catch (error) {
-            console.error('Failed to generate RST content:', error);
-            setError('Failed to generate RST export');
-            setExportLoading(false);
-            setExportProgress({ current: 0, total: 0, message: '' });
-        }
-    };
-
-    const handleRecursiveExportToRst = async () => {
-        if (!item) return;
-
-        setExportLoading(true);
-        setExportProgress({ current: 0, total: 0, message: 'Initializing recursive export...' });
-
-        try {
-            const exportResult = await exportRecursiveToRst(
-                item,
-                itemTypeInfo,
-                asilInfo,
-                upstreamRelated,
-                downstreamRelated,
-                children,
-                {
-                    onProgress: (current: number, total: number, message: string) => {
-                        setExportProgress({ current, total, message });
+                    if (data.done) {
+                        eventSource.close();
                     }
+                } catch (error) {
+                    console.error('Error parsing SSE data:', error);
                 }
-            );
+            };
+
+            eventSource.onerror = (error) => {
+                console.error('SSE connection error:', error);
+                eventSource.close();
+            };
+
+            // Get connection config from store
+            const jamaStore = useJamaStore.getState();
+            const connectionConfig = jamaStore.connectionConfig;
+
+            if (!connectionConfig) {
+                throw new Error('No Jama connection configuration found. Please connect to Jama first.');
+            }
+
+            setServerLogs(prev => [...prev, '[CLIENT] Starting export request...']);
+
+            // Start the actual export with progress tracking
+            const response = await fetch(`/api/jama/export/rst?exportId=${exportId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    item,
+                    itemTypeInfo,
+                    asilInfo,
+                    upstreamRelated,
+                    downstreamRelated,
+                    children,
+                    exportType: 'recursive',
+                    connectionConfig
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`Server error: ${response.status}`);
+            }
+
+            setExportProgress({ 
+                current: 8, 
+                total: 10, 
+                message: 'Processing server response...' 
+            });
+
+            setServerLogs(prev => [...prev, '[CLIENT] Server processing completed, downloading ZIP...']);
+
+            const zipBlob = await response.blob();
             
             setExportProgress({ 
                 current: 10, 
@@ -300,32 +304,28 @@ const RequirementsViewer: React.FC = () => {
             });
             
             // Download the ZIP file
-            const url = URL.createObjectURL(exportResult.zipBlob);
+            const url = URL.createObjectURL(zipBlob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = exportResult.filename;
+            link.download = `${item.id}_recursive_export.zip`;
             document.body.appendChild(link);
             link.click();
-            document.body.removeChild(link);
             URL.revokeObjectURL(url);
+            document.body.removeChild(link);
             
-            setExportProgress({ 
-                current: 10, 
-                total: 10, 
-                message: 'Recursive export completed successfully!' 
-            });
+            setServerLogs(prev => [...prev, '[CLIENT] Export completed successfully!']);
             
-            // Clear progress after a delay
-            setTimeout(() => {
-                setExportLoading(false);
-                setExportProgress({ current: 0, total: 0, message: '' });
-            }, 2000);
+            // Close SSE connection
+            eventSource.close();
+
+            message.success('Recursive RST export completed successfully!');
             
-        } catch (error) {
-            console.error('Failed to generate recursive RST export:', error);
-            setError('Failed to generate recursive RST export');
+        } catch (error: any) {
+            setServerLogs(prev => [...prev, `[ERROR] Export failed: ${error.message}`]);
+            message.error(`Failed to export recursive RST: ${error.message}`);
+            console.error('Failed to export recursive RST:', error);
+        } finally {
             setExportLoading(false);
-            setExportProgress({ current: 0, total: 0, message: '' });
         }
     };
 
@@ -380,36 +380,20 @@ const RequirementsViewer: React.FC = () => {
                     </Col>
 
                     {item && (
-                        <>
-                            <Col xs={24} sm={12} md={6} lg={4}>
-                                <Button 
-                                    type="default"
-                                    onClick={handleExportToRst}
-                                    loading={exportLoading}
-                                    icon={<DownloadOutlined />}
-                                    style={{ width: '100%' }}
-                                >
-                                    Export Single
-                                </Button>
-                            </Col>
-                            
-                            {children.length > 0 && (
-                                <Col xs={24} sm={12} md={6} lg={4}>
-                                    <Button 
-                                        type="default"
-                                        onClick={handleRecursiveExportToRst}
-                                        loading={exportLoading}
-                                        icon={<FolderOutlined />}
-                                        style={{ width: '100%', backgroundColor: '#52c41a', borderColor: '#52c41a', color: 'white' }}
-                                    >
-                                        Export Recursive
-                                    </Button>
-                                </Col>
-                            )}
-                        </>
+                        <Col xs={24} sm={12} md={6} lg={4}>
+                            <Button 
+                                type="primary"
+                                onClick={handleExportToRst}
+                                loading={exportLoading}
+                                icon={<DownloadOutlined />}
+                                style={{ width: '100%' }}
+                            >
+                                Export
+                            </Button>
+                        </Col>
                     )}
 
-                    <Col xs={24} sm={24} md={children.length > 0 && item ? 6 : 10} lg={children.length > 0 && item ? 4 : 12}>
+                    <Col xs={24} sm={24} md={children.length > 0 && item ? 6 : 10} lg={item ? 8 : 12}>
                         <Text type="secondary" style={{ fontSize: '12px' }}>
                             {isConnected 
                                 ? 'Enter a Jama item ID to load requirement information'
@@ -418,6 +402,73 @@ const RequirementsViewer: React.FC = () => {
                         </Text>
                     </Col>
                 </Row>
+
+                {/* Export Info and Status */}
+                {item && (
+                    <Row gutter={[16, 8]} style={{ marginTop: 8 }}>
+                        <Col xs={24}>
+                            <Alert
+                                message="Recursive Export Information"
+                                description="This export includes all child items and sub-folders. Depending on the number of items and complexity, the export may take a while."
+                                type="info"
+                                icon={<InfoCircleOutlined />}
+                                showIcon
+                                style={{ fontSize: '12px' }}
+                            />
+                        </Col>
+                        
+                        {exportLoading && (
+                            <Col xs={24}>
+                                <Alert
+                                    message="Export in Progress"
+                                    description={
+                                        <div>
+                                            <div style={{ marginBottom: 8 }}>
+                                                <Spin size="small" style={{ marginRight: 8 }} />
+                                                <Typography.Text strong>{exportProgress.message}</Typography.Text>
+                                            </div>
+                                            {exportProgress.total > 0 && (
+                                                <div style={{ marginBottom: 12 }}>
+                                                    <Typography.Text type="secondary">
+                                                        Progress: {exportProgress.current} / {exportProgress.total}
+                                                    </Typography.Text>
+                                                </div>
+                                            )}
+                                            {serverLogs.length > 0 && (
+                                                <div>
+                                                    <Typography.Text strong style={{ fontSize: '12px' }}>
+                                                        Server Status:
+                                                    </Typography.Text>
+                                                    <div style={{ 
+                                                        maxHeight: '150px', 
+                                                        overflowY: 'auto',
+                                                        backgroundColor: 'rgba(0,0,0,0.02)',
+                                                        padding: '8px',
+                                                        borderRadius: '4px',
+                                                        marginTop: '4px',
+                                                        fontFamily: 'monospace',
+                                                        fontSize: '11px',
+                                                        border: '1px solid rgba(0,0,0,0.06)'
+                                                    }}>
+                                                        {serverLogs.map((log, index) => (
+                                                            <div key={index} style={{ marginBottom: '2px' }}>
+                                                                <Typography.Text type="secondary">
+                                                                    {log}
+                                                                </Typography.Text>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    }
+                                    type="info"
+                                    showIcon={false}
+                                />
+                            </Col>
+                        )}
+                    </Row>
+                )}
             </Card>
 
             {/* Error Display */}
@@ -535,21 +586,6 @@ const RequirementsViewer: React.FC = () => {
                             </Card>
                         )}
                     </Space>
-                </Card>
-            )}
-
-            {/* Export Progress Display */}
-            {exportLoading && (
-                <Card style={{ textAlign: 'center', marginBottom: 16 }}>
-                    <Spin size="large" />
-                    <div style={{ marginTop: 16 }}>
-                        <div style={{ marginBottom: 8 }}>{exportProgress.message}</div>
-                        {exportProgress.total > 0 && (
-                            <div style={{ fontSize: '12px', color: '#666' }}>
-                                Progress: {exportProgress.current} / {exportProgress.total}
-                            </div>
-                        )}
-                    </div>
                 </Card>
             )}
         </div>

@@ -1,6 +1,113 @@
 import { NextResponse } from 'next/server';
 import archiver from 'archiver';
 import { ServerJamaService, ServerJamaConfig } from './serverJamaService';
+import { addProgressMessage } from './progress/route';
+
+// Progress Logger that works with both SSE and console
+class ProgressLogger {
+    private exportId?: string;
+
+    constructor(exportId?: string) {
+        this.exportId = exportId;
+    }
+
+    log(message: string) {
+        console.log(message);
+        if (this.exportId) {
+            addProgressMessage(this.exportId, message);
+        }
+    }
+}
+
+// Batch processing functions for performance optimization
+
+// Batch load multiple items in parallel
+async function batchLoadItems(itemIds: number[], jamaService: ServerJamaService, logger: ProgressLogger, batchSize: number = 10): Promise<Map<number, any>> {
+    logger.log(`[BATCH] Loading ${itemIds.length} items in batches of ${batchSize}...`);
+    const itemMap = new Map<number, any>();
+    
+    // Process in batches to avoid overwhelming the API
+    for (let i = 0; i < itemIds.length; i += batchSize) {
+        const batch = itemIds.slice(i, i + batchSize);
+        logger.log(`[BATCH] Processing batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(itemIds.length/batchSize)} (${batch.length} items)`);
+        
+        // Load all items in this batch in parallel
+        const batchPromises = batch.map(async (itemId) => {
+            try {
+                const item = await jamaService.getItem(itemId);
+                return { itemId, item };
+            } catch (error) {
+                logger.log(`[BATCH] Failed to load item ${itemId}: ${error}`);
+                return { itemId, item: null };
+            }
+        });
+        
+        const batchResults = await Promise.all(batchPromises);
+        batchResults.forEach(({ itemId, item }) => {
+            if (item) itemMap.set(itemId, item);
+        });
+    }
+    
+    logger.log(`[BATCH] Successfully loaded ${itemMap.size}/${itemIds.length} items`);
+    return itemMap;
+}
+
+// Batch load children for multiple items
+async function batchLoadChildren(itemIds: number[], jamaService: ServerJamaService, logger: ProgressLogger, batchSize: number = 10): Promise<Map<number, number[]>> {
+    logger.log(`[BATCH] Loading children for ${itemIds.length} items...`);
+    const childrenMap = new Map<number, number[]>();
+    
+    for (let i = 0; i < itemIds.length; i += batchSize) {
+        const batch = itemIds.slice(i, i + batchSize);
+        
+        const batchPromises = batch.map(async (itemId) => {
+            try {
+                const children = await jamaService.getChildren(itemId);
+                return { itemId, children };
+            } catch (error) {
+                logger.log(`[BATCH] Failed to load children for ${itemId}: ${error}`);
+                return { itemId, children: [] };
+            }
+        });
+        
+        const batchResults = await Promise.all(batchPromises);
+        batchResults.forEach(({ itemId, children }) => {
+            childrenMap.set(itemId, children);
+        });
+    }
+    
+    return childrenMap;
+}
+
+// Batch load relationships for multiple items
+async function batchLoadRelationships(itemIds: number[], jamaService: ServerJamaService, logger: ProgressLogger, batchSize: number = 10): Promise<Map<number, { upstream: number[], downstream: number[] }>> {
+    logger.log(`[BATCH] Loading relationships for ${itemIds.length} items...`);
+    const relationshipsMap = new Map<number, { upstream: number[], downstream: number[] }>();
+    
+    for (let i = 0; i < itemIds.length; i += batchSize) {
+        const batch = itemIds.slice(i, i + batchSize);
+        
+        const batchPromises = batch.map(async (itemId) => {
+            try {
+                const [upstream, downstream] = await Promise.all([
+                    jamaService.getUpstreamRelated(itemId).catch(() => []),
+                    jamaService.getDownstreamRelated(itemId).catch(() => [])
+                ]);
+                return { itemId, upstream, downstream };
+            } catch (error) {
+                logger.log(`[BATCH] Failed to load relationships for ${itemId}: ${error}`);
+                return { itemId, upstream: [], downstream: [] };
+            }
+        });
+        
+        const batchResults = await Promise.all(batchPromises);
+        batchResults.forEach(({ itemId, upstream, downstream }) => {
+            relationshipsMap.set(itemId, { upstream, downstream });
+        });
+    }
+    
+    return relationshipsMap;
+}
 
 // Utility function to strip HTML tags and convert to plain text
 const stripHtmlTags = (html: string): string => {
@@ -36,6 +143,200 @@ const extractAsilFromFields = (fields: any, itemType: number) => {
     
     return null;
 };
+
+// Optimized version of generateRstContent that uses pre-loaded data
+async function generateRstContentOptimized(
+    itemId: number,
+    itemData: {
+        item: any,
+        children: number[],
+        relationships: { upstream: number[], downstream: number[] },
+        childItems?: Map<number, any>,
+        childrenMap?: Map<number, number[]>
+    },
+    indent: string,
+    caches: {
+        itemTypeCache: Map<number, any>,
+        picklistCache: Map<number, any>
+    },
+    jamaService: ServerJamaService,
+    logger?: ProgressLogger
+): Promise<string> {
+    try {
+        console.log(`[RST CONTENT] Generating optimized content for item ${itemId}...`);
+        
+        const { item, children, relationships } = itemData;
+        const { itemTypeCache, picklistCache } = caches;
+        
+        // Get item type (with caching)
+        let itemTypeInfo;
+        if (itemTypeCache.has(item.itemType)) {
+            itemTypeInfo = itemTypeCache.get(item.itemType);
+        } else {
+            try {
+                itemTypeInfo = await jamaService.getItemType(item.itemType);
+                itemTypeCache.set(item.itemType, itemTypeInfo);
+            } catch (error) {
+                itemTypeInfo = { id: item.itemType, display: `Type ${item.itemType}` };
+            }
+        }
+        
+        // Extract ASIL information with caching
+        const asilData = extractAsilFromFields(item.fields, item.itemType);
+        let asilInfo = null;
+        if (asilData?.value) {
+            if (picklistCache.has(asilData.value)) {
+                const cachedOption = picklistCache.get(asilData.value);
+                asilInfo = { optionName: cachedOption.name };
+            } else {
+                try {
+                    const picklistOption = await jamaService.getPicklistOption(asilData.value);
+                    picklistCache.set(asilData.value, picklistOption);
+                    asilInfo = { optionName: picklistOption.name };
+                } catch (error) {
+                    asilInfo = { optionName: 'Unknown' };
+                }
+            }
+        }
+        
+        const hasChildren = children.length > 0;
+        const exportTitle = item.fields.name || 'Unnamed item';
+        let content = `${exportTitle}\n${'='.repeat(exportTitle.length)}\n\n`;
+        
+        if (hasChildren) {
+            // Generate folder block
+            content += `.. sub:: ${item.fields.name || 'Unnamed Folder'}\n`;
+            content += `   :id: ${item.id}\n`;
+            content += `   :itemtype: ${itemTypeInfo?.display}\n`;
+            content += `   :collapse: false\n\n`;
+            
+            // Add folder description
+            if (item.fields.description) {
+                content += `   ${stripHtmlTags(item.fields.description)}\n\n`;
+            } else {
+                content += `   This item contains the following child items:\n\n`;
+            }
+            
+            // Process child items (use pre-loaded data if available)
+            if (itemData.childItems) {
+                console.log(`[RST CONTENT] Processing ${children.length} pre-loaded child items...`);
+                
+                for (const childId of children) {
+                    const childItem = itemData.childItems.get(childId);
+                    if (!childItem) {
+                        console.warn(`[RST CONTENT] Child item ${childId} not found in pre-loaded data`);
+                        continue;
+                    }
+                    
+                    // Get child item type (with caching)
+                    let childItemType;
+                    if (itemTypeCache.has(childItem.itemType)) {
+                        childItemType = itemTypeCache.get(childItem.itemType);
+                    } else {
+                        try {
+                            childItemType = await jamaService.getItemType(childItem.itemType);
+                            itemTypeCache.set(childItem.itemType, childItemType);
+                        } catch (error) {
+                            childItemType = { id: childItem.itemType, display: `Type ${childItem.itemType}` };
+                        }
+                    }
+                    
+                    // Check if child has children (use pre-loaded data if available)
+                    const childHasChildren = itemData.childrenMap ? 
+                        (itemData.childrenMap.get(childId)?.length || 0) > 0 : false;
+                    
+                    // Get child ASIL info with caching
+                    const childAsilData = extractAsilFromFields(childItem.fields, childItem.itemType);
+                    let childAsilInfo = null;
+                    if (childAsilData?.value) {
+                        if (picklistCache.has(childAsilData.value)) {
+                            const cachedOption = picklistCache.get(childAsilData.value);
+                            childAsilInfo = { optionName: cachedOption.name };
+                        } else {
+                            try {
+                                const picklistOption = await jamaService.getPicklistOption(childAsilData.value);
+                                picklistCache.set(childAsilData.value, picklistOption);
+                                childAsilInfo = { optionName: picklistOption.name };
+                            } catch {
+                                childAsilInfo = { optionName: 'Unknown' };
+                            }
+                        }
+                    }
+                    
+                    // Use appropriate directive
+                    if (childHasChildren) {
+                        content += `   .. sub:: ${childItem.fields.name || 'Unnamed Folder'}\n`;
+                    } else {
+                        content += `   .. item:: ${childItem.fields.name || 'Unnamed Requirement'}\n`;
+                    }
+                    content += `      :id: ${childItem.id}\n`;
+                    
+                    if (childItem.fields.statuscrnd) {
+                        content += `      :status: ${childItem.fields.statuscrnd}\n`;
+                    }
+                    
+                    if (childAsilInfo) {
+                        content += `      :asil: ${childAsilInfo.optionName}\n`;
+                    }
+                    
+                    if (childItemType) {
+                        content += `      :itemtype: ${childItemType.display}\n`;
+                    }
+                    
+                    content += `      :collapse: false\n\n`;
+                    
+                    if (childItem.fields.description) {
+                        content += `      ${stripHtmlTags(childItem.fields.description)}\n\n`;
+                    } else {
+                        content += `      No description available.\n\n`;
+                    }
+                }
+            }
+        } else {
+            // Generate regular requirement block
+            content += `.. item:: ${item.fields.name || 'Unnamed Requirement'}\n`;
+            content += `   :id: ${item.id}\n`;
+            
+            if (item.fields.statuscrnd) {
+                content += `   :status: ${item.fields.statuscrnd}\n`;
+            }
+            
+            if (asilInfo) {
+                content += `   :asil: ${asilInfo.optionName}\n`;
+            }
+            
+            if (itemTypeInfo) {
+                content += `   :itemtype: ${itemTypeInfo.display}\n`;
+            }
+            
+            const allLinks = [...relationships.upstream, ...relationships.downstream];
+            if (allLinks.length > 0) {
+                content += `   :related: ${allLinks.join(', ')}\n`;
+            }
+            
+            content += `   :collapse: true\n\n`;
+            
+            if (item.fields.description) {
+                content += `   ${stripHtmlTags(item.fields.description)}\n\n`;
+            } else {
+                content += `   No description available.\n\n`;
+            }
+        }
+        
+        // Add needflow diagram
+        content += `.. needflow::\n`;
+        content += `   :filter: id == "${item.id}" or parent_need == "${item.id}"\n`;
+        content += `   :link_types: links, related\n`;
+        content += `   :show_link_names:\n`;
+        content += `   :config: lefttoright\n`;
+        
+        console.log(`[RST CONTENT] Optimized content generation completed for item ${itemId}`);
+        return content;
+    } catch (error) {
+        console.error(`[RST CONTENT] Error generating optimized content for item ${itemId}:`, error);
+        return `Error generating RST content for item ${itemId}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+}
 
 // Generate single layer RST content
 async function generateRstContent(
@@ -279,6 +580,9 @@ async function generateRstContent(
 
 export async function POST(request: Request) {
     try {
+        const url = new URL(request.url);
+        const useSSE = url.searchParams.get('sse') === 'true';
+        
         const body = await request.json();
         const { 
             item,
@@ -315,19 +619,54 @@ export async function POST(request: Request) {
         });
         const startTime = Date.now();
 
+        // Initialize logger for progress updates
+        const exportId = url.searchParams.get('exportId');
+        const logger = new ProgressLogger(exportId || undefined);
+
         // Create ServerJamaService instance with the provided connection config
         const jamaService = new ServerJamaService(connectionConfig);
 
         if (exportType === 'single') {
-            // Single file export
-            const rstContent = await generateRstContent(
-                item.id, item.itemType, '', jamaService
+            // Optimized single file export
+            console.log(`[RST EXPORT] Starting optimized single export for item ${item.id}...`);
+            
+            // Create global caches
+            const itemTypeCache = new Map<number, any>();
+            const picklistCache = new Map<number, any>();
+            
+            // Pre-load child items if there are any
+            let childItemsMap = new Map<number, any>();
+            if (children.length > 0) {
+                console.log(`[RST EXPORT] Pre-loading ${children.length} child items...`);
+                childItemsMap = await batchLoadItems(children, jamaService, logger, 15);
+            }
+            
+            // Pre-load children hierarchy for child items
+            let childrenMap = new Map<number, number[]>();
+            if (children.length > 0) {
+                childrenMap = await batchLoadChildren(children, jamaService, logger, 15);
+            }
+            
+            // Generate RST content using optimized function
+            const relationships = { upstream: upstreamRelated, downstream: downstreamRelated };
+            const rstContent = await generateRstContentOptimized(
+                item.id,
+                {
+                    item: item,
+                    children: children,
+                    relationships: relationships,
+                    childItems: childItemsMap,
+                    childrenMap: childrenMap
+                },
+                '',
+                { itemTypeCache, picklistCache },
+                jamaService
             );
 
             const filename = `${item.id}.rst`;
             
             const totalTime = Date.now() - startTime;
-            console.log(`[RST EXPORT] Single export completed in ${totalTime}ms`);
+            console.log(`[RST EXPORT] Optimized single export completed in ${totalTime}ms`);
 
             // Return the RST file
             const response = new Response(rstContent, {
@@ -341,7 +680,7 @@ export async function POST(request: Request) {
 
             return response;
         } else if (exportType === 'recursive') {
-            // Recursive ZIP export
+            // Optimized recursive ZIP export
             const hasChildren = children.length > 0;
 
             if (!hasChildren) {
@@ -386,16 +725,33 @@ export async function POST(request: Request) {
                 return response;
             }
 
-            // Create ZIP archive for recursive export
+            console.log(`[RST EXPORT] Starting optimized recursive export...`);
+            
+            // Global caches for the entire export
+            const itemTypeCache = new Map<number, any>();
+            const picklistCache = new Map<number, any>();
+
+            // Step 1: Batch load all child items
+            console.log(`[RST EXPORT] Step 1: Batch loading ${children.length} child items...`);
+            const childItemsMap = await batchLoadItems(children, jamaService, logger, 15);
+            
+            // Step 2: Batch load children for all items to determine hierarchy
+            console.log(`[RST EXPORT] Step 2: Batch loading children for hierarchy analysis...`);
+            const allItemIds = [item.id, ...children];
+            const childrenMap = await batchLoadChildren(allItemIds, jamaService, logger, 15);
+            
+            // Step 3: Batch load relationships for all items
+            console.log(`[RST EXPORT] Step 3: Batch loading relationships...`);
+            const relationshipsMap = await batchLoadRelationships(allItemIds, jamaService, logger, 15);
+
+            // Create archive
             const archive = archiver('zip', {
-                zlib: { level: 9 }, // Best compression
+                zlib: { level: 9 },
             });
 
-            // Collect archive data
             const chunks: Buffer[] = [];
             archive.on('data', (chunk) => chunks.push(chunk));
             
-            // Promise to wait for archive completion
             const archivePromise = new Promise<Buffer>((resolve, reject) => {
                 archive.on('end', () => {
                     resolve(Buffer.concat(chunks));
@@ -407,154 +763,101 @@ export async function POST(request: Request) {
             const indexContent = `${item.fields.name || 'Unnamed item'}\n${'='.repeat((item.fields.name || 'Unnamed item').length)}\n\n.. toctree::\n   :maxdepth: 3\n   :caption: Contents:\n   :titlesonly:\n\n   ${item.id}\n`;
             archive.append(indexContent, { name: 'index.rst' });
 
-            // Load all child items
-            console.log(`[RST EXPORT] Loading ${children.length} child items...`);
-            const childItems = [];
-            for (let i = 0; i < children.length; i++) {
-                const childId = children[i];
-                try {
-                    console.log(`[RST EXPORT] Loading child item ${i + 1}/${children.length}: ${childId}`);
-                    const childItem = await jamaService.getItem(childId);
-                    childItems.push(childItem);
-                } catch (error) {
-                    console.error(`[RST EXPORT] Failed to load child item ${childId}:`, error);
-                }
-            }
-            console.log(`[RST EXPORT] Successfully loaded ${childItems.length} child items`);
-            
-            // Cache for item types and picklist options
-            const itemTypeCache = new Map<number, any>();
-            const picklistCache = new Map<number, any>();
-            
-            // Separate children into those with/without children
-            console.log(`[RST EXPORT] Categorizing child items...`);
+            // Categorize children based on pre-loaded hierarchy data
+            console.log(`[RST EXPORT] Step 4: Categorizing child items...`);
             const childrenWithoutChildren: any[] = [];
             const childrenWithChildren: any[] = [];
             
-            for (let i = 0; i < childItems.length; i++) {
-                const childItem = childItems[i];
-                try {
-                    console.log(`[RST EXPORT] Checking children for item ${i + 1}/${childItems.length}: ${childItem.id}`);
-                    const childChildren = await jamaService.getChildren(childItem.id);
+            for (const childId of children) {
+                const childItem = childItemsMap.get(childId);
+                const childChildren = childrenMap.get(childId) || [];
+                
+                if (childItem) {
                     if (childChildren.length > 0) {
-                        console.log(`[RST EXPORT] Item ${childItem.id} has ${childChildren.length} children`);
                         childrenWithChildren.push({ item: childItem, children: childChildren });
                     } else {
-                        console.log(`[RST EXPORT] Item ${childItem.id} is a leaf node`);
                         childrenWithoutChildren.push(childItem);
                     }
-                } catch (error) {
-                    console.error(`[RST EXPORT] Failed to get children for ${childItem.id}:`, error);
-                    // Treat as leaf item if we can't get children
-                    childrenWithoutChildren.push(childItem);
                 }
             }
             
             console.log(`[RST EXPORT] Categorization complete - ${childrenWithoutChildren.length} leaf items, ${childrenWithChildren.length} parent items`);
 
-            // Create root item RST file
-            console.log(`[RST EXPORT] Creating root RST content for item ${item.id}...`);
-            let rootContent = `${item.fields.name || 'Unnamed item'}\n${'='.repeat((item.fields.name || 'Unnamed item').length)}\n\n`;
-            
-            // Add root item as sub directive
-            rootContent += `.. sub:: ${item.fields.name || 'Unnamed Folder'}\n`;
-            rootContent += `   :id: ${item.id}\n`;
-            rootContent += `   :itemtype: ${itemTypeInfo?.display}\n`;
-            rootContent += `   :collapse: false\n\n`;
-            
-            // Add root description
-            if (item.fields.description) {
-                rootContent += `   ${stripHtmlTags(item.fields.description)}\n\n`;
-            } else {
-                rootContent += `   This item contains the following child items:\n\n`;
-            }
+            // Generate root RST content using optimized function
+            console.log(`[RST EXPORT] Step 5: Generating root RST content...`);
+            const rootRelationships = relationshipsMap.get(item.id) || { upstream: [], downstream: [] };
+            const rootRstContent = await generateRstContentOptimized(
+                item.id,
+                {
+                    item: item,
+                    children: childrenWithoutChildren.map(c => c.id), // Only include leaf children in root
+                    relationships: rootRelationships,
+                    childItems: childItemsMap,
+                    childrenMap: childrenMap
+                },
+                '',
+                { itemTypeCache, picklistCache },
+                jamaService
+            );
 
-            // Add children without children directly to root RST (simplified version for recursive export)
-            console.log(`[RST EXPORT] Adding ${childrenWithoutChildren.length} leaf items to root RST...`);
-            for (const childItem of childrenWithoutChildren) {
-                rootContent += `   .. item:: ${childItem.fields.name || 'Unnamed Requirement'}\n`;
-                rootContent += `      :id: ${childItem.id}\n`;
-                rootContent += `      :collapse: false\n\n`;
-                rootContent += `      ${childItem.fields.description ? stripHtmlTags(childItem.fields.description) : 'No description available.'}\n\n`;
-            }
-
-            // Add needflow diagram
-            rootContent += `.. needflow::\n`;
-            rootContent += `   :filter: id == "${item.id}" or parent_need == "${item.id}"\n`;
-            rootContent += `   :link_types: links, related\n`;
-            rootContent += `   :show_link_names:\n`;
-            rootContent += `   :config: lefttoright\n\n`;
-
-            // Add toctree for children with children
+            // Add toctree for parent items
+            let finalRootContent = rootRstContent;
             if (childrenWithChildren.length > 0) {
-                rootContent += `.. toctree::\n`;
-                rootContent += `   :maxdepth: 2\n`;
-                rootContent += `   :caption: sub-structure:\n\n`;
-                
+                finalRootContent += `\n.. toctree::\n   :maxdepth: 2\n   :caption: sub-structure:\n\n`;
                 for (const childWithChildren of childrenWithChildren) {
-                    rootContent += `   ${childWithChildren.item.id}/${childWithChildren.item.id}\n`;
+                    finalRootContent += `   ${childWithChildren.item.id}/${childWithChildren.item.id}\n`;
                 }
             }
 
-            // Add root RST file to archive
-            console.log(`[RST EXPORT] Adding root RST file to archive...`);
-            archive.append(rootContent, { name: `${item.id}.rst` });
+            archive.append(finalRootContent, { name: `${item.id}.rst` });
 
-            // Process children with children recursively
-            console.log(`[RST EXPORT] Processing ${childrenWithChildren.length} parent items recursively...`);
+            // Process children with children
+            console.log(`[RST EXPORT] Step 6: Processing ${childrenWithChildren.length} parent items...`);
             for (let i = 0; i < childrenWithChildren.length; i++) {
                 const childWithChildren = childrenWithChildren[i];
                 const childItem = childWithChildren.item;
                 const childChildren = childWithChildren.children;
 
-                console.log(`[RST EXPORT] Processing parent item ${i + 1}/${childrenWithChildren.length}: ${childItem.id} (${childChildren.length} children)`);
+                console.log(`[RST EXPORT] Processing parent item ${i + 1}/${childrenWithChildren.length}: ${childItem.id}`);
 
                 try {
-                    // Get child relationships
-                    console.log(`[RST EXPORT] Loading relationships for item ${childItem.id}...`);
-                    let childUpstream: number[] = [];
-                    let childDownstream: number[] = [];
-                    try {
-                        childUpstream = await jamaService.getUpstreamRelated(childItem.id);
-                        childDownstream = await jamaService.getDownstreamRelated(childItem.id);
-                        console.log(`[RST EXPORT] Found ${childUpstream.length} upstream and ${childDownstream.length} downstream relationships for item ${childItem.id}`);
-                    } catch (error) {
-                        console.error(`[RST EXPORT] Failed to get relationships for ${childItem.id}:`, error);
-                    }
-
-                    // Create folder and RST file for this child
-                    console.log(`[RST EXPORT] Generating RST content for item ${childItem.id}...`);
-                    const childRstContent = await generateRstContent(
+                    // Pre-load all child items for this parent
+                    const childChildItemsMap = await batchLoadItems(childChildren, jamaService, logger, 10);
+                    
+                    const childRelationships = relationshipsMap.get(childItem.id) || { upstream: [], downstream: [] };
+                    
+                    const childRstContent = await generateRstContentOptimized(
                         childItem.id,
-                        childItem.itemType,
+                        {
+                            item: childItem,
+                            children: childChildren,
+                            relationships: childRelationships,
+                            childItems: childChildItemsMap,
+                            childrenMap: childrenMap
+                        },
                         '',
+                        { itemTypeCache, picklistCache },
                         jamaService
                     );
 
-                    // Add file to folder in archive
-                    console.log(`[RST EXPORT] Adding RST file for item ${childItem.id} to archive...`);
                     archive.append(childRstContent, { name: `${childItem.id}/${childItem.id}.rst` });
                     
                 } catch (error) {
                     console.error(`[RST EXPORT] Failed to process child with children ${childItem.id}:`, error);
-                    // Create error file
                     const errorContent = `${childItem.fields.name || 'Failed to load'}\n${'='.repeat((childItem.fields.name || 'Failed to load').length)}\n\nError loading content for item ${childItem.id}.\n`;
                     archive.append(errorContent, { name: `${childItem.id}/${childItem.id}.rst` });
                 }
             }
 
-            // Finalize the archive
-            console.log(`[RST EXPORT] Finalizing ZIP archive...`);
+            // Finalize
+            console.log(`[RST EXPORT] Step 7: Finalizing ZIP archive...`);
             await archive.finalize();
-
-            // Wait for archive to complete
-            console.log(`[RST EXPORT] Waiting for archive completion...`);
             const zipBuffer = await archivePromise;
             
             const totalTime = Date.now() - startTime;
-            console.log(`[RST EXPORT] Recursive export completed in ${totalTime}ms`);
+            console.log(`[RST EXPORT] Optimized recursive export completed in ${totalTime}ms`);
 
-            const response = new Response(new Uint8Array(zipBuffer), {
+            return new Response(new Uint8Array(zipBuffer), {
                 status: 200,
                 headers: {
                     'Content-Type': 'application/zip',
@@ -562,8 +865,6 @@ export async function POST(request: Request) {
                     'Content-Length': String(zipBuffer.length),
                 },
             });
-
-            return response;
         }
 
         return NextResponse.json(
