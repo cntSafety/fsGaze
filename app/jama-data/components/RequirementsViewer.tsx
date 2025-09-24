@@ -25,10 +25,9 @@ import {
 import { JamaItem } from '../types/jama';
 import { globalJamaService } from '../../services/globalJamaService';
 import { useJamaConnection } from '../../components/JamaConnectionProvider';
+import { exportOneLayerToRst } from '../services/exportService';
 
-const { Text, Paragraph } = Typography;
-
-// Utility function to strip HTML tags and convert to plain text
+// Utility function to strip HTML tags and convert to plain text (used for display)
 const stripHtmlTags = (html: string): string => {
     if (!html) return '';
     
@@ -47,6 +46,8 @@ const stripHtmlTags = (html: string): string => {
     // Clean up extra whitespace
     return decoded.replace(/\s+/g, ' ').trim();
 };
+
+const { Text, Paragraph } = Typography;
 
 // No props needed since component uses global Jama service
 const RequirementsViewer: React.FC = () => {
@@ -219,204 +220,20 @@ const RequirementsViewer: React.FC = () => {
         setExportLoading(true);
         setExportProgress({ current: 0, total: 0, message: 'Initializing export...' });
 
-        // Check if this item has children
-        const hasChildren = children.length > 0;
-
-        const generateRstContent = async () => {
-            const exportTitle = item.fields.name || 'Unnamed item';
-            let content = `${exportTitle}\n${'='.repeat(exportTitle.length)}\n\n`;
-            
-            setExportProgress({ current: 1, total: 5, message: 'Analyzing item type...' });
-            
-            if (hasChildren) {
-                setExportProgress({ current: 2, total: 5, message: 'Processing folder structure...' });
-                
-                // Generate folder block
-                content += `.. sub:: ${item.fields.name || 'Unnamed Folder'}\n`;
-                content += `   :id: ${item.id}\n`;
-                content += `   :itemtype: ${itemTypeInfo?.display}\n`;
-                content += `   :collapse: false\n\n`;
-                
-                // Add folder description
-                if (item.fields.description) {
-                    content += `   ${stripHtmlTags(item.fields.description)}\n\n`;
-                } else {
-                    content += `   This item contains the following child items:\n\n`;
-                }
-                
-                // Add children as nested requirements
-                if (children.length > 0) {
-                    setExportProgress({ 
-                        current: 3, 
-                        total: 4, 
-                        message: `Loading ${children.length} child requirements in batches...` 
-                    });
-                    
-                    try {
-                        // Load all child items in batches for better performance
-                        const childItems = await globalJamaService.getMultipleItems(children);
-                        
-                        setExportProgress({ 
-                            current: 3, 
-                            total: 4, 
-                            message: `Processing ${childItems.length} loaded child requirements...` 
-                        });
-                        
-                        // Cache for item types and picklist options to avoid repeated API calls
-                        const itemTypeCache = new Map<number, any>();
-                        const picklistCache = new Map<number, any>();
-                        
-                        // Process each child item
-                        for (let i = 0; i < childItems.length; i++) {
-                            const childItem = childItems[i];
-                            
-                            try {
-                                // Get child item type (with caching)
-                                let childItemType;
-                                if (itemTypeCache.has(childItem.itemType)) {
-                                    childItemType = itemTypeCache.get(childItem.itemType);
-                                } else {
-                                    childItemType = await globalJamaService.getItemType(childItem.itemType);
-                                    itemTypeCache.set(childItem.itemType, childItemType);
-                                }
-                                
-                                // Check if this child is also a folder or component
-                                const isChildFolder = childItemType?.display?.toLowerCase().includes('folder') || 
-                                                    childItemType?.display?.toLowerCase().includes('component');
-                                
-                                // Get child's upstream/downstream relations
-                                const childUpstream = await globalJamaService.getUpstreamRelated(childItem.id);
-                                const childDownstream = await globalJamaService.getDownstreamRelated(childItem.id);
-                                
-                                // Get child's ASIL info (with caching)
-                                const childAsilData = extractAsilFromFields(childItem.fields, childItem.itemType);
-                                let childAsilInfo = null;
-                                if (childAsilData) {
-                                    if (picklistCache.has(childAsilData.value)) {
-                                        const cachedOption = picklistCache.get(childAsilData.value);
-                                        childAsilInfo = { optionName: cachedOption.name };
-                                    } else {
-                                        try {
-                                            const picklistOption = await globalJamaService.getPicklistOption(childAsilData.value);
-                                            picklistCache.set(childAsilData.value, picklistOption);
-                                            childAsilInfo = { optionName: picklistOption.name };
-                                        } catch {
-                                            childAsilInfo = { optionName: 'Unknown' };
-                                        }
-                                    }
-                                }
-                                
-                                // Use appropriate directive based on item type
-                                if (isChildFolder) {
-                                    content += `   .. sub:: ${childItem.fields.name || 'Unnamed Folder'}\n`;
-                                } else {
-                                    content += `   .. item:: ${childItem.fields.name || 'Unnamed Requirement'}\n`;
-                                }
-                                content += `      :id: ${childItem.id}\n`;
-                                
-                                if (childItem.fields.statuscrnd) {
-                                    content += `      :status: ${childItem.fields.statuscrnd}\n`;
-                                }
-                                
-                                if (childAsilInfo) {
-                                    content += `      :asil: ${childAsilInfo.optionName}\n`;
-                                }
-                                
-                                if (childItemType) {
-                                    content += `      :itemtype: ${childItemType.display}\n`;
-                                }
-                                
-                                const childAllLinks = [...childUpstream, ...childDownstream];
-                                if (childAllLinks.length > 0) {
-                                    content += `      :related: ${childAllLinks.join(', ')}\n`;
-                                }
-                                
-                                content += `      :collapse: false\n\n`;
-                                
-                                if (childItem.fields.description) {
-                                    content += `      ${stripHtmlTags(childItem.fields.description)}\n\n`;
-                                } else {
-                                    content += `      No description available.\n\n`;
-                                }
-                            } catch (error) {
-                                console.error(`Failed to load child item ${childItem.id}:`, error);
-                                content += `   .. item:: Failed to load requirement\n`;
-                                content += `      :id: ${childItem.id}\n`;
-                                content += `      :collapse: false\n\n`;
-                                content += `      Error loading requirement data.\n\n`;
-                            }
-                        }
-                    } catch (error) {
-                        console.error('Failed to load child items in batch:', error);
-                        // Fallback to individual loading if batch fails
-                        for (let i = 0; i < children.length; i++) {
-                            const childId = children[i];
-                            try {
-                                const childItem = await globalJamaService.getItem(childId);
-                                content += `   .. item:: ${childItem.fields.name || 'Failed to load requirement'}\n`;
-                                content += `      :id: ${childId}\n`;
-                                content += `      :collapse: false\n\n`;
-                                content += `      Error loading detailed requirement data.\n\n`;
-                            } catch {
-                                content += `   .. item:: Failed to load requirement\n`;
-                                content += `      :id: ${childId}\n`;
-                                content += `      :collapse: false\n\n`;
-                                content += `      Error loading requirement data.\n\n`;
-                            }
-                        }
+        try {
+            const exportResult = await exportOneLayerToRst(
+                item,
+                itemTypeInfo,
+                asilInfo,
+                upstreamRelated,
+                downstreamRelated,
+                children,
+                {
+                    onProgress: (current, total, message) => {
+                        setExportProgress({ current, total, message });
                     }
                 }
-            } else {
-                setExportProgress({ current: 2, total: 5, message: 'Processing requirement data...' });
-                
-                // Generate regular requirement block
-                content += `.. item:: ${item.fields.name || 'Unnamed Requirement'}\n`;
-                content += `   :id: ${item.id}\n`;
-                
-                if (item.fields.statuscrnd) {
-                    content += `   :status: ${item.fields.statuscrnd}\n`;
-                }
-                
-                if (asilInfo) {
-                    content += `   :asil: ${asilInfo.optionName}\n`;
-                }
-                
-                if (itemTypeInfo) {
-                    content += `   :itemtype: ${itemTypeInfo.display}\n`;
-                }
-                
-                const allLinks = [...upstreamRelated, ...downstreamRelated];
-                if (allLinks.length > 0) {
-                    content += `   :related: ${allLinks.join(', ')}\n`;
-                }
-                
-                content += `   :collapse: true\n\n`;
-                
-                if (item.fields.description) {
-                    content += `   ${stripHtmlTags(item.fields.description)}\n\n`;
-                } else {
-                    content += `   No description available.\n\n`;
-                }
-            }
-            
-            setExportProgress({ 
-                current: 4, 
-                total: 5, 
-                message: 'Adding flow diagram...' 
-            });
-            
-            // Add needflow diagram at the end
-            content += `.. needflow::\n`;
-            content += `   :filter: id == "${item.id}" or parent_need == "${item.id}"\n`;
-            content += `   :link_types: links, related\n`;
-            content += `   :show_link_names:\n`;
-            content += `   :config: lefttoright\n`;
-            
-            return content;
-        };
-
-        try {
-            const rstContent = await generateRstContent();
+            );
             
             setExportProgress({ 
                 current: 5, 
@@ -424,20 +241,12 @@ const RequirementsViewer: React.FC = () => {
                 message: 'Generating file download...' 
             });
             
-            // Create filename from item name or fallback to ID
-            const sanitizeName = (name: string) => {
-                return name.replace(/[^a-zA-Z0-9\-_]/g, '_').replace(/_{2,}/g, '_').replace(/^_|_$/g, '');
-            };
-            
-            const filename = item.fields.name 
-                ? `${sanitizeName(item.fields.name)}.rst`
-                : `requirement_${item.id}.rst`;
-            
-            const blob = new Blob([rstContent], { type: 'text/plain;charset=utf-8' });
+            // Download the file
+            const blob = new Blob([exportResult.content], { type: 'text/plain;charset=utf-8' });
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = filename;
+            link.download = exportResult.filename;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
