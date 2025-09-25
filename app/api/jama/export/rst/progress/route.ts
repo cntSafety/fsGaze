@@ -1,7 +1,5 @@
 import { NextRequest } from 'next/server';
-
-// In-memory store for progress updates
-const progressStore = new Map<string, string[]>();
+import { progressStore } from '@/app/api/jama/export/rst/progress/store';
 
 export async function GET(request: NextRequest) {
     const url = new URL(request.url);
@@ -21,8 +19,8 @@ export async function GET(request: NextRequest) {
 
             // Function to send stored messages
             const sendStoredMessages = () => {
-                const messages = progressStore.get(exportId) || [];
-                messages.forEach(message => {
+                const messages: string[] = progressStore.get(exportId) ?? [];
+                messages.forEach((message: string) => {
                     const data = `data: ${JSON.stringify({ message })}\n\n`;
                     controller.enqueue(encoder.encode(data));
                 });
@@ -33,11 +31,11 @@ export async function GET(request: NextRequest) {
 
             // Poll for new messages every 100ms
             const interval = setInterval(() => {
-                const messages = progressStore.get(exportId) || [];
+                const messages: string[] = progressStore.get(exportId) ?? [];
                 if (messages.length === 0) return;
 
                 // Send new messages and clear the store
-                messages.forEach(message => {
+                messages.forEach((message: string) => {
                     const data = `data: ${JSON.stringify({ message })}\n\n`;
                     controller.enqueue(encoder.encode(data));
                 });
@@ -46,7 +44,7 @@ export async function GET(request: NextRequest) {
                 progressStore.set(exportId, []);
 
                 // Check if export is done (indicated by a special message)
-                if (messages.some(msg => msg.includes('completed') || msg.includes('done'))) {
+                if (messages.some((msg: string) => msg.includes('completed') || msg.includes('done'))) {
                     clearInterval(interval);
                     const doneData = `data: ${JSON.stringify({ done: true })}\n\n`;
                     controller.enqueue(encoder.encode(doneData));
@@ -72,12 +70,4 @@ export async function GET(request: NextRequest) {
             'Connection': 'keep-alive',
         }
     });
-}
-
-// Function to add progress messages (used by the main export route)
-export function addProgressMessage(exportId: string, message: string) {
-    if (!progressStore.has(exportId)) {
-        progressStore.set(exportId, []);
-    }
-    progressStore.get(exportId)!.push(message);
 }

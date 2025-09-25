@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import archiver from 'archiver';
 import { ServerJamaService, ServerJamaConfig } from './serverJamaService';
-import { addProgressMessage } from './progress/route';
+import { addProgressMessage } from '@/app/api/jama/export/rst/progress/store';
 
 // Progress Logger that works with both SSE and console
 class ProgressLogger {
@@ -109,6 +109,157 @@ async function batchLoadRelationships(itemIds: number[], jamaService: ServerJama
     return relationshipsMap;
 }
 
+// Build full hierarchy (BFS) starting from root and its initial children
+async function buildFullHierarchy(
+    rootId: number,
+    initialChildren: number[],
+    jamaService: ServerJamaService,
+    logger: ProgressLogger,
+    batchSize: number = 25
+): Promise<{
+    itemMap: Map<number, any>,
+    childrenMap: Map<number, number[]>,
+    relationshipsMap: Map<number, { upstream: number[], downstream: number[] }>
+}> {
+    logger.log(`[HIERARCHY] Building full hierarchy starting at ${rootId}...`);
+
+    const itemMap = new Map<number, any>();
+    const childrenMap = new Map<number, number[]>();
+    const relationshipsMap = new Map<number, { upstream: number[], downstream: number[] }>();
+
+    const discovered = new Set<number>();
+    const frontier: number[] = [rootId, ...initialChildren];
+
+    frontier.forEach(id => discovered.add(id));
+
+    // Load initial items
+    const initialItems = await batchLoadItems(frontier, jamaService, logger, batchSize);
+    initialItems.forEach((item, id) => itemMap.set(id, item));
+
+    let currentFrontier = [...frontier];
+    let level = 0;
+    while (currentFrontier.length > 0) {
+        level += 1;
+        logger.log(`[HIERARCHY] Level ${level}: loading children for ${currentFrontier.length} items`);
+
+        const levelChildrenMap = await batchLoadChildren(currentFrontier, jamaService, logger, batchSize);
+        const nextFrontierSet = new Set<number>();
+
+        levelChildrenMap.forEach((childIds, parentId) => {
+            childrenMap.set(parentId, childIds);
+            for (const childId of childIds) {
+                if (!discovered.has(childId)) {
+                    discovered.add(childId);
+                    nextFrontierSet.add(childId);
+                }
+            }
+        });
+
+        const nextFrontier = Array.from(nextFrontierSet);
+        if (nextFrontier.length === 0) {
+            break;
+        }
+
+        // Load newly discovered items
+        const newItems = await batchLoadItems(nextFrontier, jamaService, logger, batchSize);
+        newItems.forEach((item, id) => itemMap.set(id, item));
+
+        currentFrontier = nextFrontier;
+    }
+
+    // Ensure every discovered node has a children entry (even empty)
+    discovered.forEach(id => {
+        if (!childrenMap.has(id)) {
+            childrenMap.set(id, []);
+        }
+    });
+
+    // Load relationships for all discovered items (root + descendants)
+    const allIds = Array.from(discovered);
+    logger.log(`[HIERARCHY] Loading relationships for ${allIds.length} items...`);
+    const rels = await batchLoadRelationships(allIds, jamaService, logger, batchSize);
+    rels.forEach((value, id) => relationshipsMap.set(id, value));
+
+    logger.log(`[HIERARCHY] Built hierarchy: ${itemMap.size} items, ${childrenMap.size} parent entries`);
+    return { itemMap, childrenMap, relationshipsMap };
+}
+
+// Recursively append RST files to archive for each node that has children
+async function appendRstRecursive(
+    currentId: number,
+    archive: any,
+    pathPrefix: string,
+    isRoot: boolean,
+    caches: { itemTypeCache: Map<number, any>, picklistCache: Map<number, any> },
+    maps: {
+        itemMap: Map<number, any>,
+        childrenMap: Map<number, number[]>,
+        relationshipsMap: Map<number, { upstream: number[], downstream: number[] }>
+    },
+    jamaService: ServerJamaService
+): Promise<void> {
+    const { itemMap, childrenMap, relationshipsMap } = maps;
+
+    const item = itemMap.get(currentId);
+    if (!item) {
+        const errorContent = `Item ${currentId}\n${'='.repeat(String(currentId).length)}\n\nError: item data not found.`;
+        archive.append(errorContent, { name: `${pathPrefix}${currentId}.rst` });
+        return;
+    }
+
+    const childIds = childrenMap.get(currentId) || [];
+    const leafChildIds = childIds.filter(id => (childrenMap.get(id)?.length || 0) === 0);
+    const parentChildIds = childIds.filter(id => (childrenMap.get(id)?.length || 0) > 0);
+
+    const childItemsMap = new Map<number, any>();
+    for (const id of leafChildIds) {
+        const childItem = itemMap.get(id);
+        if (childItem) childItemsMap.set(id, childItem);
+    }
+
+    const relationships = relationshipsMap.get(currentId) || { upstream: [], downstream: [] };
+
+    let rstContent = await generateRstContentOptimized(
+        currentId,
+        {
+            item,
+            children: leafChildIds,
+            relationships,
+            childItems: childItemsMap,
+            childrenMap,
+            relationshipsMap
+        },
+        '',
+        caches,
+        jamaService
+    );
+
+    if (parentChildIds.length > 0) {
+        rstContent += `\n.. toctree::\n   :maxdepth: 2\n   :caption: sub-structure:\n\n`;
+        for (const childId of parentChildIds) {
+            rstContent += `   ${childId}/${childId}\n`;
+        }
+    }
+
+    const rstPath = isRoot
+        ? `${pathPrefix}${currentId}.rst`
+        : `${pathPrefix}${currentId}/${currentId}.rst`;
+    archive.append(rstContent, { name: rstPath });
+
+    // Recurse into each parent child, writing their own folder and file
+    for (const childParentId of parentChildIds) {
+        await appendRstRecursive(
+            childParentId,
+            archive,
+            `${pathPrefix}${isRoot ? '' : `${currentId}/`}`,
+            false,
+            caches,
+            maps,
+            jamaService
+        );
+    }
+}
+
 // Utility function to strip HTML tags and convert to plain text
 const stripHtmlTags = (html: string): string => {
     if (!html) return '';
@@ -152,7 +303,8 @@ async function generateRstContentOptimized(
         children: number[],
         relationships: { upstream: number[], downstream: number[] },
         childItems?: Map<number, any>,
-        childrenMap?: Map<number, number[]>
+        childrenMap?: Map<number, number[]>,
+        relationshipsMap?: Map<number, { upstream: number[], downstream: number[] }>
     },
     indent: string,
     caches: {
@@ -208,6 +360,10 @@ async function generateRstContentOptimized(
             content += `.. sub:: ${item.fields.name || 'Unnamed Folder'}\n`;
             content += `   :id: ${item.id}\n`;
             content += `   :itemtype: ${itemTypeInfo?.display}\n`;
+            const parentAllLinks = [...relationships.upstream, ...relationships.downstream];
+            if (parentAllLinks.length > 0) {
+                content += `   :related: ${parentAllLinks.join(', ')}\n`;
+            }
             content += `   :collapse: false\n\n`;
             
             // Add folder description
@@ -281,6 +437,15 @@ async function generateRstContentOptimized(
                     
                     if (childItemType) {
                         content += `      :itemtype: ${childItemType.display}\n`;
+                    }
+
+                    // Include relationships for child when available
+                    if (itemData.relationshipsMap) {
+                        const rel = itemData.relationshipsMap.get(childItem.id) || { upstream: [], downstream: [] };
+                        const childAllLinks = [...rel.upstream, ...rel.downstream];
+                        if (childAllLinks.length > 0) {
+                            content += `      :related: ${childAllLinks.join(', ')}\n`;
+                        }
                     }
                     
                     content += `      :collapse: false\n\n`;
@@ -680,7 +845,7 @@ export async function POST(request: Request) {
 
             return response;
         } else if (exportType === 'recursive') {
-            // Optimized recursive ZIP export
+            // Fully recursive ZIP export
             const hasChildren = children.length > 0;
 
             if (!hasChildren) {
@@ -688,32 +853,23 @@ export async function POST(request: Request) {
                 const rstContent = await generateRstContent(
                     item.id, item.itemType, '', jamaService
                 );
-                
-                // Create archive for single file
-                const archive = archiver('zip', {
-                    zlib: { level: 9 }, // Best compression
-                });
 
-                // Collect archive data
+                const archive = archiver('zip', { zlib: { level: 9 } });
                 const chunks: Buffer[] = [];
                 archive.on('data', (chunk) => chunks.push(chunk));
-                
-                // Promise to wait for archive completion
                 const archivePromise = new Promise<Buffer>((resolve, reject) => {
-                    archive.on('end', () => {
-                        resolve(Buffer.concat(chunks));
-                    });
+                    archive.on('end', () => resolve(Buffer.concat(chunks)));
                     archive.on('error', reject);
                 });
 
                 archive.append(rstContent, { name: `${item.id}.rst` });
                 await archive.finalize();
                 const zipBuffer = await archivePromise;
-                
+
                 const totalTime = Date.now() - startTime;
                 console.log(`[RST EXPORT] Single-item recursive export completed in ${totalTime}ms`);
 
-                const response = new Response(new Uint8Array(zipBuffer), {
+                return new Response(new Uint8Array(zipBuffer), {
                     status: 200,
                     headers: {
                         'Content-Type': 'application/zip',
@@ -721,141 +877,53 @@ export async function POST(request: Request) {
                         'Content-Length': String(zipBuffer.length),
                     },
                 });
-
-                return response;
             }
 
-            console.log(`[RST EXPORT] Starting optimized recursive export...`);
-            
+            console.log(`[RST EXPORT] Starting full recursive export...`);
+
             // Global caches for the entire export
             const itemTypeCache = new Map<number, any>();
             const picklistCache = new Map<number, any>();
 
-            // Step 1: Batch load all child items
-            console.log(`[RST EXPORT] Step 1: Batch loading ${children.length} child items...`);
-            const childItemsMap = await batchLoadItems(children, jamaService, logger, 15);
-            
-            // Step 2: Batch load children for all items to determine hierarchy
-            console.log(`[RST EXPORT] Step 2: Batch loading children for hierarchy analysis...`);
-            const allItemIds = [item.id, ...children];
-            const childrenMap = await batchLoadChildren(allItemIds, jamaService, logger, 15);
-            
-            // Step 3: Batch load relationships for all items
-            console.log(`[RST EXPORT] Step 3: Batch loading relationships...`);
-            const relationshipsMap = await batchLoadRelationships(allItemIds, jamaService, logger, 15);
+            // Build the complete hierarchy (all descendants)
+            const { itemMap, childrenMap, relationshipsMap } = await buildFullHierarchy(
+                item.id,
+                children,
+                jamaService,
+                logger,
+                25
+            );
 
             // Create archive
-            const archive = archiver('zip', {
-                zlib: { level: 9 },
-            });
-
+            const archive = archiver('zip', { zlib: { level: 9 } });
             const chunks: Buffer[] = [];
             archive.on('data', (chunk) => chunks.push(chunk));
-            
             const archivePromise = new Promise<Buffer>((resolve, reject) => {
-                archive.on('end', () => {
-                    resolve(Buffer.concat(chunks));
-                });
+                archive.on('end', () => resolve(Buffer.concat(chunks)));
                 archive.on('error', reject);
             });
 
-            // Create index.rst
+            // Create index.rst pointing to root
             const indexContent = `${item.fields.name || 'Unnamed item'}\n${'='.repeat((item.fields.name || 'Unnamed item').length)}\n\n.. toctree::\n   :maxdepth: 3\n   :caption: Contents:\n   :titlesonly:\n\n   ${item.id}\n`;
             archive.append(indexContent, { name: 'index.rst' });
 
-            // Categorize children based on pre-loaded hierarchy data
-            console.log(`[RST EXPORT] Step 4: Categorizing child items...`);
-            const childrenWithoutChildren: any[] = [];
-            const childrenWithChildren: any[] = [];
-            
-            for (const childId of children) {
-                const childItem = childItemsMap.get(childId);
-                const childChildren = childrenMap.get(childId) || [];
-                
-                if (childItem) {
-                    if (childChildren.length > 0) {
-                        childrenWithChildren.push({ item: childItem, children: childChildren });
-                    } else {
-                        childrenWithoutChildren.push(childItem);
-                    }
-                }
-            }
-            
-            console.log(`[RST EXPORT] Categorization complete - ${childrenWithoutChildren.length} leaf items, ${childrenWithChildren.length} parent items`);
-
-            // Generate root RST content using optimized function
-            console.log(`[RST EXPORT] Step 5: Generating root RST content...`);
-            const rootRelationships = relationshipsMap.get(item.id) || { upstream: [], downstream: [] };
-            const rootRstContent = await generateRstContentOptimized(
+            // Recursively write RST files for the entire hierarchy
+            await appendRstRecursive(
                 item.id,
-                {
-                    item: item,
-                    children: childrenWithoutChildren.map(c => c.id), // Only include leaf children in root
-                    relationships: rootRelationships,
-                    childItems: childItemsMap,
-                    childrenMap: childrenMap
-                },
+                archive,
                 '',
+                true,
                 { itemTypeCache, picklistCache },
+                { itemMap, childrenMap, relationshipsMap },
                 jamaService
             );
 
-            // Add toctree for parent items
-            let finalRootContent = rootRstContent;
-            if (childrenWithChildren.length > 0) {
-                finalRootContent += `\n.. toctree::\n   :maxdepth: 2\n   :caption: sub-structure:\n\n`;
-                for (const childWithChildren of childrenWithChildren) {
-                    finalRootContent += `   ${childWithChildren.item.id}/${childWithChildren.item.id}\n`;
-                }
-            }
-
-            archive.append(finalRootContent, { name: `${item.id}.rst` });
-
-            // Process children with children
-            console.log(`[RST EXPORT] Step 6: Processing ${childrenWithChildren.length} parent items...`);
-            for (let i = 0; i < childrenWithChildren.length; i++) {
-                const childWithChildren = childrenWithChildren[i];
-                const childItem = childWithChildren.item;
-                const childChildren = childWithChildren.children;
-
-                console.log(`[RST EXPORT] Processing parent item ${i + 1}/${childrenWithChildren.length}: ${childItem.id}`);
-
-                try {
-                    // Pre-load all child items for this parent
-                    const childChildItemsMap = await batchLoadItems(childChildren, jamaService, logger, 10);
-                    
-                    const childRelationships = relationshipsMap.get(childItem.id) || { upstream: [], downstream: [] };
-                    
-                    const childRstContent = await generateRstContentOptimized(
-                        childItem.id,
-                        {
-                            item: childItem,
-                            children: childChildren,
-                            relationships: childRelationships,
-                            childItems: childChildItemsMap,
-                            childrenMap: childrenMap
-                        },
-                        '',
-                        { itemTypeCache, picklistCache },
-                        jamaService
-                    );
-
-                    archive.append(childRstContent, { name: `${childItem.id}/${childItem.id}.rst` });
-                    
-                } catch (error) {
-                    console.error(`[RST EXPORT] Failed to process child with children ${childItem.id}:`, error);
-                    const errorContent = `${childItem.fields.name || 'Failed to load'}\n${'='.repeat((childItem.fields.name || 'Failed to load').length)}\n\nError loading content for item ${childItem.id}.\n`;
-                    archive.append(errorContent, { name: `${childItem.id}/${childItem.id}.rst` });
-                }
-            }
-
             // Finalize
-            console.log(`[RST EXPORT] Step 7: Finalizing ZIP archive...`);
             await archive.finalize();
             const zipBuffer = await archivePromise;
-            
+
             const totalTime = Date.now() - startTime;
-            console.log(`[RST EXPORT] Optimized recursive export completed in ${totalTime}ms`);
+            console.log(`[RST EXPORT] Full recursive export completed in ${totalTime}ms`);
 
             return new Response(new Uint8Array(zipBuffer), {
                 status: 200,
