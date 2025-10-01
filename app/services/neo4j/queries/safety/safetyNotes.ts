@@ -390,3 +390,92 @@ export const getSafetyNote = async (
     await session.close();
   }
 };
+
+/**
+ * Extract <Tag> entries from SAFETYNOTEs attached to a node.
+ * A tagged note starts with: "<Tag>" (case sensitive), optionally followed by spaces,
+ * then a comma-separated list of tag identifiers, e.g.:
+ *   <Tag> Ready_For_Review, myTag2, myTag3
+ *
+ * Returns a de-duplicated tag list plus per-note breakdown.
+ */
+export const getTagsFromNote = async (
+  nodeUuid: string
+): Promise<{
+  success: boolean;
+  tags?: string[];
+  taggedNotes?: Array<{ noteUuid: string; tags: string[] }>;
+  message?: string;
+  error?: string;
+}> => {
+  const session = driver.session();
+  try {
+    if (!nodeUuid) {
+      return { success: false, message: 'Node UUID is required' };
+    }
+
+    // Fetch only SAFETYNOTEs that start with "<Tag>"
+    const result = await session.run(
+      `MATCH (n {uuid: $nodeUuid})-[:NOTEREF]->(note:SAFETYNOTE)
+       WHERE note.note STARTS WITH '<Tag>'
+       RETURN note.uuid AS uuid, note.note AS note, note.created AS created
+       ORDER BY created ASC`,
+      { nodeUuid }
+    );
+
+    if (result.records.length === 0) {
+      return {
+        success: true,
+        tags: [],
+        taggedNotes: [],
+        message: 'No tagged safety notes found'
+      };
+    }
+
+    const taggedNotes: Array<{ noteUuid: string; tags: string[] }> = [];
+    const seen = new Set<string>();
+    const aggregated: string[] = [];
+
+    result.records.forEach(rec => {
+      const noteUuid = rec.get('uuid') as string;
+      const raw = rec.get('note') as string;
+
+      // Remove leading "<Tag>" + optional whitespace
+      const remainder = raw.replace(/^<Tag>\s*/, '');
+      // Split by comma
+      const tags = remainder
+        .split(',')
+        .map(t => t.trim())
+        .filter(t => t.length > 0)
+        // Basic normalization: keep alphanumerics, underscore, dash
+        .map(t => t.replace(/[^A-Za-z0-9_\-]/g, ''))
+        .filter(t => t.length > 0);
+
+      if (tags.length > 0) {
+        taggedNotes.push({ noteUuid, tags });
+        tags.forEach(tag => {
+          if (!seen.has(tag)) {
+            seen.add(tag);
+            aggregated.push(tag);
+          }
+        });
+      }
+    });
+
+    return {
+      success: true,
+      tags: aggregated,
+      taggedNotes
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('❌ Error extracting tags from safety notes:', error);
+    return {
+      success: false,
+      message: 'Error extracting tags.',
+      error: errorMessage
+    };
+  } finally {
+    await session.close();
+  }
+};

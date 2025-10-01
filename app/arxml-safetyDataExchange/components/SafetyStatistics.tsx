@@ -7,6 +7,7 @@ import { getApplicationSwComponents } from '@/app/services/neo4j/queries/compone
 import { getFailuresAndCountsForComponents } from '@/app/services/neo4j/queries/safety/failureModes';
 import { getAllPortsForComponents } from '@/app/services/neo4j/queries/ports';
 import { getFailuresAndCountsForPorts } from '@/app/services/neo4j/queries/safety/failureModes';
+import { getTagsFromNote } from '@/app/services/neo4j/queries/safety/safetyNotes';
 import type { Key } from 'react';
 import { theme } from 'antd';
 import { getAsilColor } from '@/app/components/asilColors';
@@ -14,6 +15,7 @@ import { getAsilColor } from '@/app/components/asilColors';
 const SafetyStatistics: React.FC = () => {
     const [data, setData] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
+    const [tagFilters, setTagFilters] = useState<Array<{ text: string; value: string }>>([]);
     const [searchText, setSearchText] = useState('');
     const [searchedColumn, setSearchedColumn] = useState('');
     const searchInput = useRef<any>(null);
@@ -91,6 +93,7 @@ const SafetyStatistics: React.FC = () => {
                         missingFM: missingFMByComponent[comp.uuid] || 0,
                         riskScore: 0,
                         maxAsil: '',
+                        tags: [] as string[],
                     };
                 });
                 componentFMstatistics.data.forEach((fm: any) => {
@@ -125,6 +128,26 @@ const SafetyStatistics: React.FC = () => {
                 Object.values(statsMap).forEach((comp: any) => {
                     comp.openSafetyTasks = Math.max(0, comp.SafetyTask - comp.finishedTaskCount);
                 });
+
+                // Fetch tags for each component in parallel
+                const tagPromises = Object.values(statsMap).map(async (comp: any) => {
+                    try {
+                        const res = await getTagsFromNote(comp.uuid);
+                        if (res.success && res.tags) {
+                            comp.tags = res.tags;
+                        } else {
+                            comp.tags = [];
+                        }
+                    } catch {
+                        comp.tags = [];
+                    }
+                });
+                await Promise.all(tagPromises);
+
+                // Build filters from collected tags (unique)
+                const uniqueTags = Array.from(new Set(Object.values(statsMap).flatMap((c: any) => c.tags || []))).sort();
+                setTagFilters(uniqueTags.map(t => ({ text: t, value: t })));
+
                 setData(Object.values(statsMap));
             } else {
                 setData([]);
@@ -217,6 +240,7 @@ const SafetyStatistics: React.FC = () => {
             'RiskRating',
             'SafetyReq',
             'SafetyNote', 
+            'Tags',
             'Risk Score',
             'Port Count',
             'Missing FM for Ports'
@@ -231,6 +255,7 @@ const SafetyStatistics: React.FC = () => {
             row.RiskRating || 0,
             row.SafetyReq || 0,
             row.SafetyNote || 0,
+            (row.tags || []).join('|'),
             row.riskScore || 0,
             row.portCount || 0,
             row.missingFM || 0
@@ -355,6 +380,23 @@ const SafetyStatistics: React.FC = () => {
             dataIndex: 'SafetyNote',
             key: 'SafetyNote',
             sorter: (a, b) => a.SafetyNote - b.SafetyNote,
+        },
+        {
+            title: 'Tags',
+            dataIndex: 'tags',
+            key: 'tags',
+            filters: tagFilters,
+            onFilter: (value, record) => Array.isArray(record.tags) && record.tags.includes(value as string),
+            render: (tags: string[]) => {
+                if (!tags || tags.length === 0) return <span style={{ color: '#999' }}>-</span>;
+                return (
+                    <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 4 }}>
+                        {tags.map(t => (
+                            <Tag key={t} color="geekblue">{t}</Tag>
+                        ))}
+                    </span>
+                );
+            }
         },
         {
             title: 'Risk Score',
