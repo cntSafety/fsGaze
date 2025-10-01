@@ -109,7 +109,10 @@ const SafetyStatistics: React.FC = () => {
                         const occ = Number(fm.Occurrence);
                         const det = Number(fm.Detection);
                         if (!isNaN(sev) && !isNaN(occ) && !isNaN(det)) {
-                            statsMap[fm.swComponentUuid].riskScore += sev * occ * det;
+                            const score = sev * occ * det;
+                            if (score > statsMap[fm.swComponentUuid].riskScore) {
+                                statsMap[fm.swComponentUuid].riskScore = score; // store maximum risk score
+                            }
                         }
                         // Track maximum ASIL
                         const currentAsil = fm.asil;
