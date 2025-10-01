@@ -15,6 +15,7 @@ import {
   ClientServerOperationRelation
 } from '@/app/services/neo4j/queries/ports';
 import { AssemblyContextInfo } from '@/app/services/neo4j/types';
+import { getDataElementDetailsForPort, DataElementDetail } from '@/app/services/neo4j/queries/ports';
 import Link from 'next/link';
 import { getAsilColor } from '@/app/components/asilColors';
 
@@ -64,6 +65,10 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
   const [clientServerOps, setClientServerOps] = useState<ClientServerOperationRelation[]>([]);
   const [isLoadingContext, setIsLoadingContext] = useState(false);
   const [contextError, setContextError] = useState<string | null>(null);
+  // Data Elements for ports
+  const [dataElements, setDataElements] = useState<DataElementDetail[]>([]);
+  const [isLoadingDataElements, setIsLoadingDataElements] = useState(false);
+  const [dataElementsError, setDataElementsError] = useState<string | null>(null);
 
   // Fetch assembly context when modal opens for port elements
   useEffect(() => {
@@ -78,6 +83,8 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
       setShowCompositions(false);
   setClientServerOps([]);
       setContextError(null);
+      setDataElements([]);
+      setDataElementsError(null);
       return;
     }
 
@@ -150,6 +157,24 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
           setClientServerOps([]);
         }
 
+        // Fetch Data Elements for this port
+        setIsLoadingDataElements(true);
+        setDataElementsError(null);
+        try {
+          const deRes = await getDataElementDetailsForPort(elementDetails.uuid);
+          if (deRes.success && deRes.data) {
+            setDataElements(deRes.data);
+          } else {
+            setDataElements([]);
+            if (deRes.message) setDataElementsError(deRes.message);
+          }
+        } catch (e) {
+          setDataElements([]);
+          setDataElementsError(e instanceof Error ? e.message : 'Unknown error fetching data elements');
+        } finally {
+          setIsLoadingDataElements(false);
+        }
+
         if (result && result.records) {
           const contextData = result.records.map(record => record.toObject() as unknown as AssemblyContextInfo);
           setAssemblyContext(contextData);
@@ -183,6 +208,8 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
         setSrInterfaceConnectionsR([]);
         setCommunicationPartners([]);
         setPartnerPorts([]);
+        setDataElements([]);
+        setDataElementsError('Failed to load');
       } finally {
         setIsLoadingContext(false);
       }
@@ -269,6 +296,41 @@ const ElementDetailsModal: React.FC<ElementDetailsModalProps> = ({
             {getTypeIcon(elementDetails.type)} {elementDetails.type.charAt(0).toUpperCase() + elementDetails.type.slice(1)}
           </Tag>
         </Descriptions.Item>
+
+        {/* Data Elements (only for ports) */}
+        {elementDetails.type === 'port' && (
+          <Descriptions.Item label="Data Elements">
+            {isLoadingDataElements && <Spin size="small" />}
+            {!isLoadingDataElements && dataElementsError && (
+              <Text type="danger">{dataElementsError}</Text>
+            )}
+            {!isLoadingDataElements && !dataElementsError && dataElements.length === 0 && (
+              <Text type="secondary">None</Text>
+            )}
+            {!isLoadingDataElements && !dataElementsError && dataElements.length > 0 && (
+              <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'left', borderBottom: '1px solid #ddd', padding: '2px 4px' }}>Data Element Name</th>
+                      <th style={{ textAlign: 'left', borderBottom: '1px solid #ddd', padding: '2px 4px' }}>Data Element Type</th>
+                      <th style={{ textAlign: 'left', borderBottom: '1px solid #ddd', padding: '2px 4px' }}>Type Reference Name</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dataElements.map((el, idx) => (
+                      <tr key={`${el.dataElementName}-${idx}`}>
+                        <td style={{ borderBottom: '1px solid #f0f0f0', padding: '2px 4px', whiteSpace: 'nowrap' }}>{el.dataElementName}</td>
+                        <td style={{ borderBottom: '1px solid #f0f0f0', padding: '2px 4px' }}>{(el.dataElementType || []).join(', ')}</td>
+                        <td style={{ borderBottom: '1px solid #f0f0f0', padding: '2px 4px' }}>{el.typeReferencesName || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Descriptions.Item>
+        )}
 
         {/* Additional information if available */}
         {elementDetails.additionalInfo && Object.keys(elementDetails.additionalInfo).length > 0 && (

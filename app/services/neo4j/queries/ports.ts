@@ -56,6 +56,14 @@ export interface ClientServerOperationRelation {
   partnerPortOwnerType: string[] | null;
 }
 
+/** Details for a data element and its referenced type (if any) */
+export interface DataElementDetail {
+  dataElementName: string;
+  dataElementType: string[];
+  typeReferencesName: string | null;
+  typeReferencesType: string[];
+}
+
 /**
  * Defines the structure for information about a partner port found via connection traversal.
  */
@@ -941,6 +949,70 @@ export const getPortByName = async (portName: string) => {
       error: errorMessage,
       data: null,
     } as any;
+  } finally {
+    await session.close();
+  }
+};
+
+/**
+ * Retrieves DATA-ELEMENTs for a port and their TYPE references.
+ * Cypher pattern implemented (parameterized):
+ *  MATCH (port {uuid: $portUuid})
+ *  MATCH (port)-[:`DATA-ELEMENT-REF`]->(dataElement)
+ *  OPTIONAL MATCH (dataElement)-[:`TYPE-TREF`]->(typeReference)
+ *  RETURN dataElement.name AS dataElementName,
+ *         labels(dataElement) AS dataElementType,
+ *         typeReference.name AS typeReferencesName,
+ *         (CASE WHEN typeReference IS NULL THEN [] ELSE labels(typeReference) END) AS typeReferencesType
+ *  ORDER BY dataElementName
+ */
+export const getDataElementDetailsForPort = async (portUuid: string): Promise<{
+  success: boolean;
+  data?: DataElementDetail[];
+  message?: string;
+  error?: string;
+}> => {
+  const session = driver.session();
+  try {
+    if (!portUuid) {
+      return { success: false, message: 'portUuid is required' };
+    }
+
+    const result = await session.run(
+      `MATCH (port {uuid: $portUuid})
+       MATCH (port)-[:\`DATA-ELEMENT-REF\`]->(dataElement)
+       OPTIONAL MATCH (dataElement)-[:\`TYPE-TREF\`]->(typeReference)
+       RETURN dataElement.name AS dataElementName,
+              labels(dataElement) AS dataElementType,
+              typeReference.name AS typeReferencesName,
+              CASE WHEN typeReference IS NULL THEN [] ELSE labels(typeReference) END AS typeReferencesType
+       ORDER BY dataElementName`,
+      { portUuid }
+    );
+
+    if (result.records.length === 0) {
+      // Determine if port exists for clearer messaging
+      const existsCheck = await session.run(`MATCH (p {uuid: $portUuid}) RETURN count(p) AS cnt`, { portUuid });
+      const exists = existsCheck.records[0]?.get('cnt')?.toNumber?.() === 1;
+      return {
+        success: true,
+        data: [],
+        message: exists ? 'No data elements found for port' : 'Port not found'
+      };
+    }
+
+    const data: DataElementDetail[] = result.records.map(r => ({
+      dataElementName: r.get('dataElementName') || '',
+      dataElementType: r.get('dataElementType') || [],
+      typeReferencesName: r.get('typeReferencesName') || null,
+      typeReferencesType: r.get('typeReferencesType') || [],
+    }));
+
+    return { success: true, data };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('❌ Error in getDataElementDetailsForPort:', errorMessage);
+    return { success: false, message: 'Error fetching data element details for port', error: errorMessage };
   } finally {
     await session.close();
   }

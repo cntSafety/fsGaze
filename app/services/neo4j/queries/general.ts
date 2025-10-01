@@ -654,3 +654,67 @@ export const importFullGraph = async (
     await session.close();
   }
 };
+
+/**
+ * Retrieves internal behavior element details (events, runnables, variables, parameters, etc.)
+ * for a given Software Component identified by its UUID.
+ *
+ * The Cypher pattern (parameterized) implemented:
+ *  MATCH (node {uuid: $nodeUuid})
+ *  MATCH (node)-[:CONTAINS]->(internalBehaviour:SWC_INTERNAL_BEHAVIOR)
+ *  MATCH (internalBehaviour)-[:CONTAINS]->(internalNodes)
+ *  RETURN internalNodes.name AS name, labels(internalNodes) AS types
+ *  ORDER BY name
+ *
+ * @param nodeUuid UUID of the SW component (parent of SWC_INTERNAL_BEHAVIOR)
+ * @returns List of internal behavior elements with their label sets.
+ */
+export const getInternalBehaviourDetails = async (
+  nodeUuid: string
+): Promise<{
+  success: boolean;
+  data?: Array<{ name: string; types: string[] }>;
+  message?: string;
+  error?: string;
+}> => {
+  const session = driver.session();
+  try {
+    if (!nodeUuid) {
+      return { success: false, message: 'nodeUuid is required' };
+    }
+
+    const result = await session.run(
+      `MATCH (node {uuid: $nodeUuid})
+       MATCH (node)-[:CONTAINS]->(internalBehaviour:SWC_INTERNAL_BEHAVIOR)
+       MATCH (internalBehaviour)-[:CONTAINS]->(internalNodes)
+       RETURN internalNodes.name AS name, labels(internalNodes) AS types
+       ORDER BY name`,
+      { nodeUuid }
+    );
+
+    if (result.records.length === 0) {
+      // Determine whether component exists at all for clearer messaging
+      const existsCheck = await session.run(
+        `MATCH (n {uuid: $nodeUuid}) RETURN count(n) AS cnt`, { nodeUuid }
+      );
+      const exists = existsCheck.records[0]?.get('cnt')?.toNumber?.() === 1;
+      return {
+        success: true,
+        data: [],
+        message: exists ? 'No internal behaviour elements found' : 'Component not found'
+      };
+    }
+
+    const data = result.records.map(r => ({
+      name: r.get('name') || '',
+      types: r.get('types') || []
+    }));
+
+    return { success: true, data };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return { success: false, message: 'Error fetching internal behaviour details', error: errorMessage };
+  } finally {
+    await session.close();
+  }
+};
