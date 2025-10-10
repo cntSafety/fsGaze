@@ -154,52 +154,56 @@ export default function SafetyNoteManager({
             <Text strong style={{ marginBottom: '8px', display: 'block' }}>
               Existing Notes ({safetyNotes.length}):
             </Text>
-            {safetyNotes.map((note, index) => (
-              <Card 
-                key={note.uuid}
-                size="small"
-                style={{ 
-                  marginBottom: index < safetyNotes.length - 1 ? '8px' : '0',
-                }}
-                actions={[
-                  <Button 
-                    key="edit"
-                    type="link" 
-                    icon={<EditOutlined />} 
-                    onClick={() => handleEditNote(note)}
-                    size="small"
-                  >
-                    Edit
-                  </Button>,
-                  <Button 
-                    key="delete"
-                    type="link" 
-                    icon={<DeleteOutlined />} 
-                    onClick={() => handleDeleteNote(note)}
-                    size="small"
-                    danger
-                  >
-                    Delete
-                  </Button>
-                ]}
-              >
-                <Text>{note.note}</Text>
-                <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', marginTop: '8px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <ClockCircleOutlined style={{ color: '#8c8c8c', fontSize: '12px' }} />
-                        <Text type="secondary" style={{ fontSize: '11px' }}>
-                            Created: {note.created ? new Date(note.created).toLocaleString() : 'N/A'}
-                        </Text>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <EditOutlined style={{ color: '#8c8c8c', fontSize: '12px' }} />
-                        <Text type="secondary" style={{ fontSize: '11px' }}>
-                            Modified: {note.lastModified ? new Date(note.lastModified).toLocaleString() : 'N/A'}
-                        </Text>
-                    </div>
-                </div>
-              </Card>
-            ))}
+            <Space direction="vertical" style={{ width: '100%' }}>
+              {safetyNotes.map((note, index) => (
+                <Card 
+                  key={note.uuid}
+                  size="small"
+                  bordered
+                  bodyStyle={{ padding: 12 }}
+                  style={{ background: '#fafafa', 
+                    marginBottom: index < safetyNotes.length - 1 ? '8px' : '0',
+                  }}
+                  actions={[
+                    <Button 
+                      key="edit"
+                      type="link" 
+                      icon={<EditOutlined />} 
+                      onClick={() => handleEditNote(note)}
+                      size="small"
+                    >
+                      Edit
+                    </Button>,
+                    <Button 
+                      key="delete"
+                      type="link" 
+                      icon={<DeleteOutlined />} 
+                      onClick={() => handleDeleteNote(note)}
+                      size="small"
+                      danger
+                    >
+                      Delete
+                    </Button>
+                  ]}
+                >
+                  <Text>{note.note}</Text>
+                  <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', marginTop: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <ClockCircleOutlined style={{ color: '#8c8c8c', fontSize: '12px' }} />
+                          <Text type="secondary" style={{ fontSize: '11px' }}>
+                              Created: {note.created ? new Date(note.created).toLocaleString() : 'N/A'}
+                          </Text>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <EditOutlined style={{ color: '#8c8c8c', fontSize: '12px' }} />
+                          <Text type="secondary" style={{ fontSize: '11px' }}>
+                              Modified: {note.lastModified ? new Date(note.lastModified).toLocaleString() : 'N/A'}
+                          </Text>
+                      </div>
+                  </div>
+                </Card>
+              ))}
+            </Space>
           </div>
         )}
       </div>
@@ -229,36 +233,36 @@ export default function SafetyNoteManager({
             </Tooltip>
           </div>
         ) : (
-          <>
-            {safetyNotes.map((note, index) => (
-              <div 
+          <Space direction="vertical" style={{ width: '100%' }} size={12}>
+            {safetyNotes.map(note => (
+              <Card
                 key={note.uuid}
-                style={{ 
-                  marginBottom: index < safetyNotes.length - 1 ? '4px' : '0',
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '8px'
-                }}
+                size="small"
+                bordered
+                bodyStyle={{ padding: 12 }}
+                style={{ background: '#fafafa' }}
               >
-                <Text style={{ flex: 1 }}>{note.note}</Text>
-                <Space size="small">
-                  <Button 
-                    type="link" 
-                    icon={<EditOutlined />} 
-                    onClick={() => handleEditNote(note)}
-                    size="small"
-                    style={{ padding: '0', minWidth: 'auto', height: 'auto' }}
-                  />
-                  <Button 
-                    type="link" 
-                    icon={<DeleteOutlined />} 
-                    onClick={() => handleDeleteNote(note)}
-                    size="small"
-                    danger
-                    style={{ padding: '0', minWidth: 'auto', height: 'auto' }}
-                  />
-                </Space>
-              </div>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                  <Text style={{ flex: 1 }}>{note.note}</Text>
+                  <Space size="small">
+                    <Button 
+                      type="link" 
+                      icon={<EditOutlined />} 
+                      onClick={() => handleEditNote(note)}
+                      size="small"
+                      style={{ padding: '0', minWidth: 'auto', height: 'auto' }}
+                    />
+                    <Button 
+                      type="link" 
+                      icon={<DeleteOutlined />} 
+                      onClick={() => handleDeleteNote(note)}
+                      size="small"
+                      danger
+                      style={{ padding: '0', minWidth: 'auto', height: 'auto' }}
+                    />
+                  </Space>
+                </div>
+              </Card>
             ))}
             {/* Add button for additional notes */}
             <div style={{ marginTop: '4px', display: 'flex', justifyContent: 'flex-start' }}>
@@ -277,7 +281,7 @@ export default function SafetyNoteManager({
                 />
               </Tooltip>
             </div>
-          </>
+          </Space>
         )}
       </div>
     );
