@@ -3,6 +3,7 @@ import archiver from 'archiver';
 import { getApplicationSwComponents } from '@/app/services/neo4j/queries/components';
 import { getAllComponentSafetyData, getAllPortSafetyData } from '@/app/services/neo4j/queries/safety/exportSWCSafety';
 import { checkASIL } from '@/app/services/neo4j/queries/safety/causation';
+import { getAllSafetyTasks } from '@/app/services/neo4j/queries/safety/safetyTasks';
 import { generateSphinxNeedsRstFiles } from './sphinxNeedsGenerator';
 
 export async function POST(request: NextRequest) {
@@ -15,10 +16,11 @@ export async function POST(request: NextRequest) {
 
     const components = componentsResult.data;
 
-    const [componentSafetyResult, portResult, causationResult] = await Promise.all([
+    const [componentSafetyResult, portResult, causationResult, safetyTasksResult] = await Promise.all([
       getAllComponentSafetyData(),
       getAllPortSafetyData(),
       checkASIL(),
+      getAllSafetyTasks(),
     ]);
 
     if (!componentSafetyResult.success || !componentSafetyResult.data) {
@@ -33,15 +35,24 @@ export async function POST(request: NextRequest) {
       ? causationResult.data
       : [];
 
+    const safetyTasksData = safetyTasksResult.success && Array.isArray(safetyTasksResult.data)
+      ? safetyTasksResult.data
+      : [];
+
     if (!causationResult.success) {
       console.warn('[SphinxNeedsSafetyReport] Failed to fetch causation data for export:', causationResult.message ?? causationResult.error);
     }
 
-    const rstFiles = generateSphinxNeedsRstFiles({
+    if (!safetyTasksResult.success) {
+      console.warn('[SphinxNeedsSafetyReport] Failed to fetch safety tasks for export:', safetyTasksResult.message ?? safetyTasksResult.error);
+    }
+
+    const { componentFiles: rstFiles, statusContent } = generateSphinxNeedsRstFiles({
       components,
       componentSafety: componentSafetyResult.data,
       portSafety: portResult.data,
       causations: causationData,
+      safetyTasks: safetyTasksData,
     });
 
     console.log('[SphinxNeedsSafetyReport] Received component payload');
@@ -50,6 +61,7 @@ export async function POST(request: NextRequest) {
     console.log(`Total ports: ${portResult.data.length}`);
   console.log(`Generated RST files: ${rstFiles.length}`);
   console.log(`Causation records processed: ${causationData.length}`);
+  console.log(`Safety tasks processed: ${safetyTasksData.length}`);
     rstFiles.slice(0, 3).forEach(file => {
       console.log(`[SphinxNeedsSafetyReport] Preview for ${file.fileName}:\n${file.content.slice(0, 400)}${file.content.length > 400 ? '…' : ''}`);
     });
@@ -78,9 +90,10 @@ export async function POST(request: NextRequest) {
       archive.on('error', reject);
     });
 
-    const toctreeEntries = rstFiles
-      .map(file => `   components/${file.fileName.replace(/\.rst$/i, '')}`)
-      .join('\n');
+    const toctreeEntries = [
+      '   status',
+      ...rstFiles.map(file => `   components/${file.fileName.replace(/\.rst$/i, '')}`),
+    ].join('\n');
 
     const indexContent = [
       'SW Safety Analysis Export',
@@ -100,7 +113,8 @@ export async function POST(request: NextRequest) {
       '',
     ].join('\n');
 
-    archive.append(indexContent, { name: 'index.rst' });
+  archive.append(indexContent, { name: 'index.rst' });
+  archive.append(statusContent, { name: 'status.rst' });
 
     rstFiles.forEach(file => {
       archive.append(file.content, { name: `components/${file.fileName}` });
@@ -111,7 +125,8 @@ export async function POST(request: NextRequest) {
       totalComponents: components.length,
       totalComponentSafetyRecords: componentSafetyResult.data.length,
       totalPortSafetyRecords: portResult.data.length,
-      files: rstFiles.map(file => `components/${file.fileName}`),
+  files: ['index.rst', 'status.rst', ...rstFiles.map(file => `components/${file.fileName}`)],
+      safetyTasksIncluded: safetyTasksData.length,
     }, null, 2), { name: 'export-info.json' });
 
     await archive.finalize();

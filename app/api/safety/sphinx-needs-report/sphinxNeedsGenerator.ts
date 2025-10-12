@@ -1,4 +1,5 @@
 import type { ComponentSafetyData } from '@/app/services/neo4j/queries/safety/exportSWCSafety';
+import type { SafetyTaskData } from '@/app/services/neo4j/queries/safety/safetyTasks';
 
 type ComponentSummary = {
   name: string;
@@ -83,6 +84,8 @@ type RawCausationRecord = {
   effectsFMUUID: string;
 };
 
+type SafetyTaskRecord = SafetyTaskData;
+
 type FailureModeAssignment = {
   fm: FailureMode;
   id: string;
@@ -93,10 +96,17 @@ type PortFailureModeAssignment = {
   id: string;
 };
 
+type SafetyTaskAssignment = {
+  task: SafetyTaskRecord;
+  id: string;
+};
+
 type ComponentAssignments = {
   functional: FailureModeAssignment[];
   receiver: PortFailureModeAssignment[];
   provider: PortFailureModeAssignment[];
+  safetyTasks: SafetyTaskAssignment[];
+  safetyTasksByFailureMode: Map<string, SafetyTaskAssignment[]>;
 };
 
 type AggregatedComponent = {
@@ -114,12 +124,18 @@ type GenerateRstInput = {
   componentSafety: ComponentSafetyRecord[];
   portSafety: PortSafetyRecord[];
   causations?: RawCausationRecord[];
+  safetyTasks?: SafetyTaskRecord[];
 };
 
 type GeneratedRstFile = {
   componentUuid: string;
   fileName: string;
   content: string;
+};
+
+type GenerateRstOutput = {
+  componentFiles: GeneratedRstFile[];
+  statusContent: string;
 };
 
 const normalizeIdBase = (name: string): string => {
@@ -231,6 +247,7 @@ const buildCausationMap = (records: RawCausationRecord[]): Map<string, Set<strin
 const createAssignmentsForComponent = (
   aggregated: AggregatedComponent,
   failureModeIdMap: Map<string, string>,
+  failureModeComponentMap: Map<string, string>,
 ): ComponentAssignments => {
   const idBase = normalizeIdBase(aggregated.component.name);
 
@@ -239,6 +256,7 @@ const createAssignmentsForComponent = (
     const id = `${idBase}_FM_${counter}`;
     if (fm.uuid) {
       failureModeIdMap.set(fm.uuid, id);
+      failureModeComponentMap.set(fm.uuid, aggregated.component.uuid);
     }
     return { fm, id };
   });
@@ -248,6 +266,7 @@ const createAssignmentsForComponent = (
     const id = `${idBase}_FM_RP_${counter}`;
     if (fm.uuid) {
       failureModeIdMap.set(fm.uuid, id);
+      failureModeComponentMap.set(fm.uuid, aggregated.component.uuid);
     }
     return { fm, id };
   });
@@ -257,11 +276,18 @@ const createAssignmentsForComponent = (
     const id = `${idBase}_FM_PP_${counter}`;
     if (fm.uuid) {
       failureModeIdMap.set(fm.uuid, id);
+      failureModeComponentMap.set(fm.uuid, aggregated.component.uuid);
     }
     return { fm, id };
   });
 
-  return { functional, receiver, provider };
+  return {
+    functional,
+    receiver,
+    provider,
+    safetyTasks: [],
+    safetyTasksByFailureMode: new Map<string, SafetyTaskAssignment[]>(),
+  };
 };
 
 const getOrCreateAggregatedComponent = (
@@ -416,6 +442,200 @@ const aggregatePortSafety = (
 
 const repeatChar = (char: string, length: number): string => char.repeat(Math.max(0, length));
 
+const ASIL_PRIORITY: Record<string, number> = {
+  QM: 0,
+  A: 1,
+  B: 2,
+  C: 3,
+  D: 4,
+};
+
+const normalizeAsil = (asil?: string | null): string | undefined => {
+  if (!asil) {
+    return undefined;
+  }
+  const normalized = asil.trim().toUpperCase();
+  return normalized in ASIL_PRIORITY ? normalized : undefined;
+};
+
+const collectAllFailureModes = (aggregated: AggregatedComponent): FailureMode[] => ([
+  ...aggregated.failureModes,
+  ...aggregated.receiverPortFailureModes,
+  ...aggregated.providerPortFailureModes,
+]);
+
+const computeComponentMaxAsil = (aggregated: AggregatedComponent): string | undefined => {
+  let bestAsil: string | undefined;
+  let bestScore = -1;
+
+  collectAllFailureModes(aggregated).forEach(fm => {
+    const asil = normalizeAsil(fm.asil);
+    if (!asil) {
+      return;
+    }
+    const score = ASIL_PRIORITY[asil];
+    if (score > bestScore) {
+      bestScore = score;
+      bestAsil = asil;
+    }
+  });
+
+  return bestAsil;
+};
+
+const computeRiskProduct = (risk?: RiskRatingInfo): number | undefined => {
+  if (!risk) {
+    return undefined;
+  }
+
+  const severity = risk.severity ?? undefined;
+  const occurrence = risk.occurrence ?? undefined;
+  const detection = risk.detection ?? undefined;
+
+  if (
+    severity === undefined || severity === null ||
+    occurrence === undefined || occurrence === null ||
+    detection === undefined || detection === null
+  ) {
+    return undefined;
+  }
+
+  return Number(severity) * Number(occurrence) * Number(detection);
+};
+
+const computeComponentMaxRisk = (aggregated: AggregatedComponent): number | undefined => {
+  let best: number | undefined;
+
+  collectAllFailureModes(aggregated).forEach(fm => {
+    const product = computeRiskProduct(fm.risk);
+    if (product === undefined) {
+      return;
+    }
+    if (best === undefined || product > best) {
+      best = product;
+    }
+  });
+
+  return best;
+};
+
+const buildStatusContent = (entries: AggregatedComponent[]): string => {
+  const header = [
+    'Status',
+    '======',
+    '',
+    'Status Table',
+    '----------------------',
+    '',
+    '.. csv-table:: Safety Status',
+    '   :header: "Component", "Max ASIL", "Max Risk Rating"',
+    '   :widths: auto',
+    '',
+  ];
+
+  const sortedEntries = [...entries].sort((a, b) => a.component.name.localeCompare(b.component.name));
+
+  const rows = sortedEntries.map(entry => {
+    const maxAsil = computeComponentMaxAsil(entry) ?? '';
+    const maxRisk = computeComponentMaxRisk(entry);
+    const riskValue = maxRisk !== undefined ? String(maxRisk) : '';
+    return `   ${entry.component.name}, ${maxAsil}, ${riskValue}`;
+  });
+
+  if (rows.length === 0) {
+    rows.push('   -, -, -');
+  }
+
+  return [...header, ...rows, ''].join('\n');
+};
+
+const buildSafetyTaskComponentMap = (
+  safetyTasks: SafetyTaskRecord[],
+  failureModeComponentMap: Map<string, string>,
+): Map<string, SafetyTaskRecord[]> => {
+  const map = new Map<string, SafetyTaskRecord[]>();
+
+  safetyTasks.forEach(task => {
+    const failureModeUuid = task.relatedFailureModeUuid ?? undefined;
+    if (!failureModeUuid) {
+      return;
+    }
+
+    const componentUuid = task.relatedComponentUuid ?? failureModeComponentMap.get(failureModeUuid);
+    if (!componentUuid) {
+      return;
+    }
+
+    const existing = map.get(componentUuid) ?? [];
+    existing.push(task);
+    map.set(componentUuid, existing);
+  });
+
+  return map;
+};
+
+const createSafetyTaskAssignments = (
+  componentName: string,
+  tasks: SafetyTaskRecord[],
+): { assignments: SafetyTaskAssignment[]; byFailureMode: Map<string, SafetyTaskAssignment[]> } => {
+  const idBase = normalizeIdBase(componentName);
+  const assignments = tasks.map((task, index) => {
+    const counter = String(index + 1).padStart(3, '0');
+    const id = `${idBase}_ST_${counter}`;
+    return { task, id };
+  });
+
+  const byFailureMode = new Map<string, SafetyTaskAssignment[]>();
+  assignments.forEach(assignment => {
+    const failureModeUuid = assignment.task.relatedFailureModeUuid ?? undefined;
+    if (!failureModeUuid) {
+      return;
+    }
+
+    const existing = byFailureMode.get(failureModeUuid) ?? [];
+    existing.push(assignment);
+    byFailureMode.set(failureModeUuid, existing);
+  });
+
+  return { assignments, byFailureMode };
+};
+
+const renderSafetyTasks = (assignments: SafetyTaskAssignment[]): string => {
+  if (assignments.length === 0) {
+    return '.. note::\n   No safety tasks linked to these failure modes.\n';
+  }
+
+  return assignments
+    .map(({ task, id }) => {
+      const lines = [`.. safetytask:: ${task.name}`, `   :id: ${id}`, `   :taskstate: ${task.status}`];
+
+      if (task.reference && task.reference.trim().length > 0) {
+        lines.push(`   :reference: ${task.reference.trim()}`);
+      }
+
+      if (task.responsible && task.responsible.trim().length > 0) {
+        lines.push(`   :responsible: ${task.responsible.trim()}`);
+      }
+
+      if (task.taskType && task.taskType.trim().length > 0) {
+        lines.push(`   :tasktype: ${task.taskType.trim()}`);
+      }
+
+      lines.push('');
+      const descriptionText = task.description && task.description.trim().length > 0
+        ? formatMultiline(task.description)
+        : 'No description provided.';
+      const [firstLine, ...rest] = descriptionText.split('\n');
+      lines.push(`   Safety Task description: ${firstLine}`);
+      rest.forEach(line => {
+        lines.push(`     ${line}`);
+      });
+      lines.push('');
+      return lines.join('\n');
+    })
+    .join('\n\n');
+};
+
 const renderSafetyNotes = (idBase: string, notes: string[]): string => {
   if (notes.length === 0) {
     return '.. note::\n   No safety notes recorded for this component.\n';
@@ -434,6 +654,7 @@ const renderFunctionalFailureModes = (
   assignments: FailureModeAssignment[],
   causationMap: Map<string, Set<string>>,
   failureModeIdMap: Map<string, string>,
+  safetyTaskLookup: Map<string, SafetyTaskAssignment[]>,
 ): string => {
   if (assignments.length === 0) {
     return '.. note::\n   No functional failure modes recorded for this component.\n';
@@ -448,6 +669,10 @@ const renderFunctionalFailureModes = (
             .map(uuid => failureModeIdMap.get(uuid))
             .filter((value): value is string => Boolean(value))
         : [];
+      const taskAssignments = fm.uuid ? safetyTaskLookup.get(fm.uuid) : undefined;
+      const taskRefs = taskAssignments && taskAssignments.length > 0
+        ? taskAssignments.map(task => task.id)
+        : [];
     const requirement = formatRequirement(fm.requirements[0] ?? {});
     const riskLine = formatRisk(fm.risk);
 
@@ -457,6 +682,9 @@ const renderFunctionalFailureModes = (
       }
       if (causeIds.length > 0) {
         lines.push(`   :causation: ${causeIds.join(', ')}`);
+      }
+      if (taskRefs.length > 0) {
+        lines.push(`   :taskref: ${taskRefs.join(', ')}`);
       }
       const description = fm.description ? formatMultiline(fm.description) : 'No description provided.';
       lines.push('');
@@ -477,6 +705,7 @@ const renderPortFailureModes = (
   assignments: PortFailureModeAssignment[],
   causationMap: Map<string, Set<string>>,
   failureModeIdMap: Map<string, string>,
+  safetyTaskLookup: Map<string, SafetyTaskAssignment[]>,
 ): string => {
   if (assignments.length === 0) {
     return '.. note::\n   No failure modes recorded for these ports.\n';
@@ -492,6 +721,10 @@ const renderPortFailureModes = (
             .map(uuid => failureModeIdMap.get(uuid))
             .filter((value): value is string => Boolean(value))
         : [];
+      const taskAssignments = fm.uuid ? safetyTaskLookup.get(fm.uuid) : undefined;
+      const taskRefs = taskAssignments && taskAssignments.length > 0
+        ? taskAssignments.map(task => task.id)
+        : [];
     const requirement = fm.requirements.length > 0 ? formatRequirement(fm.requirements[0]) : undefined;
     const riskLine = fm.risk ? formatRisk(fm.risk) : undefined;
 
@@ -504,6 +737,9 @@ const renderPortFailureModes = (
       }
       if (causeIds.length > 0) {
         lines.push(`   :causation: ${causeIds.join(', ')}`);
+      }
+      if (taskRefs.length > 0) {
+        lines.push(`   :taskref: ${taskRefs.join(', ')}`);
       }
       const description = fm.description ? formatMultiline(fm.description) : 'No description provided.';
       lines.push('');
@@ -558,22 +794,28 @@ const buildRstContent = (
   lines.push(renderSafetyNotes(idBase, aggregated.safetyNotes));
   lines.push('');
 
+  lines.push('Safety Tasks');
+  lines.push('-------------');
+  lines.push('');
+  lines.push(renderSafetyTasks(assignments.safetyTasks));
+  lines.push('');
+
   lines.push('Functional Failure Modes');
   lines.push('-------------------------');
   lines.push('');
-  lines.push(renderFunctionalFailureModes(assignments.functional, causationMap, failureModeIdMap));
+  lines.push(renderFunctionalFailureModes(assignments.functional, causationMap, failureModeIdMap, assignments.safetyTasksByFailureMode));
   lines.push('');
 
   lines.push('Receiver Ports Failure Modes');
   lines.push('-----------------------------');
   lines.push('');
-  lines.push(renderPortFailureModes(assignments.receiver, causationMap, failureModeIdMap));
+  lines.push(renderPortFailureModes(assignments.receiver, causationMap, failureModeIdMap, assignments.safetyTasksByFailureMode));
   lines.push('');
 
   lines.push('Provider Ports Failure Modes');
   lines.push('-----------------------------');
   lines.push('');
-  lines.push(renderPortFailureModes(assignments.provider, causationMap, failureModeIdMap));
+  lines.push(renderPortFailureModes(assignments.provider, causationMap, failureModeIdMap, assignments.safetyTasksByFailureMode));
   lines.push('');
 
   return lines.join('\n');
@@ -584,7 +826,8 @@ export const generateSphinxNeedsRstFiles = ({
   componentSafety,
   portSafety,
   causations = [],
-}: GenerateRstInput): GeneratedRstFile[] => {
+  safetyTasks = [],
+}: GenerateRstInput): GenerateRstOutput => {
   const componentsLookup = new Map<string, ComponentSummary>();
   components.forEach(component => {
     componentsLookup.set(component.uuid, component);
@@ -600,25 +843,53 @@ export const generateSphinxNeedsRstFiles = ({
   aggregateComponentSafety(aggregatedMap, componentsLookup, componentSafety);
   aggregatePortSafety(aggregatedMap, componentsLookup, portSafety);
   const failureModeIdMap = new Map<string, string>();
+  const failureModeComponentMap = new Map<string, string>();
   const causationMap = buildCausationMap(causations);
 
   const entries = Array.from(aggregatedMap.values());
   const assignmentsMap = new Map<string, ComponentAssignments>();
 
   entries.forEach(entry => {
-    const assignments = createAssignmentsForComponent(entry, failureModeIdMap);
+    const assignments = createAssignmentsForComponent(entry, failureModeIdMap, failureModeComponentMap);
     assignmentsMap.set(entry.component.uuid, assignments);
   });
 
-  return entries.map(entry => {
+  const safetyTaskComponentMap = buildSafetyTaskComponentMap(safetyTasks, failureModeComponentMap);
+
+  entries.forEach(entry => {
     const assignments = assignmentsMap.get(entry.component.uuid);
-    const safeAssignments = assignments ?? createAssignmentsForComponent(entry, failureModeIdMap);
+    if (!assignments) {
+      return;
+    }
+
+    const componentTasks = safetyTaskComponentMap.get(entry.component.uuid) ?? [];
+    const { assignments: taskAssignments, byFailureMode } = createSafetyTaskAssignments(entry.component.name, componentTasks);
+    assignments.safetyTasks = taskAssignments;
+    assignments.safetyTasksByFailureMode = byFailureMode;
+  });
+
+  const componentFiles = entries.map(entry => {
+    let assignments = assignmentsMap.get(entry.component.uuid);
+    if (!assignments) {
+      assignments = createAssignmentsForComponent(entry, failureModeIdMap, failureModeComponentMap);
+      assignmentsMap.set(entry.component.uuid, assignments);
+      const componentTasks = safetyTaskComponentMap.get(entry.component.uuid) ?? [];
+      const { assignments: taskAssignments, byFailureMode } = createSafetyTaskAssignments(entry.component.name, componentTasks);
+      assignments.safetyTasks = taskAssignments;
+      assignments.safetyTasksByFailureMode = byFailureMode;
+    }
     return {
       componentUuid: entry.component.uuid,
       fileName: `${entry.component.name.replace(/[^a-zA-Z0-9-_]/g, '_') || 'component'}.rst`,
-      content: buildRstContent(entry, safeAssignments, causationMap, failureModeIdMap),
+      content: buildRstContent(entry, assignments, causationMap, failureModeIdMap),
     };
   });
+  const statusContent = buildStatusContent(entries);
+
+  return {
+    componentFiles,
+    statusContent,
+  };
 };
 
-export type { GeneratedRstFile };
+export type { GeneratedRstFile, GenerateRstOutput };
