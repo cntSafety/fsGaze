@@ -2,12 +2,15 @@ import { driver } from '@/app/services/neo4j/config';
 import { Record } from 'neo4j-driver';
 
 export interface ComponentSafetyData {
+    componentUuid?: string | null;
     componentName: string;
     safetyNote: string | null;
+    fmUuid?: string | null;
     fmName: string | null;
     fmDescription: string | null;
     fmNote: string | null;
     fmTask: string | null;
+    fmAsil?: string | null;
     riskRatingName: string | null;
     Severity: number | null;
     Occurrence: number | null;
@@ -18,6 +21,20 @@ export interface ComponentSafetyData {
     RiskRatingTaskResponsible: string | null;
     RiskRatingTaskStatus: string | null;
 }
+
+const safeToNumber = (value: any): number | null => {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'number') return value;
+    if (value && typeof value.toNumber === 'function') {
+        try {
+            return value.toNumber();
+        } catch {
+            return null;
+        }
+    }
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? null : parsed;
+};
 
 export async function getSafetyNodesForComponent(componentUuid: string): Promise<{
     success: boolean;
@@ -65,21 +82,6 @@ export async function getSafetyNodesForComponent(componentUuid: string): Promise
                    rrTask.description AS RiskRatingTaskDescription,
                    rrTask.responsible AS RiskRatingTaskResponsible,
                    rrTask.status AS RiskRatingTaskStatus        `, { componentUuid });
-
-        // Helper function to safely convert Neo4j values to numbers
-        const safeToNumber = (value: any): number | null => {
-            if (value === null || value === undefined) return null;
-            if (typeof value === 'number') return value;
-            if (value && typeof value.toNumber === 'function') {
-                try {
-                    return value.toNumber();
-                } catch {
-                    return null;
-                }
-            }
-            const parsed = Number(value);
-            return isNaN(parsed) ? null : parsed;
-        };
 
         const componentSafetyData: any[] = result.records.map((record: Record) => {
             // Get all keys from the record
@@ -166,21 +168,6 @@ export async function getSafetyNodesForPorts(componentUuid: string): Promise<{
                    rrTask.responsible AS RiskRatingTaskResponsible,
                    rrTask.status AS RiskRatingTaskStatus        `, { componentUuid });
 
-        // Helper function to safely convert Neo4j values to numbers
-        const safeToNumber = (value: any): number | null => {
-            if (value === null || value === undefined) return null;
-            if (typeof value === 'number') return value;
-            if (value && typeof value.toNumber === 'function') {
-                try {
-                    return value.toNumber();
-                } catch {
-                    return null;
-                }
-            }
-            const parsed = Number(value);
-            return isNaN(parsed) ? null : parsed;
-        };
-
         const portSafetyData: any[] = result.records.map((record: Record) => {
             // Get all keys from the record
             const recordObj: any = {};
@@ -208,6 +195,159 @@ export async function getSafetyNodesForPorts(componentUuid: string): Promise<{
         return { 
             success: false, 
             message: error.message 
+        };
+    } finally {
+        await session.close();
+    }
+}
+
+export async function getAllComponentSafetyData(): Promise<{
+    success: boolean;
+    data?: any[];
+    message?: string;
+}> {
+    const session = driver.session();
+
+    try {
+        const result = await session.run(`
+            MATCH (swc:APPLICATION_SW_COMPONENT_TYPE|COMPOSITION_SW_COMPONENT_TYPE|SERVICE_SW_COMPONENT_TYPE|ECU_ABSTRACTION_SW_COMPONENT_TYPE)
+            OPTIONAL MATCH (swc)-[notRel:NOTEREF]->(swcNote)
+            OPTIONAL MATCH (fm)-[occRel:OCCURRENCE]->(swc)
+            OPTIONAL MATCH (fm)-[reqRel:HAS_SAFETY_REQUIREMENT]->(req:SAFETYREQ)
+            OPTIONAL MATCH (fm)-[noteRelfm:NOTEREF]->(fmNote)
+            OPTIONAL MATCH (fm)-[taskRelfm:TASKREF]->(fmTask)
+            OPTIONAL MATCH (fm)-[rrRelfm:RATED]->(fmrr)
+            OPTIONAL MATCH (fmrr)-[fmrrRelTask:TASKREF]->(rrTask)
+         RETURN swc.uuid AS componentUuid,
+                   swc.name AS componentName,
+                   swcNote.note AS safetyNote,
+             fm.uuid AS fmUuid,
+                   fm.name AS fmName,
+                   fm.description AS fmDescription,
+                   fm.asil AS fmAsil,
+                   req.name AS reqName,
+                   req.reqASIL AS reqASIL,
+                   req.reqID AS reqID,
+                   req.reqLinkedTo AS reqLinkedTo,
+                   req.reqText AS reqText,
+                   fmNote.note AS fmNote,
+                   fmTask.name AS fmTask,
+                   fmrr.name AS riskRatingName,
+                   fmrr.Severity AS Severity,
+                   fmrr.Occurrence AS Occurrence,
+                   fmrr.Detection AS Detection,
+                   fmrr.RatingComment AS RatingComment,
+                   rrTask.name AS RiskRatingTaskName,
+                   rrTask.description AS RiskRatingTaskDescription,
+                   rrTask.responsible AS RiskRatingTaskResponsible,
+                   rrTask.status AS RiskRatingTaskStatus
+        `);
+
+        const componentSafetyData: any[] = result.records.map((record: Record) => {
+            const recordObj: any = {};
+
+            record.keys.forEach(key => {
+                const value = record.get(key);
+
+                if (typeof key === 'string' && ['Severity', 'Occurrence', 'Detection'].includes(key)) {
+                    recordObj[key] = safeToNumber(value);
+                } else {
+                    recordObj[key] = value;
+                }
+            });
+
+            const sev = recordObj['Severity'];
+            const occ = recordObj['Occurrence'];
+            const det = recordObj['Detection'];
+            recordObj['RiskScore'] = (typeof sev === 'number' && typeof occ === 'number' && typeof det === 'number')
+                ? sev * occ * det
+                : null;
+
+            return recordObj;
+        });
+
+        return {
+            success: true,
+            data: componentSafetyData,
+        };
+    } catch (error: any) {
+        return {
+            success: false,
+            message: error.message,
+        };
+    } finally {
+        await session.close();
+    }
+}
+
+export async function getAllPortSafetyData(): Promise<{
+    success: boolean;
+    data?: any[];
+    message?: string;
+}> {
+    const session = driver.session();
+
+    try {
+        const result = await session.run(`
+            MATCH (swc:APPLICATION_SW_COMPONENT_TYPE|COMPOSITION_SW_COMPONENT_TYPE|SERVICE_SW_COMPONENT_TYPE|ECU_ABSTRACTION_SW_COMPONENT_TYPE)
+            OPTIONAL MATCH (swc)-[portRel:CONTAINS]->(port:R_PORT_PROTOTYPE|P_PORT_PROTOTYPE)
+            OPTIONAL MATCH (fm)-[occRel:OCCURRENCE]->(port)
+            OPTIONAL MATCH (fm)-[reqRel:HAS_SAFETY_REQUIREMENT]->(req:SAFETYREQ)
+            OPTIONAL MATCH (fm)-[noteRelfm:NOTEREF]->(fmNote)
+            OPTIONAL MATCH (fm)-[taskRelfm:TASKREF]->(fmTask)
+            OPTIONAL MATCH (fm)-[rrRelfm:RATED]->(fmrr)
+            OPTIONAL MATCH (fmrr)-[fmrrRelTask:TASKREF]->(rrTask)
+         RETURN swc.uuid AS componentUuid,
+                   swc.name AS componentName,
+                   port.uuid AS portUuid,
+                   port.name AS PortName,
+             fm.uuid AS fmUuid,
+             labels(port)[0] AS portType,
+                   fm.name AS fmName,
+                   fm.description AS fmDescription,
+                   fm.asil AS fmAsil,
+                   req.name AS reqName,
+                   req.reqASIL AS reqASIL,
+                   req.reqID AS reqID,
+                   req.reqLinkedTo AS reqLinkedTo,
+                   req.reqText AS reqText,
+                   fmNote.note AS fmNote,
+                   fmTask.name AS fmTask,
+                   fmrr.name AS riskRatingName,
+                   fmrr.Severity AS Severity,
+                   fmrr.Occurrence AS Occurrence,
+                   fmrr.Detection AS Detection,
+                   fmrr.RatingComment AS RatingComment,
+                   rrTask.name AS RiskRatingTaskName,
+                   rrTask.description AS RiskRatingTaskDescription,
+                   rrTask.responsible AS RiskRatingTaskResponsible,
+                   rrTask.status AS RiskRatingTaskStatus
+        `);
+
+        const portSafetyData: any[] = result.records.map((record: Record) => {
+            const recordObj: any = {};
+
+            record.keys.forEach(key => {
+                const value = record.get(key);
+
+                if (typeof key === 'string' && ['Severity', 'Occurrence', 'Detection'].includes(key)) {
+                    recordObj[key] = safeToNumber(value);
+                } else {
+                    recordObj[key] = value;
+                }
+            });
+
+            return recordObj;
+        });
+
+        return {
+            success: true,
+            data: portSafetyData,
+        };
+    } catch (error: any) {
+        return {
+            success: false,
+            message: error.message,
         };
     } finally {
         await session.close();

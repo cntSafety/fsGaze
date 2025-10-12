@@ -1,13 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Table, Button, message, Spin, Space, Typography, Alert, Input } from 'antd';
+import { Table, Button, message, Space, Typography, Alert, Input } from 'antd';
 import { ExportOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { InputRef } from 'antd';
 import type { FilterConfirmProps } from 'antd/es/table/interface';
-import { getApplicationSwComponents } from '@/app/services/neo4j/queries/components';
-import { getSafetyNodesForPorts } from '@/app/services/neo4j/queries/safety/exportSWCSafety';
 
 const { Title, Text } = Typography;
 
@@ -21,6 +19,7 @@ const SafetyAnalysisTablePorts: React.FC = () => {
   const [searchText, setSearchText] = useState('');
   const [searchedColumn, setSearchedColumn] = useState('');
   const searchInput = useRef<InputRef>(null);
+  const hasFetchedInitialData = useRef(false);
 
   const handleSearch = (
     selectedKeys: string[],
@@ -182,57 +181,43 @@ const SafetyAnalysisTablePorts: React.FC = () => {
     setLoading(true);
     
     try {
-      // Step 1: Get all SW components
-      message.info('Fetching SW components...');
-      const componentsResult = await getApplicationSwComponents();
-      
-      if (!componentsResult.success || !componentsResult.data) {
-        throw new Error(componentsResult.message || 'Failed to fetch SW components');
+      message.info('Fetching port safety analysis data...');
+      const response = await fetch('/api/safety/safety-analysis-export?dataset=ports');
+
+      if (!response.ok) {
+        throw new Error(`Request failed with status ${response.status}`);
       }
 
-      const components = componentsResult.data;
-      setTotalComponents(components.length);
-      message.info(`Found ${components.length} SW components. Fetching port safety data...`);
+      const result = await response.json();
 
-      // Step 2: Get safety data for ports of each component
-      const allSafetyData: any[] = [];
-      let processedCount = 0;
-
-      for (const component of components) {
-        try {
-          const safetyResult = await getSafetyNodesForPorts(component.uuid);
-          
-          if (safetyResult.success && safetyResult.data) {
-            allSafetyData.push(...safetyResult.data);
-          }
-          
-          processedCount++;
-          setProcessedComponents(processedCount);
-          
-          // Update progress every 100 components
-          if (processedCount % 100 === 0) {
-            message.info(`Processed ${processedCount}/${components.length} components...`);
-          }
-        } catch (error) {
-          // Continue with other components even if one fails
-        }
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to load port safety analysis data');
       }
+
+      const allSafetyData = Array.isArray(result.data) ? result.data : [];
 
       setData(allSafetyData);
-      
-      // Generate columns dynamically from the data
+
+      const totalComponentsFromMetadata = result.metadata?.totalComponents ?? new Set(
+        allSafetyData
+          .map((item: any) => item.componentUuid || item.componentName)
+          .filter(Boolean)
+      ).size;
+
+      setTotalComponents(totalComponentsFromMetadata);
+      setProcessedComponents(totalComponentsFromMetadata);
       if (allSafetyData.length > 0) {
         const dynamicColumns = generateColumnsFromData(allSafetyData);
         setColumns(dynamicColumns);
-      }
-      
-      if (allSafetyData.length === 0) {
-        message.warning('No port safety data found for any components');
       } else {
+        message.warning('No port safety data found for any components');
+      }
+
+      if (allSafetyData.length > 0) {
         message.success(
           `Successfully loaded port safety analysis data! 
           Total records: ${allSafetyData.length} 
-          Components processed: ${processedCount}/${components.length}`
+          Components processed: ${totalComponentsFromMetadata}/${totalComponentsFromMetadata}`
         );
       }
 
@@ -370,6 +355,11 @@ const SafetyAnalysisTablePorts: React.FC = () => {
   };
 
   useEffect(() => {
+    if (hasFetchedInitialData.current) {
+      return;
+    }
+
+    hasFetchedInitialData.current = true;
     fetchSafetyData();
   }, []);
 
