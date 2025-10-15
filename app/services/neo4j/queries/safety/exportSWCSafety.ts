@@ -297,12 +297,13 @@ export async function getAllPortSafetyData(): Promise<{
             OPTIONAL MATCH (fm)-[taskRelfm:TASKREF]->(fmTask)
             OPTIONAL MATCH (fm)-[rrRelfm:RATED]->(fmrr)
             OPTIONAL MATCH (fmrr)-[fmrrRelTask:TASKREF]->(rrTask)
-         RETURN swc.uuid AS componentUuid,
-                   swc.name AS componentName,
-                   port.uuid AS portUuid,
-                   port.name AS PortName,
-             fm.uuid AS fmUuid,
-             labels(port)[0] AS portType,
+       RETURN swc.uuid AS componentUuid,
+             swc.name AS componentName,
+             labels(swc)[0] AS componentType,
+             port.uuid AS portUuid,
+             port.name AS PortName,
+         fm.uuid AS fmUuid,
+         labels(port)[0] AS portType,
                    fm.name AS fmName,
                    fm.description AS fmDescription,
                    fm.asil AS fmAsil,

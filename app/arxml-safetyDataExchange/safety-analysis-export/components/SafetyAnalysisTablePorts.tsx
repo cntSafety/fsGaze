@@ -14,6 +14,7 @@ const SafetyAnalysisTablePorts: React.FC = () => {
   const [columns, setColumns] = useState<ColumnsType<any>>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [exporting, setExporting] = useState<boolean>(false);
+  const [exportingPortDataElements, setExportingPortDataElements] = useState<boolean>(false);
   const [totalComponents, setTotalComponents] = useState<number>(0);
   const [processedComponents, setProcessedComponents] = useState<number>(0);
   const [searchText, setSearchText] = useState('');
@@ -232,6 +233,16 @@ const SafetyAnalysisTablePorts: React.FC = () => {
     }
   };
 
+  const escapeCSVValue = (value: any): string => {
+    if (value === null || value === undefined) return '';
+    const stringValue = String(value);
+    const cleanedValue = stringValue.replace(/\n/g, ' ');
+    if (cleanedValue.includes(',') || cleanedValue.includes('"') || stringValue.includes('\n')) {
+      return `"${cleanedValue.replace(/"/g, '""')}"`;
+    }
+    return cleanedValue;
+  };
+
   const convertToCSV = (data: any[]): string => {
     if (data.length === 0) return '';
 
@@ -240,29 +251,30 @@ const SafetyAnalysisTablePorts: React.FC = () => {
     data.forEach(item => {
       Object.keys(item).forEach(key => allKeys.add(key));
     });
-    
+
     // Create headers from the keys
     const headers = Array.from(allKeys).map(key => formatTitle(key));
 
-    // Helper function to escape CSV values
-    const escapeCSV = (value: any): string => {
-      if (value === null || value === undefined) return '';
-      const stringValue = String(value);
-      // Replace newlines with spaces to prevent CSV row breaks
-      const cleanedValue = stringValue.replace(/\n/g, ' ');
-      // Escape double quotes and wrap in quotes if contains comma, quote, or newline
-      if (cleanedValue.includes(',') || cleanedValue.includes('"') || stringValue.includes('\n')) {
-        return `"${cleanedValue.replace(/"/g, '""')}"`;
-      }
-      return cleanedValue;
-    };
-
     // Create CSV rows dynamically
     const csvRows = [
-      headers.join(','), // Header row
+      headers.map(header => escapeCSVValue(header)).join(','),
       ...data.map(item => 
-        Array.from(allKeys).map(key => escapeCSV(item[key])).join(',')
+        Array.from(allKeys).map(key => escapeCSVValue(item[key])).join(',')
       )
+    ];
+
+    return csvRows.join('\n');
+  };
+
+  const convertPortDataElementsToCSV = (rows: Array<Record<string, string>>): string => {
+    if (rows.length === 0) {
+      return '';
+    }
+
+  const headers = ['Component Name', 'Component Type', 'Port Name', 'Port Type', 'Max ASIL', 'Data Element'];
+    const csvRows = [
+      headers.map(header => escapeCSVValue(header)).join(','),
+      ...rows.map(row => headers.map(header => escapeCSVValue(row[header])).join(',')),
     ];
 
     return csvRows.join('\n');
@@ -354,6 +366,68 @@ const SafetyAnalysisTablePorts: React.FC = () => {
     }
   };
 
+  const handleExportPortsDataElementsCSV = async (): Promise<void> => {
+    setExportingPortDataElements(true);
+
+    try {
+      message.info('Preparing ports, ASIL and data element export...');
+      const response = await fetch('/api/safety/safety-analysis-export?dataset=ports-data-elements');
+
+      if (!response.ok) {
+        throw new Error(`Request failed with status ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      if (!result.success || !Array.isArray(result.data)) {
+        throw new Error(result.message || 'Failed to load port data elements');
+      }
+
+      const dataset: any[] = result.data;
+
+      if (dataset.length === 0) {
+        message.warning('No port data elements found to export');
+        return;
+      }
+
+      const exportRows = dataset.flatMap(row => {
+        const dataElements: string[] = Array.isArray(row.dataElements) && row.dataElements.length > 0
+          ? row.dataElements
+          : [''];
+
+        return dataElements.map((elementName: string) => ({
+          'Component Name': row.componentName ?? '',
+          'Component Type': row.componentType ?? '',
+          'Port Name': row.portName ?? '',
+          'Port Type': row.portType ?? '',
+          'Max ASIL': row.maxAsil ?? '',
+          'Data Element': elementName ?? '',
+        }));
+      });
+
+      if (exportRows.length === 0) {
+        message.warning('No data elements available for export');
+        return;
+      }
+
+      const csvContent = convertPortDataElementsToCSV(exportRows);
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const filename = `port_asil_data_elements_${timestamp}.csv`;
+
+      await downloadCSV(csvContent, filename);
+
+      message.success(`Exported ${exportRows.length} rows across ${dataset.length} ports.`);
+    } catch (error) {
+      message.error(
+        `Failed to export port data elements: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`
+      );
+    } finally {
+      setExportingPortDataElements(false);
+    }
+  };
+
   useEffect(() => {
     if (hasFetchedInitialData.current) {
       return;
@@ -398,6 +472,15 @@ const SafetyAnalysisTablePorts: React.FC = () => {
             disabled={exporting || data.length === 0}
           >
             Export Port FM to CSV
+          </Button>
+          <Button
+            type="primary"
+            icon={<ExportOutlined />}
+            onClick={handleExportPortsDataElementsCSV}
+            loading={exportingPortDataElements}
+            disabled={exportingPortDataElements}
+          >
+            Ports, ASIL and Data Elements to CSV
           </Button>
         </Space>
 
